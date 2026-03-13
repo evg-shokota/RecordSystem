@@ -10,9 +10,14 @@
     <i class="bi bi-circle-fill text-success" style="font-size:.5rem"></i> Збережено
 </span>
 {% endif %}
-<button type="button" id="btnToggleLayout" class="btn btn-sm btn-outline-secondary" title="Переключити режим перегляду">
+<button type="button" id="btnToggleLayout" class="btn btn-sm btn-outline-secondary" title="Переключити режим">
     <i class="bi bi-layout-split me-1"></i>Режим
 </button>
+{% if t %}
+<a href="/doc-templates/{{ t.id }}/preview" target="_blank" class="btn btn-sm btn-outline-info">
+    <i class="bi bi-eye me-1"></i>Перегляд
+</a>
+{% endif %}
 <a href="{{ url_for('doc_templates.index') }}" class="btn btn-sm btn-outline-secondary">
     <i class="bi bi-arrow-left me-1"></i>Назад
 </a>
@@ -22,7 +27,7 @@
 
 {# ── Рядок параметрів шаблону ── #}
 <form method="POST" id="tplForm">
-<div class="card border-0 shadow-sm mb-3">
+<div class="card border-0 shadow-sm mb-2">
     <div class="card-body py-2 px-3">
         <div class="row g-2 align-items-end">
             <div class="col-md-3">
@@ -45,12 +50,8 @@
             <div class="col-md-2">
                 <label class="form-label form-label-sm mb-1">Група</label>
                 <input type="text" name="template_group" class="form-control form-control-sm"
-                       id="inputGroup"
                        value="{% if t %}{{ t.template_group or '' }}{% elif base_t %}{{ base_t.template_group or '' }}{% endif %}"
-                       list="groupList" placeholder="напр. Накладні">
-                <datalist id="groupList">
-                    {# Заповнюється JS з існуючих груп #}
-                </datalist>
+                       placeholder="напр. Накладні">
             </div>
             <div class="col-md-1">
                 <label class="form-label form-label-sm mb-1">Розмір</label>
@@ -69,42 +70,42 @@
             <div class="col-md-2">
                 <label class="form-label form-label-sm mb-1">Поля В/Н/Л/П (мм)</label>
                 <div class="d-flex gap-1">
-                    <input type="number" name="margin_top"    class="form-control form-control-sm text-center p-1" style="width:42px"
+                    <input type="number" name="margin_top"    id="mTop"    class="form-control form-control-sm text-center p-1" style="width:42px"
                            value="{{ (t.margin_top|int) if t else ((base_t.margin_top|int) if base_t else 20) }}" min="0" max="50">
-                    <input type="number" name="margin_bottom" class="form-control form-control-sm text-center p-1" style="width:42px"
+                    <input type="number" name="margin_bottom" id="mBottom" class="form-control form-control-sm text-center p-1" style="width:42px"
                            value="{{ (t.margin_bottom|int) if t else ((base_t.margin_bottom|int) if base_t else 20) }}" min="0" max="50">
-                    <input type="number" name="margin_left"   class="form-control form-control-sm text-center p-1" style="width:42px"
+                    <input type="number" name="margin_left"   id="mLeft"   class="form-control form-control-sm text-center p-1" style="width:42px"
                            value="{{ (t.margin_left|int) if t else ((base_t.margin_left|int) if base_t else 30) }}" min="0" max="50">
-                    <input type="number" name="margin_right"  class="form-control form-control-sm text-center p-1" style="width:42px"
+                    <input type="number" name="margin_right"  id="mRight"  class="form-control form-control-sm text-center p-1" style="width:42px"
                            value="{{ (t.margin_right|int) if t else ((base_t.margin_right|int) if base_t else 10) }}" min="0" max="50">
                 </div>
             </div>
-            <div class="col-md-2">
-                <label class="form-label form-label-sm mb-1">Базовий шрифт</label>
-                <select name="font_family" id="selFontFamily" class="form-select form-select-sm">
-                    {% set cur_ff = t.font_family if t and t.font_family else (base_t.font_family if base_t and base_t.font_family else 'Times New Roman') %}
-                    <option value="Times New Roman"  {% if cur_ff == 'Times New Roman' %}selected{% endif %} style="font-family:'Times New Roman'">Times New Roman</option>
-                    <option value="Arial"             {% if cur_ff == 'Arial' %}selected{% endif %} style="font-family:Arial">Arial</option>
-                    <option value="Calibri"           {% if cur_ff == 'Calibri' %}selected{% endif %} style="font-family:Calibri">Calibri</option>
-                    <option value="Georgia"           {% if cur_ff == 'Georgia' %}selected{% endif %} style="font-family:Georgia">Georgia</option>
-                    <option value="Verdana"           {% if cur_ff == 'Verdana' %}selected{% endif %} style="font-family:Verdana">Verdana</option>
-                    <option value="Courier New"       {% if cur_ff == 'Courier New' %}selected{% endif %} style="font-family:'Courier New'">Courier New</option>
-                    <option value="Tahoma"            {% if cur_ff == 'Tahoma' %}selected{% endif %} style="font-family:Tahoma">Tahoma</option>
-                    <option value="Trebuchet MS"      {% if cur_ff == 'Trebuchet MS' %}selected{% endif %} style="font-family:'Trebuchet MS'">Trebuchet MS</option>
+            <div class="col-md-1">
+                <label class="form-label form-label-sm mb-1">Шрифт (pt)</label>
+                <select name="base_font_size" id="selBaseFontSize" class="form-select form-select-sm">
+                    {% set cur_bfs = t.base_font_size if t and t.base_font_size else (base_t.base_font_size if base_t and base_t.base_font_size else 12) %}
+                    <option value="10" {% if cur_bfs == 10 %}selected{% endif %}>10</option>
+                    <option value="11" {% if cur_bfs == 11 %}selected{% endif %}>11</option>
+                    <option value="12" {% if cur_bfs == 12 %}selected{% endif %}>12</option>
+                    <option value="13" {% if cur_bfs == 13 %}selected{% endif %}>13</option>
+                    <option value="14" {% if cur_bfs == 14 %}selected{% endif %}>14</option>
                 </select>
             </div>
             <div class="col-md-1">
-                <label class="form-label form-label-sm mb-1">Розмір (pt)</label>
-                <select name="base_font_size" id="selBaseFontSize" class="form-select form-select-sm">
-                    {% set cur_bfs = t.base_font_size if t and t.base_font_size else (base_t.base_font_size if base_t and base_t.base_font_size else 12) %}
-                    <option value="10" {% if cur_bfs == 10 %}selected{% endif %}>10 pt</option>
-                    <option value="11" {% if cur_bfs == 11 %}selected{% endif %}>11 pt</option>
-                    <option value="12" {% if cur_bfs == 12 %}selected{% endif %}>12 pt</option>
-                    <option value="13" {% if cur_bfs == 13 %}selected{% endif %}>13 pt</option>
-                    <option value="14" {% if cur_bfs == 14 %}selected{% endif %}>14 pt</option>
+                <label class="form-label form-label-sm mb-1">&nbsp;</label>
+                <select name="font_family" id="selFontFamily" class="form-select form-select-sm">
+                    {% set cur_ff = t.font_family if t and t.font_family else (base_t.font_family if base_t and base_t.font_family else 'Times New Roman') %}
+                    <option value="Times New Roman" {% if cur_ff == 'Times New Roman' %}selected{% endif %}>Times NR</option>
+                    <option value="Arial"            {% if cur_ff == 'Arial' %}selected{% endif %}>Arial</option>
+                    <option value="Calibri"          {% if cur_ff == 'Calibri' %}selected{% endif %}>Calibri</option>
+                    <option value="Georgia"          {% if cur_ff == 'Georgia' %}selected{% endif %}>Georgia</option>
+                    <option value="Verdana"          {% if cur_ff == 'Verdana' %}selected{% endif %}>Verdana</option>
+                    <option value="Courier New"      {% if cur_ff == 'Courier New' %}selected{% endif %}>Courier</option>
+                    <option value="Tahoma"           {% if cur_ff == 'Tahoma' %}selected{% endif %}>Tahoma</option>
                 </select>
             </div>
             <div class="col-md-1 text-end">
+                <label class="form-label form-label-sm mb-1">&nbsp;</label>
                 <button type="submit" class="btn btn-sm btn-primary w-100">
                     <i class="bi bi-floppy"></i> Зберегти
                 </button>
@@ -121,47 +122,45 @@
 </div>
 
 {# ── Основна область: шорткоди + редактор + preview ── #}
-<div id="mainLayout" class="d-flex gap-0" style="height:calc(100vh - 220px);min-height:500px">
+<div id="mainLayout" class="d-flex gap-0" style="height:calc(100vh - 210px);min-height:500px">
 
     {# ── Ліва панель: шорткоди ── #}
     <div id="shortcodesPanel" class="flex-shrink-0 border-end bg-light"
-         style="width:220px;overflow-y:auto;padding:8px">
-        <div class="fw-semibold text-muted small text-uppercase mb-2 px-1">Шорткоди</div>
+         style="width:200px;overflow-y:auto;padding:6px">
+        <div class="fw-semibold text-muted small text-uppercase mb-2 px-1" style="font-size:.65rem">Шорткоди</div>
         {% for category, codes in shortcodes.items() %}
         <div class="mb-2">
-            <div class="text-muted" style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em;padding:2px 4px">
+            <div class="text-muted px-1 mb-1" style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em">
                 {{ category }}
             </div>
             {% for code, label in codes %}
             <button type="button" class="btn btn-sm btn-light w-100 text-start py-0 px-2 mb-1 shortcode-btn border"
                     data-code="{{ code }}" title="{{ label }}"
-                    style="font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-                <span class="text-primary font-monospace">{{ code }}</span>
-                <span class="text-muted d-block" style="font-size:.65rem">{{ label }}</span>
+                    style="font-size:.68rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                <span class="text-primary font-monospace" style="font-size:.68rem">{{ code }}</span>
+                <span class="text-muted d-block" style="font-size:.6rem;line-height:1.2">{{ label }}</span>
             </button>
             {% endfor %}
         </div>
         {% endfor %}
     </div>
 
-    {# ── Центр: toolbar + редактор ── #}
+    {# ── Центр: Tiptap toolbar + редактор ── #}
     <div id="editorSection" class="flex-grow-1 d-flex flex-column overflow-hidden border-end">
-        {# Toolbar #}
-        <div class="d-flex flex-wrap gap-1 p-2 border-bottom bg-white align-items-center"
-             style="flex-shrink:0">
-            <div class="btn-group btn-group-sm">
-                <button type="button" class="btn btn-outline-secondary" onclick="cmd('bold')" title="Жирний (Ctrl+B)"><i class="bi bi-type-bold"></i></button>
-                <button type="button" class="btn btn-outline-secondary" onclick="cmd('italic')" title="Курсив (Ctrl+I)"><i class="bi bi-type-italic"></i></button>
-                <button type="button" class="btn btn-outline-secondary" onclick="cmd('underline')" title="Підкреслений"><i class="bi bi-type-underline"></i></button>
-                <button type="button" class="btn btn-outline-secondary" onclick="cmd('strikeThrough')" title="Закреслений"><i class="bi bi-type-strikethrough"></i></button>
-            </div>
-            <div class="btn-group btn-group-sm">
-                <button type="button" class="btn btn-outline-secondary" onclick="cmd('justifyLeft')" title="Ліво"><i class="bi bi-text-left"></i></button>
-                <button type="button" class="btn btn-outline-secondary" onclick="cmd('justifyCenter')" title="Центр"><i class="bi bi-text-center"></i></button>
-                <button type="button" class="btn btn-outline-secondary" onclick="cmd('justifyRight')" title="Право"><i class="bi bi-text-right"></i></button>
-                <button type="button" class="btn btn-outline-secondary" onclick="cmd('justifyFull')" title="Ширина"><i class="bi bi-justify"></i></button>
-            </div>
-            <select id="tbFontFamily" class="form-select form-select-sm" style="width:130px" onchange="applySelFont(this.value);this.value=''" title="Шрифт виділеного тексту">
+
+        {# Tiptap Toolbar #}
+        <div id="tiptapToolbar" class="d-flex flex-wrap gap-1 p-2 border-bottom bg-white align-items-center" style="flex-shrink:0;min-height:42px">
+
+            {# Заголовки #}
+            <select id="tbHeading" class="form-select form-select-sm" style="width:110px" title="Стиль абзацу">
+                <option value="0">Звичайний</option>
+                <option value="1">Заголовок 1</option>
+                <option value="2">Заголовок 2</option>
+                <option value="3">Заголовок 3</option>
+            </select>
+
+            {# Шрифт виділення #}
+            <select id="tbFont" class="form-select form-select-sm" style="width:115px" title="Шрифт">
                 <option value="">Шрифт...</option>
                 <option value="Times New Roman" style="font-family:'Times New Roman'">Times New Roman</option>
                 <option value="Arial" style="font-family:Arial">Arial</option>
@@ -170,55 +169,98 @@
                 <option value="Verdana" style="font-family:Verdana">Verdana</option>
                 <option value="Courier New" style="font-family:'Courier New'">Courier New</option>
                 <option value="Tahoma" style="font-family:Tahoma">Tahoma</option>
-                <option value="Trebuchet MS" style="font-family:'Trebuchet MS'">Trebuchet MS</option>
             </select>
-            <select id="tbFontSize" class="form-select form-select-sm" style="width:80px" onchange="applySelSize(this.value);this.value=''" title="Розмір виділеного тексту">
+
+            {# Розмір шрифту #}
+            <select id="tbSize" class="form-select form-select-sm" style="width:72px" title="Розмір">
                 <option value="">pt...</option>
-                <option value="8">8 pt</option>
-                <option value="9">9 pt</option>
-                <option value="10">10 pt</option>
-                <option value="11">11 pt</option>
-                <option value="12">12 pt</option>
-                <option value="13">13 pt</option>
-                <option value="14">14 pt</option>
-                <option value="16">16 pt</option>
-                <option value="18">18 pt</option>
-                <option value="20">20 pt</option>
-                <option value="24">24 pt</option>
-                <option value="28">28 pt</option>
-                <option value="36">36 pt</option>
+                <option value="8pt">8</option>
+                <option value="9pt">9</option>
+                <option value="10pt">10</option>
+                <option value="11pt">11</option>
+                <option value="12pt">12</option>
+                <option value="13pt">13</option>
+                <option value="14pt">14</option>
+                <option value="16pt">16</option>
+                <option value="18pt">18</option>
+                <option value="20pt">20</option>
+                <option value="24pt">24</option>
+                <option value="28pt">28</option>
+                <option value="36pt">36</option>
             </select>
+
+            <div class="vr mx-1"></div>
+
+            {# Bold/Italic/Underline/Strike #}
             <div class="btn-group btn-group-sm">
-                <button type="button" class="btn btn-outline-secondary" onclick="cmd('insertUnorderedList')" title="Список"><i class="bi bi-list-ul"></i></button>
-                <button type="button" class="btn btn-outline-secondary" onclick="cmd('insertOrderedList')" title="Нум. список"><i class="bi bi-list-ol"></i></button>
-                <button type="button" class="btn btn-outline-secondary" onclick="cmd('outdent')" title="Менший відступ"><i class="bi bi-text-indent-right"></i></button>
-                <button type="button" class="btn btn-outline-secondary" onclick="cmd('indent')" title="Більший відступ"><i class="bi bi-text-indent-left"></i></button>
+                <button type="button" id="tbBold"   class="btn btn-outline-secondary" title="Жирний (Ctrl+B)"><i class="bi bi-type-bold"></i></button>
+                <button type="button" id="tbItalic" class="btn btn-outline-secondary" title="Курсив (Ctrl+I)"><i class="bi bi-type-italic"></i></button>
+                <button type="button" id="tbUnder"  class="btn btn-outline-secondary" title="Підкреслений (Ctrl+U)"><i class="bi bi-type-underline"></i></button>
+                <button type="button" id="tbStrike" class="btn btn-outline-secondary" title="Закреслений"><i class="bi bi-type-strikethrough"></i></button>
             </div>
-            <input type="color" id="colorPicker" class="form-control form-control-color form-control-sm"
-                   style="width:32px;height:28px;padding:1px" value="#000000"
-                   onchange="cmd('foreColor',this.value)" title="Колір тексту">
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnTable" title="Вставити таблицю">
+
+            {# Вирівнювання #}
+            <div class="btn-group btn-group-sm">
+                <button type="button" id="tbAlignL" class="btn btn-outline-secondary" title="Ліво"><i class="bi bi-text-left"></i></button>
+                <button type="button" id="tbAlignC" class="btn btn-outline-secondary" title="Центр"><i class="bi bi-text-center"></i></button>
+                <button type="button" id="tbAlignR" class="btn btn-outline-secondary" title="Право"><i class="bi bi-text-right"></i></button>
+                <button type="button" id="tbAlignJ" class="btn btn-outline-secondary" title="По ширині"><i class="bi bi-justify"></i></button>
+            </div>
+
+            {# Списки #}
+            <div class="btn-group btn-group-sm">
+                <button type="button" id="tbUL" class="btn btn-outline-secondary" title="Список"><i class="bi bi-list-ul"></i></button>
+                <button type="button" id="tbOL" class="btn btn-outline-secondary" title="Нум. список"><i class="bi bi-list-ol"></i></button>
+            </div>
+
+            {# Відступи #}
+            <div class="btn-group btn-group-sm">
+                <button type="button" id="tbOutdent" class="btn btn-outline-secondary" title="Зменшити відступ"><i class="bi bi-text-indent-right"></i></button>
+                <button type="button" id="tbIndent"  class="btn btn-outline-secondary" title="Збільшити відступ"><i class="bi bi-text-indent-left"></i></button>
+            </div>
+
+            {# Колір #}
+            <input type="color" id="tbColor" class="form-control form-control-color form-control-sm"
+                   style="width:32px;height:28px;padding:1px" value="#000000" title="Колір тексту">
+
+            <div class="vr mx-1"></div>
+
+            {# Таблиця #}
+            <button type="button" id="btnTable" class="btn btn-sm btn-outline-secondary" title="Вставити таблицю">
                 <i class="bi bi-table"></i>
             </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="cmd('undo')" title="Відмінити (Ctrl+Z)"><i class="bi bi-arrow-counterclockwise"></i></button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="cmd('redo')" title="Повернути (Ctrl+Y)"><i class="bi bi-arrow-clockwise"></i></button>
+
+            {# Операції з таблицею #}
+            <div class="btn-group btn-group-sm" id="tableOps" style="display:none!important">
+                <button type="button" id="tbAddColBefore" class="btn btn-outline-secondary" title="Стовпець ліворуч">◀+</button>
+                <button type="button" id="tbAddColAfter"  class="btn btn-outline-secondary" title="Стовпець праворуч">+▶</button>
+                <button type="button" id="tbAddRowBefore" class="btn btn-outline-secondary" title="Рядок вище">▲+</button>
+                <button type="button" id="tbAddRowAfter"  class="btn btn-outline-secondary" title="Рядок нижче">+▼</button>
+                <button type="button" id="tbDelCol"  class="btn btn-outline-danger" title="Видалити стовпець"><i class="bi bi-x"></i>стовп</button>
+                <button type="button" id="tbDelRow"  class="btn btn-outline-danger" title="Видалити рядок"><i class="bi bi-x"></i>рядок</button>
+                <button type="button" id="tbMergeCells" class="btn btn-outline-secondary" title="Об'єднати клітинки">⊞</button>
+                <button type="button" id="tbSplitCell" class="btn btn-outline-secondary" title="Розбити клітинку">⊟</button>
+            </div>
+
+            <div class="vr mx-1"></div>
+
+            {# Undo/Redo #}
+            <div class="btn-group btn-group-sm">
+                <button type="button" id="tbUndo" class="btn btn-outline-secondary" title="Відмінити (Ctrl+Z)"><i class="bi bi-arrow-counterclockwise"></i></button>
+                <button type="button" id="tbRedo" class="btn btn-outline-secondary" title="Повернути (Ctrl+Y)"><i class="bi bi-arrow-clockwise"></i></button>
+            </div>
 
             <div class="ms-auto d-flex gap-1">
-                <button type="button" class="btn btn-sm btn-outline-info" id="btnRefreshPreview" title="Оновити перегляд">
+                <button type="button" id="btnRefreshPreview" class="btn btn-sm btn-outline-info" title="Оновити перегляд">
                     <i class="bi bi-arrow-repeat"></i>
                 </button>
             </div>
         </div>
 
-        {# Редактор з прокруткою #}
+        {# Tiptap Editor #}
         <div id="editorScroll" style="flex:1;overflow-y:auto;background:#e8e8e8;padding:20px">
             <div id="pageWrapper" style="margin:0 auto;background:white;box-shadow:0 2px 8px rgba(0,0,0,.2)">
-                <div id="tplEditor"
-                     contenteditable="true"
-                     spellcheck="false"
-                     style="outline:none;font-family:'Times New Roman',serif;font-size:13px;line-height:1.6">
-{{ existing_html | safe }}
-                </div>
+                <div id="tiptapEditor"></div>
             </div>
         </div>
     </div>
@@ -229,9 +271,7 @@
             <span class="badge bg-secondary" style="font-size:.65rem">ДЕМО-ПЕРЕГЛЯД (шорткоди замінено)</span>
         </div>
         <div id="previewPageWrapper" style="margin:0 auto;background:white;box-shadow:0 2px 8px rgba(0,0,0,.2)">
-            <div id="previewContent"
-                 style="font-family:'Times New Roman',serif;font-size:13px;line-height:1.6">
-            </div>
+            <div id="previewContent" style="font-family:'Times New Roman',serif;font-size:13px;line-height:1.6"></div>
         </div>
     </div>
 
@@ -239,7 +279,6 @@
 
 {# Прихований input #}
 <input type="hidden" name="content" id="contentInput">
-
 </form>
 
 {# ── Модал: Вставити таблицю ── #}
@@ -261,18 +300,10 @@
                         <input type="number" id="tblCols" class="form-control form-control-sm" value="4" min="1" max="20">
                     </div>
                     <div class="col-12">
-                        <div class="form-check form-check-sm">
+                        <div class="form-check">
                             <input type="checkbox" id="tblHeader" class="form-check-input" checked>
-                            <label class="form-check-label" for="tblHeader">Перший рядок — заголовок</label>
+                            <label class="form-check-label form-label-sm" for="tblHeader">Перший рядок — заголовок</label>
                         </div>
-                        <div class="form-check form-check-sm">
-                            <input type="checkbox" id="tblBorder" class="form-check-input" checked>
-                            <label class="form-check-label" for="tblBorder">Рамка</label>
-                        </div>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label form-label-sm">Ширина</label>
-                        <input type="text" id="tblWidth" class="form-control form-control-sm" value="100%">
                     </div>
                 </div>
             </div>
@@ -287,54 +318,218 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/tiptap.bundle.js"></script>
 <script>
-const TPL_ID = {{ t.id if t else 'null' }};
+const TPL_ID   = {{ t.id if t else 'null' }};
 const IS_SYSTEM = {{ 'true' if t and t.is_system else 'false' }};
+const INITIAL_HTML = {{ existing_html | tojson }};
 
-const editor       = document.getElementById('tplEditor');
-const previewContent = document.getElementById('previewContent');
-const contentInput = document.getElementById('contentInput');
+// ── Ініціалізація Tiptap ──────────────────────────────────────
+const { TiptapEditor, TiptapExtensions: Ext } = window;
 
-// ── Розміри сторінки ──────────────────────────────────────────
-function updatePageSize() {
+const MM = 3.7795;
+let editor;
+
+function getPageDimensions() {
     const size   = document.getElementById('selPageSize').value;
     const orient = document.getElementById('selOrientation').value;
-    const mt = parseInt(document.querySelector('[name=margin_top]').value) || 20;
-    const mb = parseInt(document.querySelector('[name=margin_bottom]').value) || 20;
-    const ml = parseInt(document.querySelector('[name=margin_left]').value) || 30;
-    const mr = parseInt(document.querySelector('[name=margin_right]').value) || 10;
+    let w = size === 'A5' ? 148 : 210;
+    let h = size === 'A5' ? 210 : 297;
+    if (orient === 'landscape') [w, h] = [h, w];
+    return { w, h };
+}
 
-    // A4: 210×297mm, A5: 148×210mm — в px при 96dpi: 1mm≈3.7795px
-    const MM = 3.7795;
-    let w = 210, h = 297;
-    if (size === 'A5') { w = 148; h = 210; }
-    if (orient === 'landscape') { [w, h] = [h, w]; }
+function getMargins() {
+    return {
+        top:    parseInt(document.getElementById('mTop').value)    || 20,
+        bottom: parseInt(document.getElementById('mBottom').value) || 20,
+        left:   parseInt(document.getElementById('mLeft').value)   || 30,
+        right:  parseInt(document.getElementById('mRight').value)  || 10,
+    };
+}
 
-    const pw = Math.round(w * MM);
+function updatePageSize() {
+    const { w } = getPageDimensions();
+    const m = getMargins();
+    const ff  = document.getElementById('selFontFamily').value || 'Times New Roman';
+    const bfs = parseInt(document.getElementById('selBaseFontSize').value) || 12;
+    const pw  = Math.round(w * MM);
 
     ['pageWrapper','previewPageWrapper'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.width = pw + 'px';
     });
 
-    const ff  = document.getElementById('selFontFamily').value || 'Times New Roman';
-    const bfs = parseInt(document.getElementById('selBaseFontSize').value) || 12;
+    // Оновити стиль редактора (padding = поля)
+    const editorEl = document.querySelector('#tiptapEditor .ProseMirror');
+    if (editorEl) {
+        editorEl.style.fontFamily = `'${ff}', serif`;
+        editorEl.style.fontSize   = bfs + 'pt';
+        editorEl.style.padding    = `${m.top*MM}px ${m.right*MM}px ${m.bottom*MM}px ${m.left*MM}px`;
+    }
 
-    const edStyle = `padding:${mt*MM}px ${mr*MM}px ${mb*MM}px ${ml*MM}px`;
-    editor.style.cssText = `outline:none;font-family:'${ff}',serif;font-size:${bfs}pt;line-height:1.6;${edStyle}`;
+    // preview
     const pc = document.getElementById('previewContent');
-    if (pc) pc.style.cssText = `font-family:'${ff}',serif;font-size:${bfs}pt;line-height:1.6;${edStyle}`;
+    if (pc) {
+        pc.style.fontFamily = `'${ff}', serif`;
+        pc.style.fontSize   = bfs + 'pt';
+        pc.style.padding    = `${m.top*MM}px ${m.right*MM}px ${m.bottom*MM}px ${m.left*MM}px`;
+    }
 }
 
-document.querySelectorAll('[name=page_size],[name=page_orientation],[name=margin_top],[name=margin_bottom],[name=margin_left],[name=margin_right]')
-    .forEach(el => el.addEventListener('change', updatePageSize));
-document.getElementById('selFontFamily').addEventListener('change', updatePageSize);
-document.getElementById('selBaseFontSize').addEventListener('change', updatePageSize);
+document.querySelectorAll('#selPageSize, #selOrientation, #mTop, #mBottom, #mLeft, #mRight, #selFontFamily, #selBaseFontSize')
+    .forEach(el => el.addEventListener('change', () => { updatePageSize(); schedulePreview(); }));
 
-// ── Режим відображення ────────────────────────────────────────
-// 0=split, 1=editor-only, 2=preview-only
+// ── Створення редактора ───────────────────────────────────────
+function initEditor() {
+    editor = new TiptapEditor({
+        element: document.getElementById('tiptapEditor'),
+        extensions: [
+            Ext.StarterKit.configure({ history: true }),
+            Ext.TextAlign.configure({ types: ['heading', 'paragraph'] }),
+            Ext.TextStyle,
+            Ext.FontFamily,
+            Ext.FontSize,
+            Ext.Color,
+            Ext.Underline,
+            Ext.Table.configure({ resizable: true }),
+            Ext.TableRow,
+            Ext.TableHeader,
+            Ext.TableCell,
+        ],
+        content: INITIAL_HTML || '<p></p>',
+        onUpdate() {
+            schedulePreview();
+            scheduleAutosave();
+        },
+        onSelectionUpdate() {
+            updateToolbarState();
+        },
+        onTransaction() {
+            updateTableOps();
+        },
+    });
+}
+
+// ── Стан toolbar ─────────────────────────────────────────────
+function updateToolbarState() {
+    if (!editor) return;
+    setActive('tbBold',   editor.isActive('bold'));
+    setActive('tbItalic', editor.isActive('italic'));
+    setActive('tbUnder',  editor.isActive('underline'));
+    setActive('tbStrike', editor.isActive('strike'));
+    setActive('tbAlignL', editor.isActive({ textAlign: 'left' }));
+    setActive('tbAlignC', editor.isActive({ textAlign: 'center' }));
+    setActive('tbAlignR', editor.isActive({ textAlign: 'right' }));
+    setActive('tbAlignJ', editor.isActive({ textAlign: 'justify' }));
+    setActive('tbUL', editor.isActive('bulletList'));
+    setActive('tbOL', editor.isActive('orderedList'));
+
+    // Heading select
+    const hSel = document.getElementById('tbHeading');
+    for (let i = 1; i <= 3; i++) {
+        if (editor.isActive('heading', { level: i })) { hSel.value = String(i); return; }
+    }
+    hSel.value = '0';
+}
+
+function setActive(id, active) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.classList.toggle('active', active);
+    btn.classList.toggle('btn-secondary', active);
+    btn.classList.toggle('btn-outline-secondary', !active);
+}
+
+function updateTableOps() {
+    const ops = document.getElementById('tableOps');
+    if (!ops) return;
+    const inTable = editor && editor.isActive('table');
+    ops.style.setProperty('display', inTable ? 'flex' : 'none', 'important');
+}
+
+// ── Прив'язка кнопок toolbar ──────────────────────────────────
+function bindToolbar() {
+    document.getElementById('tbBold').onclick   = () => editor.chain().focus().toggleBold().run();
+    document.getElementById('tbItalic').onclick = () => editor.chain().focus().toggleItalic().run();
+    document.getElementById('tbUnder').onclick  = () => editor.chain().focus().toggleUnderline().run();
+    document.getElementById('tbStrike').onclick = () => editor.chain().focus().toggleStrike().run();
+
+    document.getElementById('tbAlignL').onclick = () => editor.chain().focus().setTextAlign('left').run();
+    document.getElementById('tbAlignC').onclick = () => editor.chain().focus().setTextAlign('center').run();
+    document.getElementById('tbAlignR').onclick = () => editor.chain().focus().setTextAlign('right').run();
+    document.getElementById('tbAlignJ').onclick = () => editor.chain().focus().setTextAlign('justify').run();
+
+    document.getElementById('tbUL').onclick = () => editor.chain().focus().toggleBulletList().run();
+    document.getElementById('tbOL').onclick = () => editor.chain().focus().toggleOrderedList().run();
+    document.getElementById('tbOutdent').onclick = () => editor.chain().focus().liftListItem('listItem').run();
+    document.getElementById('tbIndent').onclick  = () => editor.chain().focus().sinkListItem('listItem').run();
+
+    document.getElementById('tbUndo').onclick = () => editor.chain().focus().undo().run();
+    document.getElementById('tbRedo').onclick = () => editor.chain().focus().redo().run();
+
+    document.getElementById('tbHeading').addEventListener('change', function() {
+        const v = parseInt(this.value);
+        if (v === 0) editor.chain().focus().setParagraph().run();
+        else editor.chain().focus().setHeading({ level: v }).run();
+    });
+
+    document.getElementById('tbFont').addEventListener('change', function() {
+        if (this.value) editor.chain().focus().setFontFamily(this.value).run();
+        this.value = '';
+    });
+
+    document.getElementById('tbSize').addEventListener('change', function() {
+        if (this.value) editor.chain().focus().setFontSize(this.value).run();
+        this.value = '';
+    });
+
+    document.getElementById('tbColor').addEventListener('input', function() {
+        editor.chain().focus().setColor(this.value).run();
+    });
+
+    // Таблиця — операції
+    document.getElementById('tbAddColBefore').onclick = () => editor.chain().focus().addColumnBefore().run();
+    document.getElementById('tbAddColAfter').onclick  = () => editor.chain().focus().addColumnAfter().run();
+    document.getElementById('tbAddRowBefore').onclick = () => editor.chain().focus().addRowBefore().run();
+    document.getElementById('tbAddRowAfter').onclick  = () => editor.chain().focus().addRowAfter().run();
+    document.getElementById('tbDelCol').onclick  = () => editor.chain().focus().deleteColumn().run();
+    document.getElementById('tbDelRow').onclick  = () => editor.chain().focus().deleteRow().run();
+    document.getElementById('tbMergeCells').onclick = () => editor.chain().focus().mergeCells().run();
+    document.getElementById('tbSplitCell').onclick  = () => editor.chain().focus().splitCell().run();
+}
+
+// ── Вставка таблиці (модал) ──────────────────────────────────
+document.getElementById('btnTable').addEventListener('click', () => {
+    new bootstrap.Modal(document.getElementById('tableModal')).show();
+});
+
+document.getElementById('btnInsertTable').addEventListener('click', () => {
+    const rows = parseInt(document.getElementById('tblRows').value) || 3;
+    const cols = parseInt(document.getElementById('tblCols').value) || 4;
+    const header = document.getElementById('tblHeader').checked;
+    bootstrap.Modal.getInstance(document.getElementById('tableModal')).hide();
+    editor.chain().focus().insertTable({ rows, cols, withHeaderRow: header }).run();
+});
+
+// ── Шорткоди ─────────────────────────────────────────────────
+document.querySelectorAll('.shortcode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const code = btn.dataset.code;
+        // Вставляємо як HTML span з класом sc-token
+        editor.chain().focus().insertContent(
+            `<span class="sc-token" data-sc="${code}" contenteditable="false">${code}</span>&nbsp;`
+        ).run();
+    });
+});
+
+// ── Режими відображення ───────────────────────────────────────
 let layoutMode = 0;
-function applyLayout() {
+document.getElementById('btnToggleLayout').addEventListener('click', () => {
+    layoutMode = (layoutMode + 1) % 3;
+    const labels = ['Розділений', 'Тільки редактор', 'Тільки перегляд'];
+    document.getElementById('btnToggleLayout').innerHTML =
+        `<i class="bi bi-layout-split me-1"></i>${labels[layoutMode]}`;
     const edSec = document.getElementById('editorSection');
     const prSec = document.getElementById('previewSection');
     if (layoutMode === 0) {
@@ -347,140 +542,18 @@ function applyLayout() {
         edSec.style.display = 'none'; prSec.style.display = '';
         prSec.style.width = '100%';
     }
-}
-document.getElementById('btnToggleLayout').addEventListener('click', () => {
-    layoutMode = (layoutMode + 1) % 3;
-    const labels = ['Розділений', 'Тільки редактор', 'Тільки перегляд'];
-    document.getElementById('btnToggleLayout').innerHTML = `<i class="bi bi-layout-split me-1"></i>${labels[layoutMode]}`;
-    applyLayout();
     if (layoutMode !== 1) refreshPreview();
-});
-
-// ── Застосувати шрифт/розмір до виділення ─────────────────────
-function applySelFont(fontName) {
-    if (!fontName) return;
-    restoreSelection();
-    document.execCommand('fontName', false, fontName);
-    editor.focus();
-    schedulePreview();
-}
-
-function applySelSize(pt) {
-    if (!pt) return;
-    restoreSelection();
-    const sel = window.getSelection();
-    if (!sel || sel.isCollapsed) {
-        editor.focus();
-        return;
-    }
-    // Wrap selection in span with inline font-size
-    const range = sel.getRangeAt(0);
-    const span = document.createElement('span');
-    span.style.fontSize = pt + 'pt';
-    try {
-        range.surroundContents(span);
-    } catch(e) {
-        // surroundContents fails if selection crosses elements — fallback
-        document.execCommand('insertHTML', false,
-            `<span style="font-size:${pt}pt">${range.toString()}</span>`);
-    }
-    editor.focus();
-    schedulePreview();
-}
-
-// ── Збереження позиції курсору ────────────────────────────────
-let savedRange = null;
-editor.addEventListener('blur', () => {
-    const sel = window.getSelection();
-    if (sel.rangeCount > 0) savedRange = sel.getRangeAt(0).cloneRange();
-});
-
-function restoreSelection() {
-    if (savedRange) {
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(savedRange);
-    } else {
-        editor.focus();
-    }
-}
-
-function cmd(command, value) {
-    restoreSelection();
-    document.execCommand(command, false, value || null);
-    editor.focus();
-    schedulePreview();
-}
-
-// ── Шорткоди ──────────────────────────────────────────────────
-document.querySelectorAll('.shortcode-btn').forEach(btn => {
-    btn.addEventListener('mousedown', (e) => {
-        e.preventDefault(); // не знімати фокус з редактора
-        const code = btn.dataset.code;
-        editor.focus();
-        restoreSelection();
-        const span = document.createElement('span');
-        span.className = 'sc-token';
-        span.contentEditable = 'false';
-        span.setAttribute('data-sc', code);
-        span.textContent = code;
-        if (savedRange) {
-            savedRange.deleteContents();
-            savedRange.insertNode(span);
-            const r = document.createRange();
-            r.setStartAfter(span); r.collapse(true);
-            const sel = window.getSelection();
-            sel.removeAllRanges(); sel.addRange(r);
-            savedRange = r.cloneRange();
-        } else {
-            document.execCommand('insertHTML', false, span.outerHTML);
-        }
-        schedulePreview();
-    });
-});
-
-// ── Вставка таблиці ───────────────────────────────────────────
-document.getElementById('btnTable').addEventListener('click', () => {
-    const sel = window.getSelection();
-    if (sel.rangeCount > 0) savedRange = sel.getRangeAt(0).cloneRange();
-    new bootstrap.Modal(document.getElementById('tableModal')).show();
-});
-
-document.getElementById('btnInsertTable').addEventListener('click', () => {
-    const rows = parseInt(document.getElementById('tblRows').value) || 3;
-    const cols = parseInt(document.getElementById('tblCols').value) || 4;
-    const hasBorder = document.getElementById('tblBorder').checked;
-    const hasHeader = document.getElementById('tblHeader').checked;
-    const width = document.getElementById('tblWidth').value.trim() || '100%';
-    const bs = hasBorder ? 'border:1px solid #000;border-collapse:collapse' : 'border-collapse:collapse';
-    const cs = hasBorder ? 'border:1px solid #000;padding:3px 6px' : 'padding:3px 6px';
-    let html = `<table style="${bs};width:${width}">`;
-    for (let r = 0; r < rows; r++) {
-        html += '<tr>';
-        for (let c = 0; c < cols; c++) {
-            html += r === 0 && hasHeader
-                ? `<th style="${cs};background:#f0f0f0"> </th>`
-                : `<td style="${cs}"> </td>`;
-        }
-        html += '</tr>';
-    }
-    html += '</table><p><br></p>';
-    bootstrap.Modal.getInstance(document.getElementById('tableModal')).hide();
-    restoreSelection();
-    document.execCommand('insertHTML', false, html);
-    editor.focus();
-    schedulePreview();
 });
 
 // ── Live preview ──────────────────────────────────────────────
 let previewTimer = null;
 function schedulePreview() {
     clearTimeout(previewTimer);
-    previewTimer = setTimeout(refreshPreview, 600);
+    previewTimer = setTimeout(refreshPreview, 700);
 }
 
 async function refreshPreview() {
-    if (layoutMode === 1) return; // тільки редактор — не оновлювати
+    if (layoutMode === 1) return;
     const html = getEditorHTML();
     try {
         const resp = await fetch('/doc-templates/preview-inline', {
@@ -490,24 +563,26 @@ async function refreshPreview() {
         });
         if (resp.ok) {
             const d = await resp.json();
-            previewContent.innerHTML = d.rendered;
+            document.getElementById('previewContent').innerHTML = d.rendered;
         }
     } catch(e) {}
 }
 
 document.getElementById('btnRefreshPreview').addEventListener('click', refreshPreview);
-editor.addEventListener('input', schedulePreview);
 
-// ── Отримати HTML (замінити sc-token на чистий код) ───────────
+// ── Отримати HTML для збереження (sc-token → {{код}}) ─────────
 function getEditorHTML() {
-    const clone = editor.cloneNode(true);
-    clone.querySelectorAll('.sc-token').forEach(el => {
+    // Tiptap повертає HTML — sc-token вже в ньому як span
+    // Конвертуємо span.sc-token назад у {{код}}
+    const tmp = document.createElement('div');
+    tmp.innerHTML = editor.getHTML();
+    tmp.querySelectorAll('.sc-token').forEach(el => {
         el.replaceWith(document.createTextNode(el.getAttribute('data-sc') || el.textContent));
     });
-    return clone.innerHTML;
+    return tmp.innerHTML;
 }
 
-// ── Автозбереження (тільки якщо шаблон вже збережено) ────────
+// ── Автозбереження ────────────────────────────────────────────
 let autosaveTimer = null;
 const autosaveStatus = document.getElementById('autosaveStatus');
 
@@ -525,61 +600,70 @@ async function doAutosave() {
         const fd = new FormData();
         fd.append('content', html);
         const resp = await fetch(`/doc-templates/${TPL_ID}/autosave`, { method: 'POST', body: fd });
-        if (resp.ok) {
-            if (autosaveStatus) autosaveStatus.innerHTML = '<i class="bi bi-circle-fill text-success" style="font-size:.5rem"></i> Збережено';
-        }
+        if (resp.ok && autosaveStatus)
+            autosaveStatus.innerHTML = '<i class="bi bi-circle-fill text-success" style="font-size:.5rem"></i> Збережено';
     } catch(e) {}
 }
 
-editor.addEventListener('input', scheduleAutosave);
-
 // ── Перед відправкою форми ────────────────────────────────────
 document.getElementById('tplForm').addEventListener('submit', () => {
-    contentInput.value = getEditorHTML();
+    document.getElementById('contentInput').value = getEditorHTML();
 });
-
-// ── Підсвітка шорткодів при завантаженні ─────────────────────
-function highlightShortcodes() {
-    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
-    const regex = /\{\{[^}]+\}\}/g;
-    const nodes = [];
-    let node;
-    while ((node = walker.nextNode())) {
-        if (node.parentElement?.classList.contains('sc-token')) continue;
-        if (regex.test(node.textContent)) nodes.push(node);
-        regex.lastIndex = 0;
-    }
-    nodes.forEach(textNode => {
-        const frag = document.createDocumentFragment();
-        let last = 0;
-        const text = textNode.textContent;
-        regex.lastIndex = 0;
-        let m;
-        while ((m = regex.exec(text)) !== null) {
-            if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
-            const span = document.createElement('span');
-            span.className = 'sc-token';
-            span.contentEditable = 'false';
-            span.setAttribute('data-sc', m[0]);
-            span.textContent = m[0];
-            frag.appendChild(span);
-            last = m.index + m[0].length;
-        }
-        if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
-        textNode.parentNode.replaceChild(frag, textNode);
-    });
-}
 
 // ── Ініціалізація ─────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-    highlightShortcodes();
+    initEditor();
+    bindToolbar();
     updatePageSize();
     refreshPreview();
 });
 </script>
 
 <style>
-/* Токени шорткодів */
+/* ── Tiptap editor area ───────────────────────────── */
+#tiptapEditor .ProseMirror {
+    outline: none;
+    font-family: 'Times New Roman', serif;
+    font-size: 12pt;
+    line-height: 1.6;
+    min-height: 400px;
+    word-wrap: break-word;
+}
+
+#tiptapEditor .ProseMirror p { margin: 0 0 .3em; }
+#tiptapEditor .ProseMirror h1 { font-size: 1.5em; font-weight: bold; margin: .5em 0 .3em; }
+#tiptapEditor .ProseMirror h2 { font-size: 1.25em; font-weight: bold; margin: .5em 0 .3em; }
+#tiptapEditor .ProseMirror h3 { font-size: 1.1em; font-weight: bold; margin: .4em 0 .2em; }
+
+/* Таблиці в Tiptap */
+#tiptapEditor .ProseMirror table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: .5em 0;
+}
+#tiptapEditor .ProseMirror table td,
+#tiptapEditor .ProseMirror table th {
+    border: 1px solid #999;
+    padding: 3px 6px;
+    min-width: 20px;
+    vertical-align: top;
+}
+#tiptapEditor .ProseMirror table th {
+    background: #f0f0f0;
+    font-weight: bold;
+}
+#tiptapEditor .ProseMirror table .selectedCell {
+    background: #c8e6fa;
+}
+#tiptapEditor .ProseMirror table .column-resize-handle {
+    position: absolute;
+    right: -2px; top: 0; bottom: 0;
+    width: 4px;
+    background: #adf;
+    cursor: col-resize;
+}
+
+/* Шорткод-токени */
 .sc-token {
     display: inline-block;
     background: #cfe2ff;
@@ -588,26 +672,22 @@ document.addEventListener('DOMContentLoaded', () => {
     padding: 0 4px;
     color: #0a3a6e;
     font-family: monospace;
-    font-size: .82em;
+    font-size: .8em;
     line-height: 1.4;
     cursor: default;
     user-select: none;
+    white-space: nowrap;
 }
 
-/* Таблиці в редакторі — виділити рамки при наведенні */
-#tplEditor table td, #tplEditor table th {
-    min-width: 20px;
-    position: relative;
-}
-#tplEditor table td:focus, #tplEditor table th:focus {
-    outline: 2px solid #0d6efd55;
-}
+/* Кнопки toolbar */
+.shortcode-btn:hover { background: #e7f1ff !important; border-color: #9ec5fe !important; }
+#tiptapToolbar .btn.active { background: #e2e6ea; }
 
-/* Прибрати зовнішній padding від app-content для максимальної ширини */
+/* Повна ширина без padding від app-content */
 .app-content { padding: 0 !important; overflow: hidden; }
 #mainLayout { margin: 0; }
 
-/* Кнопки шорткодів */
-.shortcode-btn:hover { background: #e7f1ff !important; border-color: #9ec5fe !important; }
+/* Виділення курсора в таблиці */
+.tableWrapper { overflow-x: auto; }
 </style>
 {% endblock %}

@@ -47,3 +47,7 @@ dist_exe/
 
 # Тимчасові файли Claude
 assets_claude/
+
+# Node.js build (Tiptap bundle)
+static/js/tiptap-build/node_modules/
+static/js/tiptap-build/package-lock.json
