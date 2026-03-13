@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# База даних (не комітимо — містить особові дані)
+database.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Завантажені файли / скани
+uploads/
+scans/
+files/
+
+# Середовище
+.env
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Логи
+*.log
+logs/
+
+# PyInstaller
+*.spec
+dist_exe/
+
+# Тимчасові файли Claude
+assets_claude/
