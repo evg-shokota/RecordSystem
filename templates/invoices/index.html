@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Накладні — {{ unit_name }}{% endblock %}
+{% block page_title %}Накладні на видачу{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('invoices.new') }}" class="btn btn-sm btn-primary">
+    <i class="bi bi-plus-lg me-1"></i>Нова накладна
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# Фільтри #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <form method="GET" class="d-flex gap-2 flex-wrap align-items-end">
+            <div>
+                <label class="form-label form-label-sm mb-1">Статус</label>
+                <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value=""     {{ 'selected' if not status_filter }}>Всі</option>
+                    <option value="draft"     {{ 'selected' if status_filter=='draft' }}>Чернетки</option>
+                    <option value="created"   {{ 'selected' if status_filter=='created' }}>Створені</option>
+                    <option value="issued"    {{ 'selected' if status_filter=='issued' }}>Видані</option>
+                    <option value="processed" {{ 'selected' if status_filter=='processed' }}>Проведені</option>
+                    <option value="cancelled" {{ 'selected' if status_filter=='cancelled' }}>Скасовані</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label form-label-sm mb-1">Пошук</label>
+                <div class="input-group input-group-sm">
+                    <input type="text" name="q" class="form-control" value="{{ search }}"
+                           placeholder="номер, прізвище, підрозділ, майно">
+                    <button type="submit" class="btn btn-outline-secondary">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </div>
+            </div>
+            {% if status_filter or search %}
+            <a href="{{ url_for('invoices.index') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-x-lg"></i>
+            </a>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        {% if rows %}
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:130px">Номер</th>
+                        <th style="width:110px">Дата</th>
+                        <th>Одержувач</th>
+                        <th style="width:80px">Напрямок</th>
+                        <th style="width:110px">Сума, грн</th>
+                        <th style="width:110px">Дійсна до</th>
+                        <th style="width:110px">Статус</th>
+                        <th style="width:60px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rows %}
+                    {% set expired = r.valid_until and r.valid_until < today_str and r.status in ('created','issued') %}
+                    <tr class="{{ 'table-danger' if expired else '' }}">
+                        <td>
+                            <a href="{{ url_for('invoices.view', inv_id=r.id) }}" class="fw-medium">
+                                {{ r.number }}
+                            </a>
+                        </td>
+                        <td class="text-muted">{{ r.created_at[:10] }}</td>
+                        <td>
+                            {% if r.recipient_type == 'personnel' %}
+                            <i class="bi bi-person text-muted me-1"></i>
+                            {{ r.recipient_rank or '' }} {{ r.recipient_person_name | trim }}
+                            {% else %}
+                            <i class="bi bi-people text-muted me-1"></i>
+                            {{ r.recipient_unit_name or '—' }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if r.direction == 'issue' %}
+                            <span class="badge bg-primary">Видача</span>
+                            {% elif r.direction == 'return' %}
+                            <span class="badge bg-warning text-dark">Повернення</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Переміщення</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">{{ "%.2f"|format(r.total_sum) }}</td>
+                        <td class="text-muted {{ 'text-danger fw-bold' if expired }}">
+                            {{ r.valid_until or '—' }}
+                        </td>
+                        <td>
+                            {% if r.status == 'draft' %}
+                            <span class="badge bg-warning text-dark">Чернетка</span>
+                            {% elif r.status == 'created' %}
+                            <span class="badge bg-secondary">Створена</span>
+                            {% elif r.status == 'issued' %}
+                            <span class="badge bg-info text-dark">Видана</span>
+                            {% elif r.status == 'processed' %}
+                            <span class="badge bg-success">Проведена</span>
+                            {% elif r.status == 'cancelled' %}
+                            <span class="badge bg-danger">Скасована</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('invoices.view', inv_id=r.id) }}"
+                               class="btn btn-sm btn-outline-secondary py-0 px-1">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-receipt fs-1 d-block mb-2"></i>
+            Накладних не знайдено —
+            <a href="{{ url_for('invoices.new') }}">створити першу</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const today_str = "{{ today_str }}";
+</script>
+{% endblock %}

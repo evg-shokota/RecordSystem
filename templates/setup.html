@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Перший запуск — А5027</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+<div class="login-wrapper">
+    <div class="login-card card border-0">
+        <div class="card-body p-4 p-md-5">
+
+            <div class="text-center mb-4">
+                <i class="bi bi-shield-fill login-logo"></i>
+                <h2 class="fw-bold mt-2 mb-1">Перший запуск</h2>
+                <p class="text-muted small">Створіть обліковий запис адміністратора</p>
+            </div>
+
+            <form method="POST" action="{{ url_for('setup') }}">
+                <div class="mb-3">
+                    <label class="form-label fw-medium">Повне ім'я (ПІБ)</label>
+                    <input type="text" name="full_name" class="form-control"
+                           placeholder="Прізвище Ім'я По-батькові" required autofocus>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-medium">Логін</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-person"></i></span>
+                        <input type="text" name="username" class="form-control"
+                               placeholder="Введіть логін" required>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-medium">Пароль</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                        <input type="password" name="password" class="form-control"
+                               placeholder="Мінімум 6 символів" required minlength="6">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary w-100 py-2 fw-medium">
+                    <i class="bi bi-check-circle me-1"></i>Створити та увійти
+                </button>
+            </form>
+
+        </div>
+    </div>
+</div>
+</body>
+</html>

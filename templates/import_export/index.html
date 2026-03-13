@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Імпорт / Експорт — {{ unit_name }}{% endblock %}
+{% block page_title %}Імпорт та Експорт{% endblock %}
+
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+{% for category, message in messages %}
+<div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+    {{ message }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endfor %}
+{% endif %}
+{% endwith %}
+
+<div class="row g-3">
+
+    {# Імпорт карток о/с #}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-start gap-3">
+                <div class="bg-primary bg-opacity-10 rounded-3 p-3 flex-shrink-0">
+                    <i class="bi bi-person-plus-fill text-primary fs-3"></i>
+                </div>
+                <div>
+                    <h5 class="card-title mb-1">Імпорт карток особового складу</h5>
+                    <p class="card-text text-muted small">
+                        Завантажте файл Excel (.xlsx) з ПІБ, званням, посадою, ІПН.
+                        Попередній перегляд з перевіркою дублікатів.
+                    </p>
+                    <a href="{{ url_for('import_export.personnel_import') }}" class="btn btn-primary btn-sm">
+                        <i class="bi bi-upload me-1"></i>Завантажити Excel
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Експорт БД #}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-start gap-3">
+                <div class="bg-success bg-opacity-10 rounded-3 p-3 flex-shrink-0">
+                    <i class="bi bi-database-down text-success fs-3"></i>
+                </div>
+                <div>
+                    <h5 class="card-title mb-1">Завантажити базу даних</h5>
+                    <p class="card-text text-muted small">
+                        Зберегти копію <strong>database.db</strong> з поточною датою в назві файлу.
+                    </p>
+                    <a href="{{ url_for('import_export.db_export') }}" class="btn btn-success btn-sm">
+                        <i class="bi bi-download me-1"></i>Завантажити .db
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Заміна БД #}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100 border-danger border-opacity-25">
+            <div class="card-body d-flex align-items-start gap-3">
+                <div class="bg-danger bg-opacity-10 rounded-3 p-3 flex-shrink-0">
+                    <i class="bi bi-database-up text-danger fs-3"></i>
+                </div>
+                <div>
+                    <h5 class="card-title mb-1">Замінити базу даних</h5>
+                    <p class="card-text text-muted small">
+                        <span class="text-danger fw-medium">Небезпечна операція!</span>
+                        Замінює поточну БД файлом. Автоматично створює резервну копію.
+                    </p>
+                    <a href="{{ url_for('import_export.db_import') }}" class="btn btn-outline-danger btn-sm">
+                        <i class="bi bi-exclamation-triangle me-1"></i>Замінити БД
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

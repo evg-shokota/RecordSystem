@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Залишки на складі — {{ unit_name }}{% endblock %}
+{% block page_title %}Залишки на складі{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-sm btn-outline-secondary" onclick="window.print()">
+    <i class="bi bi-printer me-1"></i>Друк
+</button>
+<a href="{{ url_for('reports.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>До звітів
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Фільтри ── #}
+<form method="GET" class="card border-0 shadow-sm mb-3 no-print">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label form-label-sm mb-1">Пошук</label>
+                <input type="text" name="q" class="form-control form-control-sm"
+                       value="{{ search }}" placeholder="Назва майна...">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label form-label-sm mb-1">Категорія</label>
+                <select name="category" class="form-select form-select-sm">
+                    <option value="">— всі категорії —</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat }}" {{ 'selected' if category_filter == cat }}>
+                        Категорія {{ cat }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100">
+                    <i class="bi bi-funnel me-1"></i>Фільтр
+                </button>
+            </div>
+            {% if category_filter or search %}
+            <div class="col-md-2">
+                <a href="{{ url_for('reports.stock') }}" class="btn btn-outline-secondary btn-sm w-100">
+                    <i class="bi bi-x me-1"></i>Скинути
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</form>
+
+{# ── Заголовок для друку ── #}
+<div class="print-header d-none d-print-block mb-3">
+    <h4 class="text-center">{{ unit_name }} — Залишки майна на складі</h4>
+    <p class="text-center text-muted">Станом на: {{ today }}</p>
+</div>
+
+{# ── Таблиця ── #}
+<div class="card border-0 shadow-sm">
+    {% if rows %}
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Найменування</th>
+                        <th class="text-center">Кат.</th>
+                        <th class="text-center">Од.</th>
+                        <th class="text-end">Прихід</th>
+                        <th class="text-end">Видано</th>
+                        <th class="text-end">Залишок</th>
+                        <th class="text-end">Ціна</th>
+                        <th class="text-end">Сума, грн</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rows %}
+                    <tr class="{% if r.qty_balance <= 0 %}table-danger{% elif r.qty_balance < 5 %}table-warning{% endif %}">
+                        <td>{{ r.item_name }}</td>
+                        <td class="text-center">
+                            <span class="badge bg-secondary">{{ r.category }}</span>
+                        </td>
+                        <td class="text-center text-muted small">{{ r.unit_of_measure }}</td>
+                        <td class="text-end">{{ r.qty_in }}</td>
+                        <td class="text-end">{{ r.qty_out }}</td>
+                        <td class="text-end fw-medium {% if r.qty_balance <= 0 %}text-danger{% endif %}">
+                            {{ r.qty_balance }}
+                        </td>
+                        <td class="text-end text-muted small">{{ "%.2f"|format(r.price) }}</td>
+                        <td class="text-end">{{ "%.2f"|format(r.total_sum or 0) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light fw-medium">
+                    <tr>
+                        <td colspan="7" class="text-end">Загальна сума залишків:</td>
+                        <td class="text-end">{{ "%.2f"|format(total_sum) }} грн</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-box-seam fs-2 d-block mb-2"></i>
+        Залишки відсутні або не відповідають фільтру
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

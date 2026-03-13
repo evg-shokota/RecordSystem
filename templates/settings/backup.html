@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Резервні копії — {{ unit_name }}{% endblock %}
+{% block page_title %}Резервні копії{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('settings.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <p class="text-muted mb-0">Резервні копії зберігаються в папці <code>backups/</code> поряд з базою даних.</p>
+    <form method="POST" action="{{ url_for('settings.backup_create') }}">
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-database-fill-add me-1"></i>Створити копію зараз
+        </button>
+    </form>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Файл</th>
+                        <th style="width:120px">Тип</th>
+                        <th style="width:150px">Дата</th>
+                        <th style="width:100px" class="text-end">Розмір</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for b in backups %}
+                    <tr>
+                        <td class="small font-monospace">{{ b.filename }}</td>
+                        <td>
+                            {% set label_map = {
+                                'manual':  ('primary',  'Ручний'),
+                                'daily':   ('secondary','Щоденний'),
+                                'weekly':  ('info',     'Тижневий'),
+                                'monthly': ('success',  'Місячний'),
+                                'yearly':  ('warning',  'Річний'),
+                            } %}
+                            {% set lc = label_map.get(b.label, ('secondary', b.label)) %}
+                            <span class="badge bg-{{ lc[0] }}">{{ lc[1] }}</span>
+                        </td>
+                        <td class="text-muted small">{{ b.created_at }}</td>
+                        <td class="text-end text-muted small">{{ b.size_kb }} КБ</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center text-muted py-4">
+                            <i class="bi bi-database-x me-1"></i>Резервних копій ще немає
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

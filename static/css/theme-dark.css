@@ -1,0 +1,434 @@
+/* ===================================================
+   ТЕМА: Темна (refined)
+   Palette: Catppuccin Mocha-inspired dark navy
+   Sidebar:  #1e2030 — темний slate-navy
+   Body:     #181926 — base
+   Cards:    #1e2030 — surface0
+   Accent:   #89b4fa — sky blue (не кричущий)
+   =================================================== */
+:root {
+    --theme-name: "dark";
+
+    /* Сайдбар */
+    --sidebar-bg:          #1e2030;
+    --sidebar-bg-dark:     #181926;
+    --sidebar-text:        rgba(205,214,244,.75);
+    --sidebar-text-active: #cdd6f4;
+    --sidebar-hover-bg:    rgba(137,180,250,.10);
+    --sidebar-active-bg:   rgba(137,180,250,.18);
+    --sidebar-border:      rgba(137,180,250,.12);
+    --sidebar-brand-icon:  #89b4fa;
+
+    /* Контент */
+    --body-bg:             #181926;
+    --topbar-bg:           #1e2030;
+    --topbar-border:       rgba(137,180,250,.10);
+    --card-bg:             #1e2030;
+    --card-border:         rgba(205,214,244,.07);
+
+    /* Акцент — sky blue */
+    --app-primary:         #89b4fa;
+    --app-primary-dark:    #74a8f8;
+    --app-primary-rgb:     137, 180, 250;
+    --link-color:          #89b4fa;
+
+    /* Текст */
+    --text-primary:        #cdd6f4;
+    --text-muted:          #7f849c;
+    --text-heading:        #e6e9f7;
+
+    /* Логін */
+    --login-bg:            #181926;
+    --login-card-bg:       #1e2030;
+
+    --stat-value-color:    #89b4fa;
+
+    --table-header-bg:     #24273a;
+    --table-hover-bg:      rgba(137,180,250,.05);
+
+    /* Поля вводу */
+    --input-bg:            #24273a;
+    --input-border:        rgba(205,214,244,.12);
+    --input-bg-focus:      #2a2d45;
+}
+
+/* ── Body ── */
+body {
+    background: var(--body-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+/* ── Сайдбар — перекрити синій фон з main.css ── */
+.app-sidebar {
+    background: var(--sidebar-bg) !important;
+    border-right: 1px solid var(--sidebar-border) !important;
+}
+
+.sidebar-brand, .sidebar-brand:hover {
+    color: var(--sidebar-text-active) !important;
+    border-bottom-color: var(--sidebar-border) !important;
+}
+
+.sidebar-brand-icon { color: var(--sidebar-brand-icon) !important; }
+.sidebar-brand-text .title { color: var(--sidebar-text-active) !important; }
+.sidebar-brand-text .subtitle { color: var(--sidebar-text) !important; }
+
+.sidebar-nav .nav-link {
+    color: var(--sidebar-text) !important;
+}
+.sidebar-nav .nav-link:hover {
+    background: var(--sidebar-hover-bg) !important;
+    color: var(--sidebar-text-active) !important;
+}
+.sidebar-nav .nav-link.active {
+    background: var(--sidebar-active-bg) !important;
+    color: var(--app-primary) !important;
+    border-left: 3px solid var(--app-primary);
+    padding-left: 13px !important;
+}
+.sidebar-nav .nav-link i { opacity: 1 !important; }
+
+.nav-section-label { color: rgba(137,180,250,.5) !important; }
+
+/* Collapsible секції */
+.nav-group-toggle {
+    color: var(--sidebar-text) !important;
+    background: none !important;
+}
+.nav-group-toggle:hover { color: var(--sidebar-text-active) !important; }
+.nav-group-toggle::after { border-color: var(--sidebar-text) !important; }
+
+.nav-group.open > .nav-group-toggle { color: var(--sidebar-text-active) !important; }
+
+.sidebar-footer {
+    border-top-color: var(--sidebar-border) !important;
+    color: var(--sidebar-text) !important;
+}
+.sidebar-user-name { color: var(--sidebar-text-active) !important; }
+
+/* ── Топбар ── */
+.app-topbar {
+    background: var(--topbar-bg) !important;
+    border-color: var(--topbar-border) !important;
+    color: var(--text-primary);
+}
+.app-topbar h1 { color: var(--text-heading) !important; }
+
+/* ── Картки ── */
+.card {
+    background: var(--card-bg) !important;
+    border-color: var(--card-border) !important;
+    color: var(--text-primary);
+}
+.card-header {
+    background: rgba(137,180,250,.05) !important;
+    border-color: var(--card-border) !important;
+    color: var(--text-heading);
+}
+.card-footer { border-color: var(--card-border) !important; }
+
+/* ── Таблиці ── */
+.table {
+    --bs-table-bg: transparent;
+    --bs-table-striped-bg: rgba(205,214,244,.02);
+    --bs-table-hover-bg: var(--table-hover-bg);
+    color: var(--text-primary);
+    border-color: var(--card-border);
+}
+.table th {
+    background: var(--table-header-bg) !important;
+    color: var(--text-muted) !important;
+    border-color: var(--card-border) !important;
+    font-size: 11px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+.table td { border-color: var(--card-border) !important; }
+.table-light { --bs-table-bg: var(--table-header-bg) !important; }
+
+/* ── Форми ── */
+.form-control, .form-select {
+    background: var(--input-bg) !important;
+    border-color: var(--input-border) !important;
+    color: var(--text-primary) !important;
+}
+.form-control:focus, .form-select:focus {
+    background: var(--input-bg-focus) !important;
+    border-color: var(--app-primary) !important;
+    color: var(--text-primary) !important;
+    box-shadow: 0 0 0 .2rem rgba(137,180,250,.18) !important;
+}
+.form-control::placeholder { color: var(--text-muted) !important; }
+.form-control:disabled, .form-control[readonly] {
+    background: rgba(36,39,58,.8) !important;
+    color: var(--text-muted) !important;
+}
+.form-label { color: var(--text-primary); }
+.form-text  { color: var(--text-muted) !important; }
+.form-check-input:not(:checked) {
+    background-color: var(--input-bg);
+    border-color: var(--input-border);
+}
+
+/* ── Input group ── */
+.input-group-text {
+    background: var(--input-bg) !important;
+    border-color: var(--input-border) !important;
+    color: var(--text-muted) !important;
+}
+
+/* ── Кнопки ── */
+.btn-primary {
+    background: var(--app-primary) !important;
+    border-color: var(--app-primary-dark) !important;
+    color: #1e2030 !important;
+}
+.btn-primary:hover {
+    background: var(--app-primary-dark) !important;
+    border-color: var(--app-primary-dark) !important;
+    color: #181926 !important;
+}
+.btn-outline-primary {
+    color: var(--app-primary) !important;
+    border-color: var(--app-primary) !important;
+}
+.btn-outline-primary:hover {
+    background: var(--app-primary) !important;
+    color: #1e2030 !important;
+}
+.btn-outline-secondary {
+    color: var(--text-muted) !important;
+    border-color: rgba(205,214,244,.2) !important;
+}
+.btn-outline-secondary:hover {
+    background: rgba(205,214,244,.08) !important;
+    color: var(--text-primary) !important;
+}
+.btn-light {
+    background: rgba(205,214,244,.08) !important;
+    border-color: rgba(205,214,244,.1) !important;
+    color: var(--text-primary) !important;
+}
+.btn-light:hover {
+    background: rgba(205,214,244,.14) !important;
+    color: var(--text-heading) !important;
+}
+
+/* ── Посилання — добре видно на будь-якому темному фоні ── */
+a { color: var(--link-color) !important; }
+a:hover { color: #b8d0fc !important; }
+
+/* На сайдбарі посилання — не перекривати окремим кольором */
+.app-sidebar a,
+.app-sidebar a:hover { color: inherit !important; }
+
+/* ── Бейджі ── */
+.badge.bg-primary  { background: var(--app-primary) !important; color: #1e2030 !important; }
+.badge.bg-primary-subtle { background: rgba(137,180,250,.15) !important; color: var(--app-primary) !important; }
+.badge.bg-light    { background: rgba(205,214,244,.1) !important; color: var(--text-primary) !important; }
+.badge.bg-secondary { background: rgba(205,214,244,.12) !important; color: var(--text-muted) !important; }
+.text-primary      { color: var(--app-primary) !important; }
+.text-muted        { color: var(--text-muted) !important; }
+
+/* ── Модальні вікна ── */
+.modal-content {
+    background: var(--card-bg) !important;
+    border-color: var(--card-border) !important;
+    color: var(--text-primary);
+}
+.modal-header, .modal-footer { border-color: var(--card-border) !important; }
+.modal-header .btn-close { filter: invert(1) grayscale(1) opacity(.7); }
+
+/* ── Dropdown ── */
+.dropdown-menu {
+    background: #24273a !important;
+    border-color: rgba(205,214,244,.1) !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4) !important;
+}
+.dropdown-item { color: var(--text-primary) !important; }
+.dropdown-item:hover { background: rgba(137,180,250,.1) !important; color: var(--text-heading) !important; }
+.dropdown-divider { border-color: var(--card-border) !important; }
+.dropdown-header  { color: var(--text-muted) !important; }
+
+/* ── Alert ── */
+.alert {
+    border-color: var(--card-border) !important;
+    background: rgba(36,39,58,.9) !important;
+    color: var(--text-primary) !important;
+}
+.alert-danger   { background: rgba(243,139,168,.12) !important; border-color: rgba(243,139,168,.25) !important; color: #f5b8c8 !important; }
+.alert-success  { background: rgba(166,227,161,.12) !important; border-color: rgba(166,227,161,.25) !important; color: #b6e8b2 !important; }
+.alert-warning  { background: rgba(249,226,175,.12) !important; border-color: rgba(249,226,175,.25) !important; color: #fce7a8 !important; }
+.alert-info     { background: rgba(137,180,250,.12) !important; border-color: rgba(137,180,250,.25) !important; color: #a8c8fd !important; }
+
+/* ── Nav tabs ── */
+.nav-tabs { border-color: var(--card-border) !important; }
+.nav-tabs .nav-link { color: var(--text-muted) !important; border-color: transparent !important; }
+.nav-tabs .nav-link:hover { color: var(--text-primary) !important; border-color: var(--card-border) !important; }
+.nav-tabs .nav-link.active {
+    color: var(--app-primary) !important;
+    background: var(--card-bg) !important;
+    border-color: var(--card-border) var(--card-border) var(--card-bg) !important;
+}
+
+/* ── Borders ── */
+.border, .border-bottom, .border-top, .border-start, .border-end,
+.border-light { border-color: var(--card-border) !important; }
+
+/* ── SearchableSelect ── */
+.ss-display {
+    background: var(--input-bg) !important;
+    border-color: var(--input-border) !important;
+    color: var(--text-primary) !important;
+}
+.ss-display:hover { border-color: var(--app-primary) !important; }
+.ss-dropdown {
+    background: #24273a !important;
+    border-color: rgba(205,214,244,.1) !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4) !important;
+}
+.ss-search-wrap input {
+    background: var(--input-bg) !important;
+    border-color: var(--input-border) !important;
+    color: var(--text-primary) !important;
+}
+.ss-item:hover, .ss-item.ss-focused { background: rgba(137,180,250,.1) !important; color: var(--text-heading) !important; }
+.ss-item.ss-selected { background: rgba(137,180,250,.15) !important; color: var(--app-primary) !important; }
+
+/* ── Stat value ── */
+.stat-value { color: var(--app-primary) !important; }
+
+/* ── Список навігації у sidebar (sub-items) ── */
+.sidebar-nav .nav-group-items .nav-link {
+    padding-left: 2.5rem !important;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--body-bg); }
+::-webkit-scrollbar-thumb { background: rgba(137,180,250,.2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(137,180,250,.4); }
+
+/* ── Логін ── */
+.login-wrapper {
+    background: var(--login-bg) !important;
+    background-image: radial-gradient(ellipse at 60% 40%, rgba(137,180,250,.06) 0%, transparent 60%) !important;
+}
+.login-card {
+    background: var(--login-card-bg) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--card-border) !important;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5) !important;
+}
+.login-logo { color: var(--app-primary) !important; }
+
+/* ══════════════════════════════════════════════════════
+   BOOTSTRAP КЛАСИ — перекриття для темної теми
+   ══════════════════════════════════════════════════════ */
+
+/* bg-white, bg-light — перетворити на темний surface */
+.bg-white  { background-color: var(--card-bg) !important; }
+.bg-light  { background-color: var(--table-header-bg) !important; }
+
+/* text-dark, text-black — перетворити на світлий текст */
+.text-dark  { color: var(--text-primary) !important; }
+.text-black { color: var(--text-primary) !important; }
+
+/* Badge кольори — зробити менш кричущими на темному фоні */
+.badge.bg-info    { background-color: rgba(137,180,250,.20) !important; color: #89b4fa !important; }
+.badge.bg-warning { background-color: rgba(249,226,175,.18) !important; color: #f9c74f !important; }
+.badge.bg-success { background-color: rgba(166,227,161,.18) !important; color: #a6e3a1 !important; }
+.badge.bg-danger  { background-color: rgba(243,139,168,.18) !important; color: #f38ba8 !important; }
+.badge.bg-secondary { background-color: rgba(205,214,244,.12) !important; color: var(--text-muted) !important; }
+.badge.bg-dark-subtle { background-color: rgba(205,214,244,.08) !important; color: var(--text-muted) !important; }
+
+/* text-dark всередині badge */
+.badge.text-dark { color: var(--text-primary) !important; }
+.badge.bg-warning.text-dark { color: #f9c74f !important; }
+.badge.bg-info.text-dark    { color: #89b4fa !important; }
+
+/* border-dark-subtle */
+.border-dark-subtle { border-color: var(--card-border) !important; }
+
+/* ── Inline-стилі через attribute selector ── */
+/* Sticky заголовки таблиць із хардкодом */
+[style*="background:#f8f9fa"],
+[style*="background: #f8f9fa"] { background: var(--table-header-bg) !important; color: var(--text-primary) !important; }
+
+[style*="background:white"],
+[style*="background: white"],
+[style*="background:#fff"],
+[style*="background: #fff"]    { background: var(--card-bg) !important; }
+
+[style*="background:#f0f0f0"],
+[style*="background: #f0f0f0"] { background: var(--table-header-bg) !important; }
+
+[style*="background:#f8f8f8"],
+[style*="background: #f8f8f8"] { background: var(--table-header-bg) !important; }
+
+/* Текст через inline color */
+[style*="color:#555"],
+[style*="color: #555"],
+[style*="color:#666"],
+[style*="color: #666"]  { color: var(--text-muted) !important; }
+
+[style*="color:#aaa"],
+[style*="color: #aaa"],
+[style*="color:#888"],
+[style*="color: #888"]  { color: var(--text-muted) !important; }
+
+/* Рядки підпису — border-bottom */
+[style*="border-bottom:1px solid #aaa"],
+[style*="border-bottom: 1px solid #aaa"] { border-color: var(--card-border) !important; }
+
+/* Рядки таблиць — borders */
+[style*="border:1px solid #ccc"],
+[style*="border: 1px solid #ccc"],
+[style*="border:1px solid #dee2e6"],
+[style*="border: 1px solid #dee2e6"] { border-color: var(--card-border) !important; }
+
+/* Settings одиниці — блакитний блок */
+[style*="background:#e8f4fd"] { background: rgba(137,180,250,.08) !important; }
+
+/* Unit card / personnel list borders */
+[style*="border:1px solid #dee2e6"] { border-color: var(--card-border) !important; }
+[style*="border-bottom:1px solid #f0f0f0"] { border-color: var(--card-border) !important; }
+
+/* ── Матриця РВ / таблиці із sticky комірками ── */
+th[style*="background"], td[style*="background:white"], td[style*="background:#fff"],
+td[style*="background: white"], td[style*="background: #fff"] {
+    background: var(--card-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+/* ── SearchableSelect — перекрити .ss-option (main.css вже оновлено, але старий кеш) ── */
+.ss-group-label { background: var(--table-header-bg) !important; color: var(--text-muted) !important; }
+.ss-option { color: var(--text-primary) !important; }
+.ss-option:hover, .ss-option.ss-focused {
+    background: rgba(137,180,250,.1) !important;
+    color: var(--app-primary) !important;
+}
+.ss-option.ss-selected {
+    background: rgba(137,180,250,.15) !important;
+    color: var(--app-primary) !important;
+}
+.ss-no-results { color: var(--text-muted) !important; }
+
+/* ── Форма підписантів (invoices/form.html) ── */
+.signatories-block [style*="color:#555"],
+.signatories-block [style*="color: #555"] { color: var(--text-muted) !important; }
+
+/* ── Загальні border перекриття для форм редагування ── */
+.table [style*="border"] td,
+.table [style*="border"] th { border-color: var(--card-border) !important; }
+
+/* ── pre та code блоки ── */
+pre  { background: var(--table-header-bg) !important; color: var(--text-primary) !important; border-color: var(--card-border) !important; }
+code { background: rgba(137,180,250,.1) !important; color: #89dceb !important; }
+
+/* ── Список / dl ── */
+dt { color: var(--text-heading) !important; }
+dd { color: var(--text-primary) !important; }
+
+/* ── hr ── */
+hr { border-color: var(--card-border) !important; opacity: 1; }

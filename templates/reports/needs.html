@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Потреба по нормі — {{ unit_name }}{% endblock %}
+{% block page_title %}Потреба по нормі видачі{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-sm btn-outline-secondary" onclick="window.print()">
+    <i class="bi bi-printer me-1"></i>Друк
+</button>
+<a href="{{ url_for('reports.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>До звітів
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Фільтри ── #}
+<form method="GET" class="card border-0 shadow-sm mb-3 no-print">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label form-label-sm mb-1">Підрозділ</label>
+                <select name="unit_id" class="form-select form-select-sm">
+                    <option value="">— всі підрозділи —</option>
+                    {% for u in units %}
+                    <option value="{{ u.id }}" {{ 'selected' if unit_id == u.id }}>
+                        {{ u.bat_name }} / {{ u.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100">
+                    <i class="bi bi-funnel me-1"></i>Застосувати
+                </button>
+            </div>
+        </div>
+    </div>
+</form>
+
+{# ── Заголовок для друку ── #}
+<div class="d-none d-print-block mb-3">
+    <h4 class="text-center">{{ unit_name }} — Потреба по нормі</h4>
+    <p class="text-center text-muted">Дата: {{ today }}</p>
+</div>
+
+{% if by_norm %}
+{% for norm_item in by_norm %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-warning bg-opacity-10 d-flex align-items-center">
+        <i class="bi bi-box me-2 text-warning"></i>
+        <strong>{{ norm_item.name }}</strong>
+        <span class="ms-2 text-muted small">{{ norm_item.unit }}</span>
+        <span class="ms-auto badge bg-warning text-dark">
+            Потреба: {{ norm_item.total_remaining | int if norm_item.total_remaining == norm_item.total_remaining | int else norm_item.total_remaining }}
+        </span>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>ПІБ</th>
+                    <th>Підрозділ</th>
+                    <th class="text-center">Норма</th>
+                    <th class="text-center">Видано</th>
+                    <th class="text-center">Потреба</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in norm_item.persons %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('personnel.card', person_id=p.personnel_id) }}"
+                           class="text-decoration-none">
+                            {% if p.rank %}<span class="text-muted small">{{ p.rank }} </span>{% endif %}
+                            {{ p.full_name }}
+                        </a>
+                    </td>
+                    <td class="text-muted small">{{ p.unit_name or '—' }}</td>
+                    <td class="text-center">{{ p.norm_qty | int if p.norm_qty == p.norm_qty | int else p.norm_qty }}</td>
+                    <td class="text-center">{{ p.issued_qty | int if p.issued_qty == p.issued_qty | int else p.issued_qty }}</td>
+                    <td class="text-center fw-medium text-danger">
+                        {{ p.remaining | int if p.remaining == p.remaining | int else p.remaining }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-check2-all fs-2 text-success d-block mb-2"></i>
+        Всі позиції видані за нормою
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

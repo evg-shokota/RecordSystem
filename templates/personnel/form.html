@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+{% block title %}{% if is_edit %}Редагування{% else %}Додати особу{% endif %} — {{ unit_name }}{% endblock %}
+{% block page_title %}
+    {% if is_edit %}Редагування картки{% else %}Додати особу{% endif %}
+{% endblock %}
+
+{% block topbar_actions %}
+{% if is_edit %}
+<a href="{{ url_for('personnel.card', person_id=person_id) }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>До картки
+</a>
+{% else %}
+<a href="{{ url_for('personnel.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>До списку
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<form method="post"
+      action="{% if is_edit %}{{ url_for('personnel.edit', person_id=person_id) }}{% else %}{{ url_for('personnel.add') }}{% endif %}">
+
+{# ══════════════════════════════════════════════════════════
+   1. Основні дані
+══════════════════════════════════════════════════════════ #}
+<div class="card mb-3">
+    <div class="card-header py-2 fw-semibold">
+        <i class="bi bi-person-badge me-2 text-primary"></i>Основні дані
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label form-label-sm">Прізвище <span class="text-danger">*</span></label>
+                <input type="text" name="last_name" class="form-control form-control-sm {% if errors.last_name %}is-invalid{% endif %}"
+                       value="{{ person.last_name or '' }}" required>
+                {% if errors.last_name %}<div class="invalid-feedback">{{ errors.last_name }}</div>{% endif %}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label form-label-sm">Ім'я <span class="text-danger">*</span></label>
+                <input type="text" name="first_name" class="form-control form-control-sm {% if errors.first_name %}is-invalid{% endif %}"
+                       value="{{ person.first_name or '' }}" required>
+                {% if errors.first_name %}<div class="invalid-feedback">{{ errors.first_name }}</div>{% endif %}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label form-label-sm">По-батькові</label>
+                <input type="text" name="middle_name" class="form-control form-control-sm"
+                       value="{{ person.middle_name or '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label form-label-sm">Звання</label>
+                <select name="rank" id="selRank" class="form-select form-select-sm"
+                        onchange="onRankChange(this.value)">
+                    <option value="">— оберіть звання —</option>
+                    {%- set cat_labels = {'enlisted': 'Рядовий склад', 'nco': 'Сержантський і старшинський склад', 'officer': 'Офіцерський склад'} -%}
+                    {%- set subcat_labels = {'junior': 'Молодший', 'senior': 'Старший', 'higher': 'Вищий'} -%}
+                    {%- set ns = namespace(cur_cat=None, cur_subcat=None, in_subcat=false) -%}
+                    {%- for r in ranks -%}
+                        {%- if r.category != ns.cur_cat -%}
+                            {%- if ns.in_subcat %}</optgroup>{%- set ns.in_subcat = false -%}{%- endif -%}
+                            {%- if ns.cur_cat != None %}</optgroup>{%- endif -%}
+                            {%- set ns.cur_cat = r.category -%}
+                            {%- set ns.cur_subcat = None -%}
+                            <optgroup label="{{ cat_labels.get(r.category, r.category) }}">
+                        {%- endif -%}
+                        {%- if r.subcategory and r.subcategory != ns.cur_subcat -%}
+                            {%- if ns.in_subcat %}</optgroup>{%- endif -%}
+                            {%- set ns.cur_subcat = r.subcategory -%}
+                            {%- set ns.in_subcat = true -%}
+                            <optgroup label="  {{ subcat_labels.get(r.subcategory, r.subcategory) }}">
+                        {%- elif not r.subcategory and ns.in_subcat -%}
+                            </optgroup>{%- set ns.in_subcat = false -%}{%- set ns.cur_subcat = None -%}
+                        {%- endif -%}
+                        <option value="{{ r.name }}"
+                                data-category="{{ r.category }}"
+                                {% if person.rank == r.name %}selected{% endif %}>{% if r.insignia %}{{ r.insignia }} {% endif %}{{ r.name }}</option>
+                    {%- endfor -%}
+                    {%- if ns.in_subcat %}</optgroup>{%- endif -%}
+                    {%- if ns.cur_cat != None %}</optgroup>{%- endif %}
+                </select>
+            </div>
+            <div class="col-md-5">
+                <label class="form-label form-label-sm">Посада</label>
+                <input type="text" name="position" class="form-control form-control-sm"
+                       value="{{ person.position or '' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label form-label-sm">Категорія</label>
+                <select name="category" id="selCategory" class="form-select form-select-sm">
+                    <option value="soldier" {% if person.category != 'officer' %}selected{% endif %}>Солдат / Сержант</option>
+                    <option value="officer" {% if person.category == 'officer' %}selected{% endif %}>Офіцер</option>
+                </select>
+                <div class="form-text" id="categoryHint" style="display:none">
+                    <i class="bi bi-arrow-up-left"></i> Визначено автоматично по званню
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════
+   2. Розміщення
+══════════════════════════════════════════════════════════ #}
+<div class="card mb-3">
+    <div class="card-header py-2 fw-semibold">
+        <i class="bi bi-diagram-3 me-2 text-primary"></i>Розміщення
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label form-label-sm">Батальйон</label>
+                <select name="battalion_id" id="selBattalion" class="form-select form-select-sm"
+                        onchange="loadUnits(this.value)">
+                    <option value="">— оберіть —</option>
+                    {% for b in battalions %}
+                    <option value="{{ b.id }}" {% if person.battalion_id == b.id %}selected{% endif %}>{{ b.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label form-label-sm">Підрозділ</label>
+                <select name="unit_id" id="selUnit" class="form-select form-select-sm"
+                        onchange="loadPlatoons(this.value)"
+                        {% if not units %}disabled{% endif %}>
+                    <option value="">— оберіть —</option>
+                    {% for u in units %}
+                    <option value="{{ u.id }}" {% if person.unit_id == u.id %}selected{% endif %}>{{ u.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label form-label-sm">Взвод</label>
+                <select name="platoon_id" id="selPlatoon" class="form-select form-select-sm"
+                        {% if not platoons %}disabled{% endif %}>
+                    <option value="">— оберіть —</option>
+                    {% for pl in platoons %}
+                    <option value="{{ pl.id }}" {% if person.platoon_id == pl.id %}selected{% endif %}>{{ pl.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label form-label-sm">Група</label>
+                <select name="group_id" class="form-select form-select-sm">
+                    <option value="">— без групи —</option>
+                    {% for g in groups %}
+                    <option value="{{ g.id }}" {% if person.group_id == g.id %}selected{% endif %}>{{ g.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════
+   3. Документи
+══════════════════════════════════════════════════════════ #}
+<div class="card mb-3">
+    <div class="card-header py-2 fw-semibold">
+        <i class="bi bi-file-earmark-text me-2 text-primary"></i>Документи та ідентифікатори
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label form-label-sm">ІПН</label>
+                <input type="text" name="ipn" maxlength="10"
+                       class="form-control form-control-sm {% if errors.ipn %}is-invalid{% endif %}"
+                       value="{{ person.ipn or '' }}" placeholder="1234567890">
+                {% if errors.ipn %}<div class="invalid-feedback">{{ errors.ipn }}</div>{% endif %}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label form-label-sm">Номер картки</label>
+                <div class="input-group input-group-sm">
+                    <input type="text" name="card_number" id="cardNumber"
+                           class="form-control form-control-sm"
+                           value="{{ person.card_number or '' }}"
+                           placeholder="{% if not is_edit %}авто{% endif %}">
+                    {% if not is_edit %}
+                    <span class="input-group-text text-muted" style="font-size:11px;"
+                          title="Буде присвоєно автоматично якщо не вказати">авто</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label form-label-sm">Телефон</label>
+                <input type="text" name="phone" class="form-control form-control-sm"
+                       value="{{ person.phone or '' }}" placeholder="+380...">
+            </div>
+            <div class="col-md-3"></div>
+
+            <div class="col-md-3">
+                <label class="form-label form-label-sm">Дата призову</label>
+                <input type="date" name="draft_date" class="form-control form-control-sm"
+                       value="{{ person.draft_date or '' }}">
+            </div>
+            <div class="col-md-5">
+                <label class="form-label form-label-sm">Ким призваний (ТЦК)</label>
+                <input type="text" name="draft_by" class="form-control form-control-sm"
+                       value="{{ person.draft_by or '' }}" placeholder="Назва ТЦК та СП">
+            </div>
+            <div class="col-md-4"></div>
+
+            <div class="col-md-3">
+                <label class="form-label form-label-sm">Дата зарахування</label>
+                <input type="date" name="enroll_date" class="form-control form-control-sm"
+                       value="{{ person.enroll_date or '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label form-label-sm">Наказ зарахування</label>
+                <input type="text" name="enroll_order" class="form-control form-control-sm"
+                       value="{{ person.enroll_order or '' }}" placeholder="№ і дата наказу">
+            </div>
+            <div class="col-md-5"></div>
+
+            <div class="col-md-3">
+                <label class="form-label form-label-sm">Дата вибуття</label>
+                <input type="date" name="dismiss_date" class="form-control form-control-sm"
+                       value="{{ person.dismiss_date or '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label form-label-sm">Наказ вибуття</label>
+                <input type="text" name="dismiss_order" class="form-control form-control-sm"
+                       value="{{ person.dismiss_order or '' }}" placeholder="№ і дата наказу">
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════
+   4. Розміри
+══════════════════════════════════════════════════════════ #}
+<div class="card mb-4">
+    <div class="card-header py-2 fw-semibold">
+        <i class="bi bi-rulers me-2 text-primary"></i>Антропометричні розміри
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm">Зріст</label>
+                <input type="text" name="size_height" class="form-control form-control-sm"
+                       value="{{ person.size_height or '' }}" placeholder="напр. 176">
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm">Голова</label>
+                <input type="text" name="size_head" class="form-control form-control-sm"
+                       value="{{ person.size_head or '' }}" placeholder="напр. 57">
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm">Нижня білизна</label>
+                <input type="text" name="size_underwear" class="form-control form-control-sm"
+                       value="{{ person.size_underwear or '' }}" placeholder="напр. 48">
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm">Костюм</label>
+                <input type="text" name="size_suit" class="form-control form-control-sm"
+                       value="{{ person.size_suit or '' }}" placeholder="напр. 50-4">
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm">Куртка</label>
+                <input type="text" name="size_jacket" class="form-control form-control-sm"
+                       value="{{ person.size_jacket or '' }}" placeholder="напр. 50-4">
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm">Штани</label>
+                <input type="text" name="size_pants" class="form-control form-control-sm"
+                       value="{{ person.size_pants or '' }}" placeholder="напр. 50-4">
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm">Взуття</label>
+                <input type="text" name="size_shoes" class="form-control form-control-sm"
+                       value="{{ person.size_shoes or '' }}" placeholder="напр. 42">
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════
+   Норма видачі майна
+══════════════════════════════════════════════════════════ #}
+<div class="card mb-3">
+    <div class="card-header py-2 fw-semibold">
+        <i class="bi bi-list-check me-2 text-primary"></i>Норма видачі майна
+    </div>
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label form-label-sm">Норма видачі</label>
+                <select name="norm_id" class="form-select form-select-sm">
+                    <option value="">— не призначено —</option>
+                    {% for n in supply_norms %}
+                    <option value="{{ n.id }}"
+                        {{ 'selected' if person.norm_id and person.norm_id == n.id }}>
+                        {{ n.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Визначає перелік майна що належить до видачі цій особі (для картки речового майна).</div>
+            </div>
+            {% if person.norm_id %}
+            <div class="col-md-3">
+                <a href="{{ url_for('supply_norms.edit', norm_id=person.norm_id) }}"
+                   class="btn btn-sm btn-outline-secondary" target="_blank">
+                    <i class="bi bi-box-arrow-up-right me-1"></i>Переглянути норму
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# ── Кнопки ── #}
+<div class="d-flex gap-2">
+    <button type="submit" class="btn btn-primary">
+        <i class="bi bi-check-lg me-1"></i>
+        {% if is_edit %}Зберегти зміни{% else %}Додати особу{% endif %}
+    </button>
+    {% if is_edit %}
+    <a href="{{ url_for('personnel.card', person_id=person_id) }}" class="btn btn-outline-secondary">Скасувати</a>
+    {% else %}
+    <a href="{{ url_for('personnel.index') }}" class="btn btn-outline-secondary">Скасувати</a>
+    {% endif %}
+</div>
+
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Автовизначення категорії по званню ──
+function onRankChange(rankName) {
+    if (!rankName) return;
+    const sel = document.getElementById('selRank');
+    const opt = sel.querySelector(`option[value="${CSS.escape(rankName)}"]`);
+    if (!opt) return;
+    const rankCat = opt.dataset.category; // enlisted | nco | officer
+    const catSel  = document.getElementById('selCategory');
+    const hint    = document.getElementById('categoryHint');
+    if (rankCat === 'officer') {
+        catSel.value = 'officer';
+        hint.style.display = '';
+    } else if (rankCat === 'enlisted' || rankCat === 'nco') {
+        catSel.value = 'soldier';
+        hint.style.display = '';
+    }
+    // Якщо rankCat невідомий — не міняємо
+}
+
+async function loadUnits(battalionId) {
+    const unitSel = document.getElementById('selUnit');
+    const platSel = document.getElementById('selPlatoon');
+
+    // скинути взводи
+    platSel.innerHTML = '<option value="">— оберіть —</option>';
+    platSel.disabled = true;
+
+    if (!battalionId) {
+        unitSel.innerHTML = '<option value="">— оберіть —</option>';
+        unitSel.disabled = true;
+        return;
+    }
+    const data = await apiGet('/personnel/api/units?battalion_id=' + battalionId);
+    unitSel.innerHTML = '<option value="">— оберіть —</option>';
+    if (data && data.length) {
+        data.forEach(u => {
+            const opt = document.createElement('option');
+            opt.value = u.id; opt.textContent = u.name;
+            unitSel.appendChild(opt);
+        });
+        unitSel.disabled = false;
+    } else {
+        unitSel.disabled = true;
+    }
+}
+
+async function loadPlatoons(unitId) {
+    const platSel = document.getElementById('selPlatoon');
+    platSel.innerHTML = '<option value="">— оберіть —</option>';
+    if (!unitId) { platSel.disabled = true; return; }
+    const data = await apiGet('/personnel/api/platoons?unit_id=' + unitId);
+    if (data && data.length) {
+        data.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id; opt.textContent = p.name;
+            platSel.appendChild(opt);
+        });
+        platSel.disabled = false;
+    } else {
+        platSel.disabled = true;
+    }
+}
+</script>
+{% endblock %}

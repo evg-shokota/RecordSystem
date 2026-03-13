@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>Накладна {{ inv.number or 'б/н' }}</title>
+<style>
+* { box-sizing: border-box; }
+body { font-family: 'Times New Roman', serif; font-size: 12pt; margin: 0; background:#e8e8e8; }
+.page { width: 794px; min-height: 1123px; background: white; margin: 20px auto; padding: 28mm 10mm 20mm 30mm; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid #000; padding: 3px 6px; font-size: 11pt; }
+th { background: #f0f0f0; font-weight: bold; text-align: center; }
+.center { text-align: center; }
+.right  { text-align: right; }
+.no-border td, .no-border th { border: none; }
+.no-print { background:#fff3cd; border-bottom:1px solid #ffc107; text-align:center; padding:8px; }
+@media print {
+    body { background: white; }
+    .page { margin:0; box-shadow:none; }
+    .no-print { display: none; }
+    @page { size: A4 portrait; margin: 0; }
+}
+</style>
+</head>
+<body>
+
+<div class="no-print">
+    <strong>Накладна {{ inv.number or 'б/н' }}</strong>
+    &nbsp;
+    <button onclick="window.print()" style="padding:4px 16px;cursor:pointer;margin-left:8px">🖨 Друк</button>
+    <button onclick="window.close()" style="padding:4px 12px;cursor:pointer;margin-left:4px">✕ Закрити</button>
+    <span style="color:#888;font-size:.8rem;margin-left:16px">
+        Налаштуйте шаблон типу "Накладна" у
+        <a href="/doc-templates/" target="_blank">Шаблонах документів</a>
+        щоб використовувати власний вигляд.
+    </span>
+</div>
+
+<div class="page">
+
+<p class="center" style="margin-bottom:4px"><strong>НАКЛАДНА-ВИМОГА</strong></p>
+<p class="center" style="margin-bottom:12px">{{ inv.number or 'б/н' }}</p>
+
+<table class="no-border" style="margin-bottom:12px">
+    <tr>
+        <td style="width:50%">Підстава: {{ inv.base_document or '—' }}</td>
+        <td class="right">Дата: {{ inv.doc_date or inv.created_at[:10] if inv.created_at else '—' }}</td>
+    </tr>
+    <tr>
+        <td>
+            Одержувач:
+            {% if inv.recipient_type == 'personnel' %}
+                {{ inv.recipient_rank or '' }} {{ inv.recipient_person_name or '—' }}
+            {% else %}
+                {{ inv.recipient_unit_name or '—' }}
+            {% endif %}
+        </td>
+        <td class="right">Дійсна до: {{ inv.valid_until or '—' }}</td>
+    </tr>
+</table>
+
+<table style="margin-bottom:16px">
+    <thead>
+        <tr>
+            <th class="center" style="width:30px">№</th>
+            <th>Найменування</th>
+            <th class="center" style="width:40px">Кат.</th>
+            <th class="center" style="width:45px">Од.</th>
+            <th class="center" style="width:65px">Кількість</th>
+            <th class="right" style="width:85px">Ціна, грн</th>
+            <th class="right" style="width:85px">Сума, грн</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% set total = namespace(v=0) %}
+        {% for item in items %}
+        {% set qty = item.actual_qty or item.planned_qty or 0 %}
+        {% set summ = qty * (item.price or 0) %}
+        {% set total.v = total.v + summ %}
+        <tr>
+            <td class="center">{{ loop.index }}</td>
+            <td>
+                {{ item.item_name }}
+                {% if item.serial_numbers %}<br><small>{{ item.serial_numbers }}</small>{% endif %}
+            </td>
+            <td class="center">{{ item.category or '' }}</td>
+            <td class="center">{{ item.unit_of_measure or 'шт' }}</td>
+            <td class="center">{{ qty|int if qty == qty|int else qty }}</td>
+            <td class="right">{{ "%.2f"|format(item.price or 0) }}</td>
+            <td class="right">{{ "%.2f"|format(summ) }}</td>
+        </tr>
+        {% endfor %}
+        <tr>
+            <td colspan="6" class="right"><strong>Разом:</strong></td>
+            <td class="right"><strong>{{ "%.2f"|format(total.v) }}</strong></td>
+        </tr>
+    </tbody>
+</table>
+
+{% if inv.signatories %}
+{% set sigs = inv.signatories | fromjson %}
+<table class="no-border" style="margin-top:20px">
+    {% for s in sigs %}
+    <tr>
+        <td style="width:50%;padding:6px 0">{{ s.rank or '' }} {{ s.name or '' }}</td>
+        <td style="padding:6px 0">{{ s.role or '' }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endif %}
+
+</div>
+</body>
+</html>

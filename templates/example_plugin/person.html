@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ person.last_name }} — Приклад модуля{% endblock %}
+{% block page_title %}{{ person.last_name }} {{ person.first_name }} {{ person.middle_name or '' }}{% endblock %}
+
+{% block content %}
+<a href="/example/" class="btn btn-sm btn-outline-secondary mb-3">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+
+<div class="row g-3">
+    {# ── Дані картки (api.personnel.get) ─── #}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent fw-medium">Дані о/с</div>
+            <div class="card-body">
+                <dl class="row mb-0 small">
+                    <dt class="col-sm-5 text-muted">Прізвище</dt>
+                    <dd class="col-sm-7">{{ person.last_name or '—' }}</dd>
+                    <dt class="col-sm-5 text-muted">Ім'я</dt>
+                    <dd class="col-sm-7">{{ person.first_name or '—' }}</dd>
+                    <dt class="col-sm-5 text-muted">По батькові</dt>
+                    <dd class="col-sm-7">{{ person.middle_name or '—' }}</dd>
+                    <dt class="col-sm-5 text-muted">Звання</dt>
+                    <dd class="col-sm-7">{{ person.rank or '—' }}</dd>
+                    <dt class="col-sm-5 text-muted">Посада</dt>
+                    <dd class="col-sm-7">{{ person.position or '—' }}</dd>
+                    <dt class="col-sm-5 text-muted">Підрозділ</dt>
+                    <dd class="col-sm-7">{{ person.unit_name or '—' }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    {# ── Майно (api.personnel.get_items) ─── #}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent fw-medium">
+                Майно на картці ({{ items | length }} поз.)
+            </div>
+            {% if items %}
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr><th>Найменування</th><th>К-сть</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for it in items %}
+                        <tr>
+                            <td>{{ it.item_name or it.name or '—' }}</td>
+                            <td>{{ it.quantity or '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="card-body text-muted small">Майна не знайдено</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

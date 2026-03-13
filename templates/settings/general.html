@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block title %}Реквізити — Налаштування{% endblock %}
+{% block page_title %}Реквізити системи{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('settings.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-4">
+        <form method="POST">
+            <div class="row g-4">
+
+                <!-- Дані частини -->
+                <div class="col-md-6">
+                    <h6 class="fw-bold text-muted mb-3 border-bottom pb-2">
+                        <i class="bi bi-building me-1"></i>Дані частини та служби
+                    </h6>
+                    <div class="mb-3">
+                        <label class="form-label">Номер (назва) військової частини</label>
+                        <input type="text" name="company_name" class="form-control"
+                               value="{{ s.get('company_name','') }}" placeholder="А5027">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Назва служби</label>
+                        <input type="text" name="service_name" class="form-control"
+                               value="{{ s.get('service_name','') }}" placeholder="Речова служба">
+                    </div>
+                </div>
+
+                <!-- Діловод -->
+                <div class="col-md-6">
+                    <h6 class="fw-bold text-muted mb-3 border-bottom pb-2">
+                        <i class="bi bi-person-badge me-1"></i>Діловод речової служби
+                    </h6>
+                    <div class="mb-3">
+                        <label class="form-label">Військове звання</label>
+                        <input type="text" name="clerk_rank" class="form-control"
+                               value="{{ s.get('clerk_rank','') }}" placeholder="старший солдат"
+                               list="rankList">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Прізвище та ініціали</label>
+                        <input type="text" name="clerk_name" class="form-control"
+                               value="{{ s.get('clerk_name','') }}" placeholder="Петренко П.П.">
+                    </div>
+                </div>
+
+                <!-- Начальник речової служби -->
+                <div class="col-12">
+                    <h6 class="fw-bold text-muted mb-3 border-bottom pb-2">
+                        <i class="bi bi-person-check me-1"></i>Начальник речової служби
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Військове звання</label>
+                            <input type="text" name="chief_rank" class="form-control"
+                                   value="{{ s.get('chief_rank','') }}" placeholder="капітан"
+                                   list="rankList">
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">Прізвище та ініціали</label>
+                            <input type="text" name="chief_name" class="form-control"
+                                   value="{{ s.get('chief_name','') }}" placeholder="Іваненко І.І.">
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end pb-2">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch"
+                                       id="chiefIsTvo" name="chief_is_tvo"
+                                       {% if s.get('chief_is_tvo') == '1' %}checked{% endif %}
+                                       onchange="toggleTvo(this.checked)">
+                                <label class="form-check-label fw-medium" for="chiefIsTvo">
+                                    ТВО (тимчасово виконуючий обов'язки)
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ТВО блок -->
+                    <div id="tvoBlock" class="mt-3 p-3 bg-warning bg-opacity-10 rounded border border-warning"
+                         style="display: {{ 'block' if s.get('chief_is_tvo') == '1' else 'none' }}">
+                        <p class="small text-muted mb-2">
+                            <i class="bi bi-info-circle me-1"></i>
+                            В документах буде підпис: <strong>ТВО начальника речової служби</strong>
+                        </p>
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <label class="form-label">Звання ТВО</label>
+                                <input type="text" name="chief_tvo_rank" class="form-control"
+                                       value="{{ s.get('chief_tvo_rank','') }}" placeholder="лейтенант"
+                                       list="rankList">
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label">Прізвище та ініціали ТВО</label>
+                                <input type="text" name="chief_tvo_name" class="form-control"
+                                       value="{{ s.get('chief_tvo_name','') }}" placeholder="Сидоренко С.С.">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Начальник складу -->
+                <div class="col-12">
+                    <h6 class="fw-bold text-muted mb-3 border-bottom pb-2">
+                        <i class="bi bi-box-seam me-1"></i>Начальник складу (матвідповідальна особа)
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Військове звання</label>
+                            <input type="text" name="warehouse_chief_rank" class="form-control"
+                                   value="{{ s.get('warehouse_chief_rank','') }}" placeholder="старший солдат"
+                                   list="rankList">
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">Прізвище та ініціали</label>
+                            <input type="text" name="warehouse_chief_name" class="form-control"
+                                   value="{{ s.get('warehouse_chief_name','') }}" placeholder="Коваленко К.К.">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Нумерація документів -->
+                <div class="col-12">
+                    <h6 class="fw-bold text-muted mb-3 border-bottom pb-2">
+                        <i class="bi bi-hash me-1"></i>Нумерація документів
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-md-2">
+                            <label class="form-label">Рік</label>
+                            <input type="number" name="invoice_year" class="form-control"
+                                   value="{{ s.get('invoice_year','2026') }}" min="2020" max="2099">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Суфікс накладних</label>
+                            <input type="text" name="invoice_suffix" class="form-control"
+                                   value="{{ s.get('invoice_suffix','РС') }}" placeholder="РС">
+                            <div class="form-text">№2026/1/<strong>РС</strong></div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Лічильник накладних</label>
+                            <input type="number" name="invoice_sequence" class="form-control"
+                                   value="{{ s.get('invoice_sequence','1') }}" min="1">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Суфікс РВ</label>
+                            <input type="text" name="rv_suffix" class="form-control"
+                                   value="{{ s.get('rv_suffix','РВ') }}" placeholder="РВ">
+                            <div class="form-text">№2026/1/<strong>РВ</strong></div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Лічильник РВ</label>
+                            <input type="number" name="rv_sequence" class="form-control"
+                                   value="{{ s.get('rv_sequence','1') }}" min="1">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Термін дії накладної (днів)</label>
+                            <input type="number" name="invoice_valid_days" class="form-control"
+                                   value="{{ s.get('invoice_valid_days','10') }}" min="1">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Система -->
+                <div class="col-md-4">
+                    <h6 class="fw-bold text-muted mb-3 border-bottom pb-2">
+                        <i class="bi bi-gear me-1"></i>Система
+                    </h6>
+                    <div class="mb-3">
+                        <label class="form-label">Нагадування про бекап (днів)</label>
+                        <input type="number" name="backup_reminder_days" class="form-control"
+                               value="{{ s.get('backup_reminder_days','3') }}" min="1">
+                    </div>
+                </div>
+
+            </div>
+
+            <hr class="mt-2">
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-floppy me-1"></i>Зберегти налаштування
+            </button>
+        </form>
+        <datalist id="rankList">
+            {% for rn in rank_names %}<option value="{{ rn }}">{% endfor %}
+        </datalist>
+    </div>
+</div>
+
+{# Тема за замовченням для всієї системи #}
+<div class="card mt-3">
+    <div class="card-header fw-semibold">
+        <i class="bi bi-palette me-1"></i>Тема оформлення за замовченням
+    </div>
+    <div class="card-body">
+        <p class="text-muted small mb-3">Обрана тема застосовується до сторінки входу та всіх користувачів, які не встановили особисту тему.</p>
+        <form method="post" action="{{ url_for('settings.default_theme') }}">
+            <div class="d-flex gap-2 flex-wrap mb-3">
+                {% set themes = [
+                    ('default', 'bi-circle-half', 'Дефолтна (синя)'),
+                    ('dark',    'bi-moon-stars-fill', 'Темна'),
+                    ('zsu',     'bi-shield-fill', 'Військова (ЗСУ)')
+                ] %}
+                {% for tval, ticon, tlabel in themes %}
+                <label class="theme-pick-card {% if default_theme == tval %}active{% endif %}"
+                       data-theme="{{ tval }}" onclick="pickTheme(this, 'sysTheme')">
+                    <input type="radio" name="theme" value="{{ tval }}" class="d-none"
+                           {% if default_theme == tval %}checked{% endif %}>
+                    <i class="bi {{ ticon }} fs-4 d-block mb-1"></i>
+                    <span class="small">{{ tlabel }}</span>
+                </label>
+                {% endfor %}
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">
+                <i class="bi bi-floppy me-1"></i>Зберегти тему
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleTvo(checked) {
+    document.getElementById('tvoBlock').style.display = checked ? 'block' : 'none';
+}
+function pickTheme(el, formId) {
+    el.closest('.d-flex').querySelectorAll('.theme-pick-card').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    el.querySelector('input[type=radio]').checked = true;
+}
+</script>
+<style>
+.theme-pick-card {
+    display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: .75rem 1.25rem; border: 2px solid var(--card-border, #dee2e6); border-radius: .5rem;
+    cursor: pointer; transition: border-color .15s, box-shadow .15s; min-width: 100px; text-align: center;
+}
+.theme-pick-card:hover { border-color: var(--app-primary, #1a56a0); }
+.theme-pick-card.active { border-color: var(--app-primary, #1a56a0); box-shadow: 0 0 0 .2rem rgba(var(--app-primary-rgb, 26,86,160),.18); }
+</style>
+{% endblock %}

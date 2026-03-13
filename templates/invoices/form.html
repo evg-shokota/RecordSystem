@@ -1,0 +1,806 @@
+{% extends "base.html" %}
+{% block title %}{% if edit_mode %}Редагувати накладну {{ inv.number }}{% else %}Нова накладна{% endif %} — {{ unit_name }}{% endblock %}
+{% block page_title %}{% if edit_mode %}Редагувати накладну № {{ inv.number }}{% else %}Нова накладна на видачу{% endif %}{% endblock %}
+
+{% block topbar_actions %}
+<button type="button" class="btn btn-sm btn-outline-info" id="btnPreview">
+    <i class="bi bi-eye me-1"></i>Попередній перегляд
+</button>
+<a href="{{ request.args.get('back') or url_for('invoices.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endblock %}
+
+{% block content %}
+
+{% if errors %}
+<div class="alert alert-danger">
+    <ul class="mb-0">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<div class="row g-3">
+<div class="col-xl-12" id="formCol">
+<form method="POST" id="invoiceForm" novalidate>
+<input type="hidden" name="back" value="{{ request.args.get('back', '') }}">
+
+    {# ── Напрямок і одержувач ── #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent fw-medium">Одержувач та напрямок</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Напрямок</label>
+                    <select name="direction" class="form-select" id="directionSel">
+                        <option value="issue"    {{ 'selected' if (form.direction or 'issue')=='issue' }}>Видача</option>
+                        <option value="return"   {{ 'selected' if form.direction=='return' }}>Повернення</option>
+                        <option value="transfer" {{ 'selected' if form.direction=='transfer' }}>Переміщення</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Тип одержувача</label>
+                    <select name="recipient_type" class="form-select" id="recipientTypeSel">
+                        <option value="personnel" {{ 'selected' if (form.recipient_type or 'personnel')=='personnel' }}>Особа (о/с)</option>
+                        <option value="unit"      {{ 'selected' if form.recipient_type=='unit' }}>Підрозділ</option>
+                    </select>
+                </div>
+
+                {# Одержувач — особа #}
+                <div class="col-md-6" id="recPersonBlock">
+                    <label class="form-label">Одержувач <span class="text-danger">*</span></label>
+                    <input type="hidden" name="recipient_personnel_id" id="recPersonSel"
+                           value="{{ form.recipient_personnel_id or '' }}">
+                    <div id="recPersonSS"></div>
+                </div>
+
+                {# Одержувач — підрозділ #}
+                <div class="col-md-6" id="recUnitBlock" style="display:none">
+                    <label class="form-label">Підрозділ <span class="text-danger">*</span></label>
+                    <input type="hidden" name="recipient_unit_id" id="recUnitHidden"
+                           value="{{ form.recipient_unit_id or '' }}">
+                    <div id="recUnitSS"></div>
+                </div>
+
+                {# Переміщення — підрозділ що здає #}
+                <div class="col-md-6" id="senderUnitBlock" style="display:none">
+                    <label class="form-label">Підрозділ що здає <span class="text-danger">*</span></label>
+                    <input type="hidden" name="sender_unit_id" id="senderUnitHidden"
+                           value="{{ form.sender_unit_id or '' }}">
+                    <div id="senderUnitSS"></div>
+                </div>
+
+                {# Повернення — хто повертає #}
+                <div class="col-md-6" id="senderPersonBlock" style="display:none">
+                    <label class="form-label">Хто повертає <span class="text-danger">*</span></label>
+                    <input type="hidden" name="sender_personnel_id" id="senderPersonHidden"
+                           value="{{ form.sender_personnel_id or '' }}">
+                    <div id="senderPersonSS"></div>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Термін дії (днів)</label>
+                    <input type="number" name="valid_days" class="form-control" id="validDaysInput"
+                           value="{{ form.valid_days or 10 }}" min="1" max="365">
+                </div>
+                <div class="col-md-9">
+                    <label class="form-label">Підстава</label>
+                    <input type="text" name="base_document" class="form-control" id="baseDocInput"
+                           value="{{ form.base_document or '' }}"
+                           placeholder="напр. Норма № 1, наказ №15 від 01.01.2026">
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Примітка</label>
+                    <input type="text" name="notes" class="form-control"
+                           value="{{ form.notes or '' }}">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Підписанти — конструктор ── #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent d-flex align-items-center">
+            <span class="fw-medium">Підписанти</span>
+            <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="btnAddSigner">
+                <i class="bi bi-plus-lg me-1"></i>Додати підписанта
+            </button>
+        </div>
+        <div class="card-body pb-2">
+            <div id="signersContainer"></div>
+            <div class="text-muted small mt-1">
+                <i class="bi bi-info-circle me-1"></i>
+                Виберіть особу зі списку або введіть вручну. Мітка визначає роль у документі.
+            </div>
+        </div>
+    </div>
+
+    {# ── Позиції майна ── #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent d-flex align-items-center">
+            <span class="fw-medium">Перелік майна</span>
+            <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="btnAddRow">
+                <i class="bi bi-plus-lg me-1"></i>Додати позицію
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle" id="invTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:30px"></th>
+                            <th>Найменування <span class="text-danger">*</span></th>
+                            <th style="width:75px">Кат.</th>
+                            <th style="width:100px">К-сть <span class="text-danger">*</span></th>
+                            <th style="width:70px">Залишок</th>
+                            <th style="width:65px">Од.</th>
+                            <th style="width:100px">Ціна, грн</th>
+                            <th>Серійні №</th>
+                            <th style="width:35px"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="invRows">
+                        <tr id="rowTemplate" style="display:none" class="inv-row">
+                            <td class="text-muted row-num text-center small"></td>
+                            <td style="min-width:220px">
+                                <input type="hidden" name="item_id[]" class="item-sel">
+                                <div class="item-ss-wrap"></div>
+                            </td>
+                            <td>
+                                <select name="category[]" class="form-select form-select-sm cat-sel">
+                                    {% for cat in categories %}
+                                    <option value="{{ cat }}">{{ cat }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td>
+                                <input type="number" name="planned_qty[]"
+                                       class="form-control form-control-sm qty-input"
+                                       min="1" step="1" required>
+                            </td>
+                            <td class="balance-cell text-muted small">—</td>
+                            <td class="unit-label text-muted small">шт</td>
+                            <td>
+                                <select name="price[]"
+                                        class="form-select form-select-sm price-sel"
+                                        style="display:none"></select>
+                                <input type="number" name="price_single[]"
+                                       class="form-control form-control-sm price-input"
+                                       min="0" step="0.01" value="0" readonly>
+                            </td>
+                            <td>
+                                <input type="text" name="serial_numbers[]"
+                                       class="form-control form-control-sm serial-field"
+                                       placeholder="не потрібно" disabled>
+                            </td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 btn-del">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2 justify-content-end mb-4">
+        <a href="{{ url_for('invoices.index') }}" class="btn btn-outline-secondary">Скасувати</a>
+        {% if not edit_mode %}
+        <button type="submit" name="save_as" value="draft" class="btn btn-outline-warning">
+            <i class="bi bi-pencil-square me-1"></i>Зберегти як чернетку
+        </button>
+        {% endif %}
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-lg me-1"></i>{% if edit_mode %}Зберегти зміни{% else %}Створити та присвоїти номер{% endif %}
+        </button>
+    </div>
+</form>
+</div>{# /col-xl-8 #}
+
+{# ── Попередній перегляд ── #}
+<div class="col-xl-4" id="previewCol" style="display:none">
+    <div class="card border-0 shadow-sm sticky-top" style="top:1rem">
+        <div class="card-header bg-transparent d-flex align-items-center">
+            <span class="fw-medium"><i class="bi bi-eye me-1"></i>Попередній перегляд</span>
+            <button type="button" class="btn btn-sm btn-link ms-auto p-0" id="btnClosePreview">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div id="previewContent" style="font-size:12px; line-height:1.4; padding:12px; max-height:80vh; overflow-y:auto">
+            </div>
+        </div>
+    </div>
+</div>
+</div>{# /row #}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ─── Дані зі складу ───────────────────────────────────────────
+const stockData = {{ stock | tojson }};
+
+// ─── Список особового складу ──────────────────────────────────
+const personnelList = [
+    {% for p in personnel_list %}
+    {id: {{ p.id }}, rank: {{ (p.rank or '') | tojson }}, name: {{ p.full_name | trim | tojson }}, unit: {{ (p.unit_name or '') | tojson }} },
+    {% endfor %}
+];
+
+// Опції персоналу для SS
+const PERSONNEL_OPTIONS = personnelList.map(p => ({
+    value: String(p.id),
+    label: (p.rank ? p.rank + ' ' : '') + p.name + (p.unit ? ' (' + p.unit + ')' : ''),
+    meta: { rank: p.rank, name: p.name }
+}));
+
+// Опції підрозділів для SS
+const UNITS_OPTIONS = [
+    {% for u in units_list %}
+    { value: '{{ u.id }}', label: {{ u.name | tojson }} },
+    {% endfor %}
+];
+
+// ─── SearchableSelect для одержувача / відправника ────────────
+const _recPersonSS = new SearchableSelect({
+    container:   document.getElementById('recPersonSS'),
+    hiddenInput: document.getElementById('recPersonSel'),
+    options:     PERSONNEL_OPTIONS,
+    placeholder: '— оберіть особу —',
+    allowClear:  true,
+    onChange:    updatePreview,
+});
+_recPersonSS.setValue('{{ form.recipient_personnel_id or "" }}');
+
+const _recUnitSS = new SearchableSelect({
+    container:   document.getElementById('recUnitSS'),
+    hiddenInput: document.getElementById('recUnitHidden'),
+    options:     UNITS_OPTIONS,
+    placeholder: '— оберіть підрозділ —',
+    allowClear:  true,
+});
+_recUnitSS.setValue('{{ form.recipient_unit_id or "" }}');
+
+const _senderUnitSS = new SearchableSelect({
+    container:   document.getElementById('senderUnitSS'),
+    hiddenInput: document.getElementById('senderUnitHidden'),
+    options:     UNITS_OPTIONS,
+    placeholder: '— оберіть підрозділ —',
+    allowClear:  true,
+});
+_senderUnitSS.setValue('{{ form.sender_unit_id or "" }}');
+
+const _senderPersonSS = new SearchableSelect({
+    container:   document.getElementById('senderPersonSS'),
+    hiddenInput: document.getElementById('senderPersonHidden'),
+    options:     PERSONNEL_OPTIONS,
+    placeholder: '— оберіть особу —',
+    allowClear:  true,
+});
+_senderPersonSS.setValue('{{ form.sender_personnel_id or "" }}');
+
+const unitName = {{ unit_name | tojson }};
+const serviceName = {{ settings.get('service_name','Речова служба') | tojson }};
+
+// ─── Конструктор підписантів ──────────────────────────────────
+let signerCount = 0;
+
+const TAG_LABELS = {
+    '':          '— без мітки —',
+    'chief':     'Начальник служби',
+    'given':     'Видав',
+    'received':  'Одержав',
+    'warehouse': 'Нач. складу',
+    'clerk':     'Діловод РС',
+};
+
+function buildPersonnelOptions(selectedName) {
+    let opts = '<option value="">— вибрати зі списку —</option>';
+    personnelList.forEach(p => {
+        const label = (p.rank ? p.rank + ' ' : '') + p.name;
+        const sel = label === selectedName ? 'selected' : '';
+        opts += `<option value="${escHtml(label)}" ${sel}>${escHtml(label)}</option>`;
+    });
+    return opts;
+}
+
+function buildTagOptions(selected) {
+    return Object.entries(TAG_LABELS).map(([val, lbl]) =>
+        `<option value="${val}" ${val === selected ? 'selected' : ''}>${lbl}</option>`
+    ).join('');
+}
+
+function addSigner(data) {
+    data = data || {};
+    const id = ++signerCount;
+    const div = document.createElement('div');
+    div.className = 'border rounded p-2 mb-2 signer-row';
+    div.dataset.sid = id;
+
+    const isTvo = data.is_tvo ? 'checked' : '';
+
+    div.innerHTML = `
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-6">
+                <label class="form-label form-label-sm mb-1">Роль / посада в документі</label>
+                <input type="text" name="signer_role[]" class="form-control form-control-sm signer-role-input"
+                       value="${escHtml(data.role||'')}"
+                       placeholder="Начальник речової служби тилу">
+            </div>
+            <div class="col-12 col-md-6">
+                <label class="form-label form-label-sm mb-1">Мітка (для автозаповнення)</label>
+                <select name="signer_tag[]" class="form-select form-select-sm signer-tag-sel">
+                    ${buildTagOptions(data.tag||'')}
+                </select>
+            </div>
+            <div class="col-12">
+                <label class="form-label form-label-sm mb-1">Вибрати з особового складу</label>
+                <select class="form-select form-select-sm signer-person-sel">
+                    ${buildPersonnelOptions(data.name||'')}
+                </select>
+            </div>
+            <div class="col-5 col-md-3">
+                <label class="form-label form-label-sm mb-1">Звання</label>
+                <input type="text" name="signer_rank[]" class="form-control form-control-sm signer-rank-input"
+                       value="${escHtml(data.rank||'')}" placeholder="капітан">
+            </div>
+            <div class="col-7 col-md-5">
+                <label class="form-label form-label-sm mb-1">Прізвище та ім'я</label>
+                <input type="text" name="signer_name[]" class="form-control form-control-sm signer-name-input"
+                       value="${escHtml(data.name||'')}" placeholder="Іванов Іван">
+            </div>
+            <div class="col-6 col-md-2 d-flex align-items-end pb-1">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="signer_tvo[]"
+                           value="1" ${isTvo} id="sigtvo_${id}">
+                    <label class="form-check-label small fw-medium" for="sigtvo_${id}">ТВО</label>
+                </div>
+            </div>
+            <div class="col-6 col-md-2 d-flex gap-1 align-items-end justify-content-end">
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 btn-signer-up" title="Вгору"><i class="bi bi-chevron-up"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 btn-signer-dn" title="Вниз"><i class="bi bi-chevron-down"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 btn-signer-del" title="Видалити"><i class="bi bi-x-lg"></i></button>
+            </div>
+        </div>
+    `;
+
+    // Вибір зі списку → автозаповнення звання і ПІБ
+    const personSel  = div.querySelector('.signer-person-sel');
+    const rankInput  = div.querySelector('.signer-rank-input');
+    const nameInput  = div.querySelector('.signer-name-input');
+
+    personSel.addEventListener('change', function() {
+        if (!this.value) return;
+        // Шукаємо в personnelList
+        const found = personnelList.find(p => {
+            const label = (p.rank ? p.rank + ' ' : '') + p.name;
+            return label === this.value;
+        });
+        if (found) {
+            rankInput.value = found.rank || '';
+            nameInput.value = found.name;
+        } else {
+            // Якщо вибрали комбінований label — розділяємо
+            nameInput.value = this.value;
+        }
+        updatePreview();
+    });
+
+    // Будь-яка зміна → оновити перегляд
+    div.querySelectorAll('input, select').forEach(el =>
+        el.addEventListener('input', updatePreview)
+    );
+
+    div.querySelector('.btn-signer-del').addEventListener('click', () => {
+        div.remove();
+        updatePreview();
+    });
+    div.querySelector('.btn-signer-up').addEventListener('click', () => {
+        const prev = div.previousElementSibling;
+        if (prev) div.parentNode.insertBefore(div, prev);
+        updatePreview();
+    });
+    div.querySelector('.btn-signer-dn').addEventListener('click', () => {
+        const next = div.nextElementSibling;
+        if (next) div.parentNode.insertBefore(next, div);
+        updatePreview();
+    });
+
+    document.getElementById('signersContainer').appendChild(div);
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+document.getElementById('btnAddSigner').addEventListener('click', () => {
+    addSigner();
+    updatePreview();
+});
+
+// Заповнити початкові підписанти
+const initialSigners = {{ initial_signatories | tojson }};
+if (initialSigners && initialSigners.length) {
+    initialSigners.forEach(s => addSigner(s));
+} else {
+    const defaults = {{ default_signatories | tojson }};
+    defaults.forEach(s => addSigner(s));
+}
+
+// ─── Конструктор позицій майна ────────────────────────────────
+let rowCount = 0;
+
+function initInvItemSS(clone, initialItemId) {
+    const row = new StockItemRow(clone, stockData, {
+        onChange: () => updatePreview(),
+    });
+    if (initialItemId) row._ss?.setValue(String(initialItemId));
+    return row;
+}
+
+function addRow(initialItemId) {
+    const tpl = document.getElementById('rowTemplate');
+    const clone = tpl.cloneNode(true);
+    clone.id = 'invrow_' + (++rowCount);
+    clone.style.display = '';
+    clone.classList.add('inv-row-active');
+
+    clone.querySelectorAll('input[type=number]').forEach(i => i.value = i.name.includes('price') ? '0' : '');
+    clone.querySelectorAll('input[type=text]').forEach(i => i.value = '');
+
+    const stockRow = initInvItemSS(clone, initialItemId || null);
+    clone._stockRow = stockRow; // зберігаємо для setValue при редагуванні
+
+    clone.querySelector('.btn-del').addEventListener('click', () => {
+        clone.remove();
+        renum();
+        updatePreview();
+    });
+
+    document.getElementById('invRows').appendChild(clone);
+    renum();
+    if (!initialItemId) clone.querySelector('.ss-display')?.click();
+    return clone;
+}
+
+function renum() {
+    document.querySelectorAll('.inv-row-active').forEach((tr, i) => {
+        const n = tr.querySelector('.row-num');
+        if (n) n.textContent = i + 1;
+    });
+}
+
+document.getElementById('btnAddRow').addEventListener('click', () => {
+    addRow();
+    updatePreview();
+});
+
+// Перемикач типу одержувача
+document.getElementById('recipientTypeSel').addEventListener('change', function() {
+    const isPersonnel = this.value === 'personnel';
+    document.getElementById('recPersonBlock').style.display = isPersonnel ? '' : 'none';
+    document.getElementById('recUnitBlock').style.display   = isPersonnel ? 'none' : '';
+    updatePreview();
+});
+// recPersonSel тепер hidden input — подія 'change' стрілятиме коли SS встановлює значення
+document.getElementById('recPersonSel').addEventListener('change', updatePreview);
+document.getElementById('baseDocInput').addEventListener('input', updatePreview);
+document.getElementById('validDaysInput').addEventListener('input', updatePreview);
+
+// Перемикач напрямку — показати/сховати поля відправника
+function updateDirectionUI() {
+    const dir = document.getElementById('directionSel').value;
+
+    const senderUnitBlock = document.getElementById('senderUnitBlock');
+    if (senderUnitBlock) senderUnitBlock.style.display = dir === 'transfer' ? '' : 'none';
+
+    const senderPersonBlock = document.getElementById('senderPersonBlock');
+    if (senderPersonBlock) senderPersonBlock.style.display = dir === 'return' ? '' : 'none';
+
+    updatePreview();
+}
+
+document.getElementById('directionSel').addEventListener('change', updateDirectionUI);
+
+// Ініціалізація типу одержувача
+const initRecipientType = document.getElementById('recipientTypeSel').value;
+if (initRecipientType !== 'personnel') {
+    document.getElementById('recPersonBlock').style.display = 'none';
+    document.getElementById('recUnitBlock').style.display   = '';
+}
+
+// Ініціалізація напрямку
+updateDirectionUI();
+
+// ─── Попереднє заповнення з URL-параметрів ────────────────────
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    const rType  = params.get('recipient_type');
+    const rUnitId = params.get('recipient_unit_id');
+    const rPersonId = params.get('recipient_personnel_id');
+
+    if (rType) {
+        const sel = document.getElementById('recipientTypeSel');
+        sel.value = rType;
+        sel.dispatchEvent(new Event('change'));
+    }
+    if (rUnitId) {
+        _recUnitSS.setValue(rUnitId);
+    }
+    if (rPersonId) {
+        _recPersonSS.setValue(rPersonId);
+    }
+})();
+
+// ─── При редагуванні — заповнити існуючі позиції ──────────────
+const existingItems = {{ existing_items_json | safe }};
+if (existingItems && existingItems.length) {
+    existingItems.forEach(item => {
+        const clone = addRow(item.item_id);
+        setTimeout(() => {
+            let serials = '';
+            if (item.serial_numbers) {
+                try { const s = JSON.parse(item.serial_numbers); serials = Array.isArray(s) ? s.join(', ') : item.serial_numbers; }
+                catch(e) { serials = item.serial_numbers; }
+            }
+            clone._stockRow?.setValue({
+                category: item.category,
+                price:    item.price,
+                qty:      item.planned_qty,
+                serials,
+            });
+            updatePreview();
+        }, 60);
+    });
+} else {
+    addRow();
+}
+
+// ─── Попередній перегляд ──────────────────────────────────────
+var previewVisible = false;
+
+function getSigners() {
+    const rows = document.querySelectorAll('#signersContainer .signer-row');
+    return Array.from(rows).map(div => ({
+        role:   div.querySelector('.signer-role-input')?.value || '',
+        rank:   div.querySelector('.signer-rank-input')?.value || '',
+        name:   div.querySelector('.signer-name-input')?.value || '',
+        tag:    div.querySelector('.signer-tag-sel')?.value    || '',
+        is_tvo: div.querySelector('input[type=checkbox]')?.checked || false,
+    }));
+}
+
+function getItems() {
+    const rows = document.querySelectorAll('.inv-row-active');
+    return Array.from(rows).map(tr => {
+        const hiddenSel = tr.querySelector('.item-sel');
+        const ssWrap    = tr.querySelector('.item-ss-wrap');
+        const ssInst    = ssWrap?._ssInstance;
+        const itemName  = ssInst ? ssInst.label : '—';
+        return {
+            name:    itemName || '—',
+            cat:     tr.querySelector('.cat-sel')?.value    || '',
+            qty:     parseFloat(tr.querySelector('.qty-input')?.value   || 0),
+            price:   parseFloat((tr.querySelector('.price-sel[name]')?.value) || tr.querySelector('.price-input')?.value || 0),
+            unit:    tr.querySelector('.unit-label')?.textContent || 'шт',
+            serials: tr.querySelector('.serial-field')?.value || '',
+        };
+    }).filter(r => r.name && r.name !== '—');
+}
+
+function numToWords(n) {
+    // Спрощена версія — числа до 1 000 000
+    if (!n || isNaN(n)) return 'нуль';
+    const ones = ['','один','два','три','чотири','п\'ять','шість','сім','вісім','дев\'ять',
+                  'десять','одинадцять','дванадцять','тринадцять','чотирнадцять','п\'ятнадцять',
+                  'шістнадцять','сімнадцять','вісімнадцять','дев\'ятнадцять'];
+    const tens = ['','','двадцять','тридцять','сорок','п\'ятдесят','шістдесят','сімдесят','вісімдесят','дев\'яносто'];
+    const hundreds = ['','сто','двісті','триста','чотириста','п\'ятсот','шістсот','сімсот','вісімсот','дев\'ятсот'];
+    n = Math.round(n);
+    if (n === 0) return 'нуль';
+    let result = '';
+    if (n >= 1000) {
+        const th = Math.floor(n / 1000);
+        const thWords = ['одна','дві','три','чотири','п\'ять','шість','сім','вісім','дев\'ять'];
+        if (th < 10) result += (thWords[th-1]||ones[th]) + ' тисяч ';
+        else result += ones[th] + ' тисяч ';
+        n = n % 1000;
+    }
+    if (n >= 100) { result += hundreds[Math.floor(n/100)] + ' '; n = n % 100; }
+    if (n >= 20)  { result += tens[Math.floor(n/10)] + ' '; n = n % 10; }
+    if (n > 0)    { result += ones[n] + ' '; }
+    return result.trim();
+}
+
+function updatePreview() {
+    if (!previewVisible) return;
+
+    const direction = document.getElementById('directionSel').value;
+    const dirLabel = {'issue':'Видача зі складу','return':'Повернення на склад','transfer':'Переміщення'}[direction] || direction;
+
+    const recType = document.getElementById('recipientTypeSel').value;
+    let recipientStr = '—';
+    if (recType === 'personnel') {
+        recipientStr = _recPersonSS.label || '—';
+    } else {
+        recipientStr = _recUnitSS.label || '—';
+    }
+
+    const baseDoc = document.getElementById('baseDocInput').value;
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('uk-UA');
+
+    const signers = getSigners();
+    const items   = getItems();
+
+    const total = items.reduce((s,r) => s + r.qty * r.price, 0);
+    const totalUnits = items.reduce((s,r) => s + r.qty, 0);
+
+    // Знайти підписантів за тегом
+    function bySig(tag) {
+        const s = signers.find(s => s.tag === tag);
+        if (!s) return null;
+        return s;
+    }
+    const chief    = bySig('chief');
+    const given    = bySig('given');
+    const received = bySig('received');
+    const warehouse= bySig('warehouse');
+    const clerk    = bySig('clerk');
+
+    function sigLine(s) {
+        if (!s) return '—';
+        const tvo = s.is_tvo ? '<em>ТВО </em>' : '';
+        return `${tvo}${escHtml(s.rank||'')} <strong>${escHtml(s.name||'')}</strong>`;
+    }
+
+    function sigBlock(s) {
+        if (!s) return '';
+        const tvo = s.is_tvo ? '<em>ТВО </em>' : '';
+        const _bdr = getComputedStyle(document.documentElement).getPropertyValue('--card-border').trim() || '#aaa';
+        return `
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:2px">
+            <span style="font-size:11px">${tvo}${escHtml(s.rank||'')}</span>
+            <span style="border-bottom:1px solid ${_bdr}; min-width:80px; margin:0 8px"></span>
+            <strong style="font-size:11px">${escHtml(s.name||'')}</strong>
+        </div>`;
+    }
+
+    let rows = '';
+    items.forEach((r, i) => {
+        const sum = (r.qty * r.price).toFixed(2);
+        rows += `<tr>
+            <td style="text-align:center">${i+1}</td>
+            <td>${escHtml(r.name)}</td>
+            <td style="text-align:center">кат. ${escHtml(r.cat)}</td>
+            <td style="text-align:center">${escHtml(r.unit)}</td>
+            <td style="text-align:center">${r.qty}</td>
+            <td style="text-align:center">—</td>
+            <td style="text-align:right">${r.price.toFixed(2)}</td>
+            <td style="text-align:right">${sum}</td>
+        </tr>`;
+    });
+
+    // Читаємо поточні CSS-змінні теми
+    const _cs = getComputedStyle(document.documentElement);
+    const _clr = {
+        text:    _cs.getPropertyValue('--text-primary').trim()   || '#212529',
+        muted:   _cs.getPropertyValue('--text-muted').trim()     || '#6c757d',
+        bg:      _cs.getPropertyValue('--card-bg').trim()        || '#fff',
+        thead:   _cs.getPropertyValue('--table-header-bg').trim()|| '#f8f9fa',
+        border:  _cs.getPropertyValue('--card-border').trim()    || '#dee2e6',
+    };
+
+    const html = `
+<div style="font-family: 'Times New Roman', serif; font-size:11px; line-height:1.5; padding:8px; background:${_clr.bg}; color:${_clr.text}">
+
+  <div style="display:flex; justify-content:space-between; margin-bottom:4px">
+    <div>
+      <div>Військова частина ${escHtml(unitName)}</div>
+      <div>Служба: ${escHtml(serviceName)}</div>
+    </div>
+    <div style="font-size:9px; text-align:right; color:${_clr.muted}">Попередній перегляд</div>
+  </div>
+
+  <div style="text-align:center; font-weight:bold; font-size:13px; margin:6px 0 2px">
+    НАКЛАДНА (ВИМОГА)
+  </div>
+  <div style="text-align:center; color:${_clr.muted}; font-size:10px; margin-bottom:6px">
+    № ___ від ${dateStr} &nbsp;|&nbsp; ${dirLabel}
+    ${baseDoc ? ' &nbsp;|&nbsp; ' + escHtml(baseDoc) : ''}
+  </div>
+
+  ${chief ? `
+  <div style="margin-bottom:4px">
+    <div style="font-size:10px; color:${_clr.muted}">${escHtml(chief.role||'Начальник речової служби')}</div>
+    <div style="display:flex; justify-content:space-between">
+      <span>${chief.is_tvo?'<em>ТВО </em>':''}${escHtml(chief.rank||'')}</span>
+      <span style="border-bottom:1px solid ${_clr.border}; flex:1; margin:0 8px"></span>
+      <strong>${escHtml(chief.name||'')}</strong>
+    </div>
+  </div>` : ''}
+
+  <div style="margin-bottom:2px"><strong>Одержувач:</strong> ${escHtml(recipientStr)}</div>
+
+  <table style="width:100%; border-collapse:collapse; font-size:10px; margin:6px 0">
+    <thead>
+      <tr style="background:${_clr.thead}">
+        <th style="border:1px solid ${_clr.border}; padding:2px 4px; width:20px; color:${_clr.text}">№</th>
+        <th style="border:1px solid ${_clr.border}; padding:2px 4px; color:${_clr.text}">Найменування</th>
+        <th style="border:1px solid ${_clr.border}; padding:2px 4px; width:50px; color:${_clr.text}">Кат.</th>
+        <th style="border:1px solid ${_clr.border}; padding:2px 4px; width:30px; color:${_clr.text}">Од.</th>
+        <th style="border:1px solid ${_clr.border}; padding:2px 4px; width:40px; color:${_clr.text}">За планом</th>
+        <th style="border:1px solid ${_clr.border}; padding:2px 4px; width:40px; color:${_clr.text}">Факт.</th>
+        <th style="border:1px solid ${_clr.border}; padding:2px 4px; width:60px; color:${_clr.text}">Ціна</th>
+        <th style="border:1px solid ${_clr.border}; padding:2px 4px; width:60px; color:${_clr.text}">Сума</th>
+      </tr>
+    </thead>
+    <tbody>${rows || `<tr><td colspan="8" style="text-align:center;color:${_clr.muted};padding:4px">— додайте позиції —</td></tr>`}</tbody>
+    <tfoot>
+      <tr style="background:${_clr.thead}; font-weight:bold">
+        <td colspan="7" style="border:1px solid ${_clr.border}; padding:2px 4px; text-align:right; color:${_clr.text}">Разом:</td>
+        <td style="border:1px solid ${_clr.border}; padding:2px 4px; text-align:right; color:${_clr.text}">${total.toFixed(2)} грн</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div style="margin:4px 0; font-size:10px; color:${_clr.text}">
+    <strong>Всього видано на суму:</strong> ${numToWords(Math.round(total))} гривень ${(total % 1 > 0 ? Math.round((total%1)*100) + ' коп.' : '')}
+    <br><strong>${total.toFixed(2)} грн</strong>
+  </div>
+
+  <div style="border-top:1px solid ${_clr.border}; margin-top:8px; padding-top:6px">
+    <div style="font-size:10px; font-weight:bold; margin-bottom:4px; color:${_clr.text}">Матеріально відповідальні особи:</div>
+    <div style="display:flex; gap:20px">
+      ${given ? `<div style="flex:1">
+        <div style="font-size:9px; color:${_clr.muted}">${escHtml(given.role||'Видав')}</div>
+        ${sigBlock(given)}
+        <div style="border-bottom:1px solid ${_clr.border}; margin-top:12px; font-size:9px; color:${_clr.muted}">підпис</div>
+      </div>` : ''}
+      ${received ? `<div style="flex:1">
+        <div style="font-size:9px; color:${_clr.muted}">${escHtml(received.role||'Одержав')}</div>
+        ${sigBlock(received)}
+        <div style="border-bottom:1px solid ${_clr.border}; margin-top:12px; font-size:9px; color:${_clr.muted}">підпис</div>
+      </div>` : ''}
+    </div>
+  </div>
+
+  ${warehouse||clerk ? `
+  <div style="margin-top:6px; font-size:10px">
+    ${warehouse ? `<div style="font-size:9px; color:${_clr.muted}">${escHtml(warehouse.role||'Начальник складу')}</div>${sigBlock(warehouse)}` : ''}
+    ${clerk     ? `<div style="font-size:9px; color:${_clr.muted}; margin-top:4px">${escHtml(clerk.role||'Діловод РС')}</div>${sigBlock(clerk)}` : ''}
+  </div>` : ''}
+
+  ${signers.filter(s => !['chief','given','received','warehouse','clerk'].includes(s.tag)).map(s => `
+  <div style="margin-top:4px; font-size:9px; color:${_clr.muted}">${escHtml(s.role||'')}</div>
+  ${sigBlock(s)}
+  `).join('')}
+
+</div>`;
+
+    document.getElementById('previewContent').innerHTML = html;
+}
+
+// Кнопки показу/закриття preview
+document.getElementById('btnPreview').addEventListener('click', () => {
+    previewVisible = true;
+    document.getElementById('previewCol').style.display = '';
+    document.getElementById('formCol').classList.remove('col-xl-12');
+    document.getElementById('formCol').classList.add('col-xl-8');
+    updatePreview();
+    document.getElementById('btnPreview').classList.add('active');
+});
+
+document.getElementById('btnClosePreview').addEventListener('click', () => {
+    previewVisible = false;
+    document.getElementById('previewCol').style.display = 'none';
+    document.getElementById('formCol').classList.remove('col-xl-8');
+    document.getElementById('formCol').classList.add('col-xl-12');
+    document.getElementById('btnPreview').classList.remove('active');
+});
+
+console.log('[form] JS завантажено, btnPreview=', document.getElementById('btnPreview'));
+</script>
+{% endblock %}

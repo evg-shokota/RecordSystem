@@ -1,0 +1,880 @@
+{% extends "base.html" %}
+{% block title %}РВ {{ sheet.number }} — {{ unit_name }}{% endblock %}
+{% block page_title %}
+{% if sheet.status == 'draft' %}Чернетка РВ{% else %}РВ {{ sheet.number }}{% endif %}
+{% endblock %}
+
+{% block topbar_actions %}
+{% if sheet.status == 'draft' %}
+<form method="POST" action="{{ url_for('rv.assign_number', sid=sheet.id) }}" class="d-inline"
+      onsubmit="return confirm('Присвоїти номер РВ?')">
+    <button type="submit" class="btn btn-sm btn-success">
+        <i class="bi bi-hash me-1"></i>Присвоїти номер
+    </button>
+</form>
+{% endif %}
+{% if sheet.status == 'active' %}
+<form method="POST" action="{{ url_for('rv.close', sid=sheet.id) }}" class="d-inline"
+      onsubmit="return confirm('Закрити РВ? Після цього редагування недоступне.')">
+    <button type="submit" class="btn btn-sm btn-success">
+        <i class="bi bi-check2-all me-1"></i>Закрити РВ
+    </button>
+</form>
+{% endif %}
+<a href="{{ url_for('rv.render_rv', sid=sheet.id) }}" class="btn btn-sm btn-outline-secondary" target="_blank">
+    <i class="bi bi-printer me-1"></i>Друк
+</a>
+{% if sheet.status in ('draft', 'active') %}
+<button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#headerModal">
+    <i class="bi bi-pencil me-1"></i>Реквізити
+</button>
+{% endif %}
+{% if sheet.status in ('draft', 'active') %}
+<form method="POST" action="{{ url_for('rv.cancel', sid=sheet.id) }}" class="d-inline"
+      onsubmit="return confirm('Скасувати РВ?')">
+    <button type="submit" class="btn btn-sm btn-outline-danger">
+        <i class="bi bi-x-lg me-1"></i>Скасувати
+    </button>
+</form>
+{% endif %}
+<a href="{{ request.args.get('back') or url_for('rv.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# Статус-стрічка #}
+<div class="alert alert-{{ status_colors.get(sheet.status, 'secondary') }} py-2 mb-3">
+    <i class="bi bi-info-circle me-1"></i>
+    <strong>{{ status_labels.get(sheet.status) }}</strong>
+    {% if sheet.unit_name %} — {{ sheet.unit_name }}
+    {% elif sheet.unit_text %} — {{ sheet.unit_text }}{% endif %}
+    {% if sheet.doc_date %} | {{ sheet.doc_date }}{% endif %}
+    {% if sheet.total_sum %} | Сума: <strong id="totalSum">{{ "%.2f"|format(sheet.total_sum) }}</strong> грн{% endif %}
+</div>
+
+{# Панель дій #}
+{% if sheet.status in ('draft', 'active') %}
+<div class="d-flex gap-2 mb-3 flex-wrap">
+    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addPersonnelModal">
+        <i class="bi bi-person-plus me-1"></i>Додати о/с
+    </button>
+    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#addItemModal">
+        <i class="bi bi-plus-square me-1"></i>Додати майно
+    </button>
+    <span class="text-muted small ms-auto align-self-center">
+        <i class="bi bi-info-circle me-1"></i>Клікніть на комірку для введення кількості
+    </span>
+</div>
+{% endif %}
+
+{# Матриця #}
+{% if not matrix.rows or not matrix.cols %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-table" style="font-size:3rem;opacity:.3"></i>
+        <p class="mt-3">
+            {% if not matrix.rows and not matrix.cols %}
+                Матриця порожня — додайте особовий склад та майно
+            {% elif not matrix.rows %}
+                Додайте особовий склад (рядки таблиці)
+            {% else %}
+                Додайте позиції майна (стовпці таблиці)
+            {% endif %}
+        </p>
+    </div>
+</div>
+{% else %}
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm mb-0 align-middle" id="rvMatrix">
+                <thead class="table-light">
+                    <tr>
+                        <th style="min-width:200px;position:sticky;left:0;background:var(--table-header-bg,#f8f9fa);z-index:2">
+                            П.І.Б. / Звання
+                        </th>
+                        {% for item in matrix.cols %}
+                        <th class="text-center" style="min-width:90px" data-item-id="{{ item.item_id }}">
+                            <div class="small fw-semibold">{{ item.item_name }}</div>
+                            <div class="text-muted" style="font-size:.7em">{{ item.unit_of_measure }} | {{ "%.2f"|format(item.price) }} грн</div>
+                            {% if sheet.status in ('draft', 'active') %}
+                            <button class="btn btn-link btn-sm p-0 text-danger mt-1 btn-del-item"
+                                    data-col-id="{{ item.id }}" data-name="{{ item.item_name }}" title="Прибрати стовпець">
+                                <i class="bi bi-x-circle" style="font-size:.8rem"></i>
+                            </button>
+                            {% endif %}
+                        </th>
+                        {% endfor %}
+                        <th style="min-width:90px" class="text-end">Сума</th>
+                        {% if sheet.status in ('draft', 'active') %}
+                        <th style="width:50px"></th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in matrix.rows %}
+                    {% set row_sum = namespace(val=0) %}
+                    <tr data-row-id="{{ row.id }}">
+                        <td style="position:sticky;left:0;background:var(--card-bg,#fff);z-index:1">
+                            <div class="fw-medium">{{ row.last_name }} {{ row.first_name[0] }}.{% if row.middle_name %} {{ row.middle_name[0] }}.{% endif %}</div>
+                            <div class="text-muted small">{{ row.rank or '' }}{% if row.position %} | {{ row.position }}{% endif %}</div>
+                            {% if sheet.status in ('draft', 'active') %}
+                            <div class="mt-1">
+                                <button class="btn btn-sm btn-outline-{{ 'success' if row.received else 'secondary' }} btn-toggle-received py-0 px-1"
+                                        data-row-id="{{ row.id }}" data-received="{{ row.received }}"
+                                        title="{{ 'Отримав ✓' if row.received else 'Позначити отримання' }}"
+                                        style="font-size:.7rem">
+                                    <i class="bi {{ 'bi-check2-circle' if row.received else 'bi-circle' }}"></i>
+                                    {{ row.received_date or ('Отримав' if row.received else 'Не отримав') }}
+                                </button>
+                            </div>
+                            {% else %}
+                            <div class="mt-1">
+                                <span class="badge bg-{{ 'success' if row.received else 'secondary' }}" style="font-size:.65rem">
+                                    {{ row.received_date or ('Отримав' if row.received else 'Не отримав') }}
+                                </span>
+                            </div>
+                            {% endif %}
+                        </td>
+                        {% for item in matrix.cols %}
+                        {% set cell = matrix.qty.get((row.id, item.item_id), {}) %}
+                        {% set qty = cell.get('quantity', 0) or 0 %}
+                        {% set _ = row_sum.__setattr__('val', row_sum.val + qty * item.price) %}
+                        <td class="text-center p-1" data-row-id="{{ row.id }}" data-item-id="{{ item.item_id }}">
+                            {% if sheet.status in ('draft', 'active') %}
+                            <input type="number" class="form-control form-control-sm text-center qty-cell p-1"
+                                   style="min-width:70px;border:none;background:transparent"
+                                   value="{{ qty if qty else '' }}"
+                                   min="0" step="1"
+                                   data-row-id="{{ row.id }}"
+                                   data-item-id="{{ item.item_id }}"
+                                   placeholder="0">
+                            {% else %}
+                            <span>{{ qty if qty else '—' }}</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="text-end fw-semibold row-sum" data-row-id="{{ row.id }}">
+                            {{ "%.2f"|format(row_sum.val) }}
+                        </td>
+                        {% if sheet.status in ('draft', 'active') %}
+                        <td class="text-center">
+                            <button class="btn btn-sm btn-outline-danger btn-del-row py-0 px-1"
+                                    data-row-id="{{ row.id }}"
+                                    title="Видалити рядок">
+                                <i class="bi bi-trash" style="font-size:.8rem"></i>
+                            </button>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light fw-semibold">
+                    <tr>
+                        <td>Разом</td>
+                        {% for item in matrix.cols %}
+                        {% set col_total = namespace(val=0) %}
+                        {% for row in matrix.rows %}
+                            {% set cell = matrix.qty.get((row.id, item.item_id), {}) %}
+                            {% set _ = col_total.__setattr__('val', col_total.val + (cell.get('quantity', 0) or 0)) %}
+                        {% endfor %}
+                        <td class="text-center col-total" data-item-id="{{ item.item_id }}">
+                            {{ col_total.val if col_total.val else '—' }}
+                        </td>
+                        {% endfor %}
+                        <td class="text-end" id="grandTotal">{{ "%.2f"|format(sheet.total_sum) }} грн</td>
+                        {% if sheet.status in ('draft', 'active') %}<td></td>{% endif %}
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+
+{# ── Модал: Додати о/с ── #}
+<div class="modal fade" id="addPersonnelModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-person-plus me-2"></i>Додати особовий склад</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                {# Autocomplete пошук #}
+                <div id="pAllAddedMsg" class="alert alert-info py-2 small mb-0" style="display:none">
+                    <i class="bi bi-info-circle me-1"></i>Весь активний особовий склад вже доданий до РВ
+                </div>
+                <div id="pSearchWrap" class="position-relative mb-3">
+                    <input type="text" id="personnelSearch" class="form-control"
+                           placeholder="Введіть прізвище для пошуку..." autocomplete="off">
+                    <div id="pDropdown" class="dropdown-menu w-100 shadow-sm"
+                         style="display:none;max-height:260px;overflow-y:auto;position:absolute;z-index:9999;top:100%;left:0"></div>
+                </div>
+                {# Обрані — чіпси #}
+                <div id="selectedChips" class="d-flex flex-wrap gap-1 mb-2"></div>
+                <div class="text-muted small" id="selectedCount">Обрано: 0</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-primary" id="btnAddPersonnel">
+                    <i class="bi bi-plus-lg me-1"></i>Додати обраних
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+{# ── Модал: Додати майно ── #}
+<div class="modal fade" id="addItemModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-square me-2"></i>Додати майно</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                {# Autocomplete пошук по словнику #}
+                <div class="position-relative mb-3" id="iSearchWrap">
+                    <input type="text" id="itemSearch" class="form-control"
+                           placeholder="Введіть назву майна для пошуку..." autocomplete="off">
+                    <div id="iDropdown" class="dropdown-menu w-100 shadow-sm"
+                         style="display:none;max-height:260px;overflow-y:auto;position:absolute;z-index:9999;top:100%;left:0"></div>
+                </div>
+                {# Обраний елемент #}
+                <div id="selectedItemInfo" class="alert alert-info py-2 small" style="display:none"></div>
+                <input type="hidden" id="itemSelectedId">
+
+                {# Ціна та категорія — заповнюється з залишків складу #}
+                <div id="itemPriceCatWrap">
+                    {# Партії зі складу (якщо >1 ціна) #}
+                    <div id="itemStockWrap" style="display:none" class="mb-2">
+                        <label class="form-label form-label-sm">Партія зі складу</label>
+                        <select id="itemStockSelect" class="form-select form-select-sm"></select>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-6">
+                            <label class="form-label form-label-sm">Ціна, грн</label>
+                            <input type="text" inputmode="decimal" id="itemPrice"
+                                   class="form-control form-control-sm num-comma" value="0">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label form-label-sm">Категорія</label>
+                            <select id="itemCategory" class="form-select form-select-sm">
+                                <option value="I">I</option>
+                                <option value="II">II</option>
+                                <option value="III">III</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-primary" id="btnAddItem">
+                    <i class="bi bi-plus-lg me-1"></i>Додати
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+{# ── Модал: Редагування реквізитів ── #}
+<div class="modal fade" id="headerModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Реквізити РВ</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+
+                    {# Підрозділ #}
+                    <div class="col-md-8">
+                        <label class="form-label form-label-sm">
+                            Підрозділ
+                            <span class="text-muted fw-normal">(необов'язково)</span>
+                        </label>
+                        <div class="position-relative">
+                            <input type="text" id="hUnitText" class="form-control form-control-sm"
+                                   placeholder="напр. 1 рота, батальйон..."
+                                   value="{{ sheet.unit_text or sheet.unit_name or '' }}"
+                                   autocomplete="off">
+                            <input type="hidden" id="hUnitId"
+                                   value="{{ sheet.unit_id or '' }}">
+                            <div id="hUnitDrop" class="dropdown-menu w-100 shadow-sm"
+                                 style="display:none;position:absolute;z-index:9999;max-height:200px;overflow-y:auto"></div>
+                        </div>
+                    </div>
+
+                    {# Дата #}
+                    <div class="col-md-4">
+                        <label class="form-label form-label-sm">Дата документа</label>
+                        <input type="date" id="hDocDate" class="form-control form-control-sm"
+                               value="{{ sheet.doc_date or '' }}">
+                    </div>
+
+                    {# Підстава #}
+                    <div class="col-12">
+                        <label class="form-label form-label-sm">
+                            Підстава
+                            <span class="text-muted fw-normal">(необов'язково)</span>
+                        </label>
+                        <input type="text" id="hBaseDoc" class="form-control form-control-sm"
+                               value="{{ sheet.base_document or '' }}"
+                               placeholder="планова видача">
+                    </div>
+
+                    {# Примітка #}
+                    <div class="col-12">
+                        <label class="form-label form-label-sm">Примітка</label>
+                        <textarea id="hNotes" class="form-control form-control-sm" rows="2"
+                                  placeholder="Додаткові відомості...">{{ sheet.notes or '' }}</textarea>
+                    </div>
+
+                    <div class="col-12"><hr class="my-1"></div>
+
+                    {# Видав #}
+                    <div class="col-12">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label form-label-sm mb-0 fw-medium">Видав (нач. складу)</label>
+                            <div class="form-check form-check-inline mb-0">
+                                <input class="form-check-input" type="checkbox" id="hGivenTvo">
+                                <label class="form-check-label small" for="hGivenTvo">ТВО</label>
+                            </div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-4">
+                                <input type="text" id="hGivenRank" class="form-control form-control-sm"
+                                       placeholder="Звання"
+                                       value="{{ sheet.given_by_rank or '' }}">
+                            </div>
+                            <div class="col-8">
+                                <input type="text" id="hGivenName" class="form-control form-control-sm"
+                                       placeholder="Прізвище І.Б."
+                                       value="{{ sheet.given_by_name or '' }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    {# Начальник #}
+                    <div class="col-12">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label form-label-sm mb-0 fw-medium">Начальник служби</label>
+                            <div class="form-check form-check-inline mb-0">
+                                <input class="form-check-input" type="checkbox" id="hChiefTvo"
+                                       {% if sheet.chief_is_tvo %}checked{% endif %}>
+                                <label class="form-check-label small" for="hChiefTvo">ТВО</label>
+                            </div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-4">
+                                <input type="text" id="hChiefRank" class="form-control form-control-sm"
+                                       placeholder="Звання"
+                                       value="{{ sheet.chief_rank or '' }}">
+                            </div>
+                            <div class="col-8">
+                                <input type="text" id="hChiefName" class="form-control form-control-sm"
+                                       placeholder="Прізвище І.Б."
+                                       value="{{ sheet.chief_name or '' }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    {# Діловод #}
+                    <div class="col-12">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label form-label-sm mb-0 fw-medium">Діловод</label>
+                            <div class="form-check form-check-inline mb-0">
+                                <input class="form-check-input" type="checkbox" id="hClerkTvo">
+                                <label class="form-check-label small" for="hClerkTvo">ТВО</label>
+                            </div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-4">
+                                <input type="text" id="hClerkRank" class="form-control form-control-sm"
+                                       placeholder="Звання"
+                                       value="{{ sheet.clerk_rank or '' }}">
+                            </div>
+                            <div class="col-8">
+                                <input type="text" id="hClerkName" class="form-control form-control-sm"
+                                       placeholder="Прізвище І.Б."
+                                       value="{{ sheet.clerk_name or '' }}">
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-primary" id="btnSaveHeader">
+                    <i class="bi bi-floppy me-1"></i>Зберегти
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const SID = {{ sheet.id }};
+const EDITABLE = {{ 'true' if sheet.status in ('draft', 'active') else 'false' }};
+
+// ═══════════════════════════════════════════════════════════════
+//  Дані для autocomplete (з сервера через Jinja2)
+// ═══════════════════════════════════════════════════════════════
+const ALL_PERSONNEL = [
+    {% for p in all_personnel %}{% if p.id not in added_pids %}
+    { id: {{ p.id }},
+      name: "{{ p.last_name }} {{ p.first_name }} {{ p.middle_name or '' }}",
+      rank: "{{ p.rank or '' }}",
+      unit: "{{ p.unit_name or '' }}" },
+    {% endif %}{% endfor %}
+];
+
+const ALL_ITEMS = [
+    {% for i in all_items %}{% if i.id not in added_iids %}
+    { id: {{ i.id }},
+      name: {{ i.name | tojson }},
+      uom: {{ (i.unit_of_measure or 'шт') | tojson }} },
+    {% endif %}{% endfor %}
+];
+
+// Залишки складу для вибору ціни/категорії
+const RV_STOCK = {{ stock | tojson }};
+// Індекс: item_id -> [{category, price, balance}]
+const RV_STOCK_IDX = {};
+for (const s of RV_STOCK) {
+    if (!RV_STOCK_IDX[s.item_id]) RV_STOCK_IDX[s.item_id] = [];
+    RV_STOCK_IDX[s.item_id].push(s);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Утиліта — autocomplete
+//  inputEl    — <input> для вводу
+//  dropEl     — <div> для списку
+//  dataArr    — [{id, name, ...}] — масив даних
+//  renderFn   — (item) => HTML рядок
+//  selectFn   — (item) => void — викликається при виборі
+// ═══════════════════════════════════════════════════════════════
+function initAutocomplete(inputEl, dropEl, dataArr, renderFn, selectFn) {
+    let active = -1;
+
+    function show(items) {
+        if (!items.length) { dropEl.style.display = 'none'; return; }
+        dropEl.innerHTML = items.slice(0, 50).map((it, idx) =>
+            `<button type="button" class="dropdown-item ac-item px-3 py-2"
+                     data-idx="${idx}" style="white-space:normal;text-align:left">${renderFn(it)}</button>`
+        ).join('');
+        dropEl._items = items.slice(0, 50);
+        dropEl.style.display = 'block';
+        active = -1;
+    }
+
+    function hide() { dropEl.style.display = 'none'; active = -1; }
+
+    inputEl.addEventListener('input', () => {
+        const q = inputEl.value.trim().toLowerCase();
+        if (!q) { hide(); return; }
+        show(dataArr.filter(it => it.name.toLowerCase().includes(q)));
+    });
+
+    inputEl.addEventListener('keydown', e => {
+        const items = dropEl.querySelectorAll('.ac-item');
+        if (!items.length) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            active = Math.min(active + 1, items.length - 1);
+            items.forEach((el, i) => el.classList.toggle('active', i === active));
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            active = Math.max(active - 1, 0);
+            items.forEach((el, i) => el.classList.toggle('active', i === active));
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (active >= 0) items[active].click();
+            else if (items.length === 1) items[0].click();
+        } else if (e.key === 'Escape') {
+            hide();
+        }
+    });
+
+    dropEl.addEventListener('mousedown', e => {
+        const btn = e.target.closest('.ac-item');
+        if (!btn) return;
+        e.preventDefault();
+        const idx = parseInt(btn.dataset.idx);
+        selectFn(dropEl._items[idx]);
+        hide();
+    });
+
+    document.addEventListener('click', e => {
+        if (!inputEl.contains(e.target) && !dropEl.contains(e.target)) hide();
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Autocomplete — Особовий склад
+// ═══════════════════════════════════════════════════════════════
+const selectedPersonnel = {};  // id -> {id, name, rank, unit}
+
+function renderSelectedChips() {
+    const wrap = document.getElementById('selectedChips');
+    const cnt  = document.getElementById('selectedCount');
+    const ids  = Object.keys(selectedPersonnel);
+    wrap.innerHTML = ids.map(id => {
+        const p = selectedPersonnel[id];
+        return `<span class="badge bg-primary d-flex align-items-center gap-1" style="font-size:.8rem">
+            ${p.name.trim()}
+            <button type="button" class="btn-close btn-close-white" style="font-size:.6rem"
+                    onclick="removePersonnel(${id})"></button>
+        </span>`;
+    }).join('');
+    cnt.textContent = `Обрано: ${ids.length}`;
+}
+
+window.removePersonnel = function(id) {
+    delete selectedPersonnel[id];
+    renderSelectedChips();
+};
+
+initAutocomplete(
+    document.getElementById('personnelSearch'),
+    document.getElementById('pDropdown'),
+    ALL_PERSONNEL,
+    p => `<div class="fw-medium">${p.name.trim()}</div>
+          <div class="text-muted small">${p.rank}${p.unit ? ' | ' + p.unit : ''}</div>`,
+    p => {
+        selectedPersonnel[p.id] = p;
+        document.getElementById('personnelSearch').value = '';
+        renderSelectedChips();
+    }
+);
+
+// Показати повідомлення якщо нікого більше немає
+if (!ALL_PERSONNEL.length) {
+    document.getElementById('pAllAddedMsg').style.display = '';
+    document.getElementById('pSearchWrap').style.display = 'none';
+    document.getElementById('selectedChips').style.display = 'none';
+    document.getElementById('selectedCount').style.display = 'none';
+    document.getElementById('btnAddPersonnel').disabled = true;
+}
+
+// Скидання при відкритті модалю
+document.getElementById('addPersonnelModal').addEventListener('show.bs.modal', () => {
+    Object.keys(selectedPersonnel).forEach(k => delete selectedPersonnel[k]);
+    renderSelectedChips();
+    const inp = document.getElementById('personnelSearch');
+    if (inp) inp.value = '';
+    document.getElementById('pDropdown').style.display = 'none';
+});
+
+document.getElementById('btnAddPersonnel')?.addEventListener('click', () => {
+    const ids = Object.keys(selectedPersonnel);
+    if (!ids.length) { alert('Оберіть хоча б одного'); return; }
+    const fd = new FormData();
+    ids.forEach(id => fd.append('personnel_id[]', id));
+    fetch(`/rv/${SID}/row/add`, { method: 'POST', body: fd })
+        .then(r => r.json()).then(d => {
+            if (d.ok) location.reload();
+            else alert(d.error || 'Помилка');
+        });
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  Autocomplete — Майно
+// ═══════════════════════════════════════════════════════════════
+let selectedItem = null;
+
+function loadItemStock(itemId) {
+    const stockWrap = document.getElementById('itemStockWrap');
+    const stockSel  = document.getElementById('itemStockSelect');
+    const priceInp  = document.getElementById('itemPrice');
+    const catSel    = document.getElementById('itemCategory');
+    const rows = RV_STOCK_IDX[parseInt(itemId)] || [];
+
+    // Відновити всі опції категорій
+    catSel.innerHTML = '<option value="I">I</option><option value="II">II</option><option value="III">III</option>';
+
+    if (rows.length > 1) {
+        // Кілька партій — показати dropdown
+        stockSel.innerHTML = rows.map(r =>
+            `<option value="${r.price}|${r.category}">` +
+            `${r.category} кат. — ${parseFloat(r.price).toFixed(2)} грн` +
+            ` (залишок: ${r.balance})</option>`
+        ).join('');
+        stockWrap.style.display = '';
+        priceInp.value = rows[0].price;
+        catSel.value   = rows[0].category;
+    } else if (rows.length === 1) {
+        stockWrap.style.display = 'none';
+        priceInp.value = rows[0].price;
+        catSel.value   = rows[0].category;
+    } else {
+        stockWrap.style.display = 'none';
+        priceInp.value = 0;
+    }
+}
+
+document.getElementById('itemStockSelect').addEventListener('change', function() {
+    const [price, cat] = this.value.split('|');
+    document.getElementById('itemPrice').value = price;
+    document.getElementById('itemCategory').value = cat;
+});
+
+initAutocomplete(
+    document.getElementById('itemSearch'),
+    document.getElementById('iDropdown'),
+    ALL_ITEMS,
+    i => `<div class="fw-medium">${i.name}</div>
+          <div class="text-muted small">${i.uom}</div>`,
+    i => {
+        selectedItem = i;
+        document.getElementById('itemSearch').value = i.name;
+        document.getElementById('itemSelectedId').value = i.id;
+        const info = document.getElementById('selectedItemInfo');
+        info.textContent = `Обрано: ${i.name} (${i.uom})`;
+        info.style.display = 'block';
+        loadItemStock(i.id);
+    }
+);
+
+// Показати повідомлення якщо нічого більше немає
+if (!ALL_ITEMS.length) {
+    document.getElementById('iDropdown').style.display = 'none';
+    document.getElementById('btnAddItem').disabled = true;
+    const sw = document.getElementById('iSearchWrap');
+    if (sw) {
+        sw.innerHTML = '<div class="alert alert-info py-2 small">' +
+            '<i class="bi bi-info-circle me-1"></i>Всі позиції словника вже додані до РВ</div>';
+    }
+}
+
+// Скидання при відкритті модалю
+document.getElementById('addItemModal').addEventListener('show.bs.modal', () => {
+    selectedItem = null;
+    const inp = document.getElementById('itemSearch');
+    if (inp) inp.value = '';
+    document.getElementById('itemSelectedId').value = '';
+    document.getElementById('selectedItemInfo').style.display = 'none';
+    document.getElementById('iDropdown').style.display = 'none';
+    document.getElementById('itemPrice').value = '0';
+    document.getElementById('itemCategory').value = 'I';
+    document.getElementById('itemStockWrap').style.display = 'none';
+    document.getElementById('itemStockSelect').innerHTML = '';
+});
+
+document.getElementById('btnAddItem')?.addEventListener('click', () => {
+    const itemId = document.getElementById('itemSelectedId').value;
+    if (!itemId) { alert('Оберіть позицію майна'); return; }
+    const fd = new FormData();
+    fd.append('item_id',  itemId);
+    fd.append('price',    document.getElementById('itemPrice').value);
+    fd.append('category', document.getElementById('itemCategory').value);
+    fetch(`/rv/${SID}/item/add`, { method: 'POST', body: fd })
+        .then(r => r.json()).then(d => {
+            if (d.ok) location.reload();
+            else alert(d.error || 'Помилка');
+        });
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  Видалити стовпець / рядок
+// ═══════════════════════════════════════════════════════════════
+document.querySelectorAll('.btn-del-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+        if (!confirm(`Прибрати "${btn.dataset.name}" з РВ?`)) return;
+        fetch(`/rv/${SID}/item/${btn.dataset.colId}/delete`, { method: 'POST' })
+            .then(r => r.json()).then(d => {
+                if (d.ok) location.reload();
+                else alert(d.error);
+            });
+    });
+});
+
+document.querySelectorAll('.btn-del-row').forEach(btn => {
+    btn.addEventListener('click', () => {
+        if (!confirm('Видалити цей рядок з РВ?')) return;
+        fetch(`/rv/${SID}/row/${btn.dataset.rowId}/delete`, { method: 'POST' })
+            .then(r => r.json()).then(d => {
+                if (d.ok) btn.closest('tr').remove();
+                else alert(d.error);
+            });
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  Toggle отримав
+// ═══════════════════════════════════════════════════════════════
+document.querySelectorAll('.btn-toggle-received').forEach(btn => {
+    btn.addEventListener('click', () => {
+        fetch(`/rv/${SID}/row/${btn.dataset.rowId}/toggle`, { method: 'POST' })
+            .then(r => r.json()).then(d => {
+                if (d.ok) {
+                    btn.dataset.received = d.received;
+                    btn.classList.toggle('btn-outline-success', !!d.received);
+                    btn.classList.toggle('btn-outline-secondary', !d.received);
+                    btn.querySelector('i').className = d.received ? 'bi bi-check2-circle' : 'bi bi-circle';
+                    btn.childNodes[btn.childNodes.length - 1].textContent =
+                        ' ' + (d.received_date || (d.received ? 'Отримав' : 'Не отримав'));
+                }
+            });
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  Авто-збереження комірок
+// ═══════════════════════════════════════════════════════════════
+let saveTimer = null;
+const pendingCells = {};
+
+function flushCells() {
+    const cells = Object.values(pendingCells);
+    if (!cells.length) return;
+    Object.keys(pendingCells).forEach(k => delete pendingCells[k]);
+    fetch(`/rv/${SID}/qty/save`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(cells)
+    }).then(r => r.json()).then(d => {
+        if (d.ok && d.total !== undefined) {
+            const el = document.getElementById('grandTotal');
+            if (el) el.textContent = d.total.toFixed(2) + ' грн';
+        }
+    });
+}
+
+if (EDITABLE) {
+    document.querySelectorAll('.qty-cell').forEach(inp => {
+        inp.addEventListener('change', () => {
+            const key = `${inp.dataset.rowId}-${inp.dataset.itemId}`;
+            pendingCells[key] = {
+                row_id:   parseInt(inp.dataset.rowId),
+                item_id:  parseInt(inp.dataset.itemId),
+                quantity: parseFloat(inp.value) || 0,
+            };
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(flushCells, 800);
+        });
+        inp.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                const cells = [...document.querySelectorAll('.qty-cell')];
+                const idx = cells.indexOf(inp);
+                const next = cells[idx + 1];
+                if (next) { next.focus(); next.select(); }
+            }
+        });
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Підрозділ autocomplete в headerModal
+// ═══════════════════════════════════════════════════════════════
+const UNITS_FOR_DROP = [
+    {% for u in units %}
+    { id: {{ u.id }}, name: {{ (u.bat_name + ' / ' + u.name) | tojson }} },
+    {% endfor %}
+];
+
+(function() {
+    const inp   = document.getElementById('hUnitText');
+    const hidId = document.getElementById('hUnitId');
+    const drop  = document.getElementById('hUnitDrop');
+    if (!inp) return;
+
+    function showDrop(items) {
+        if (!items.length) { drop.style.display = 'none'; return; }
+        drop.innerHTML = items.slice(0, 20).map(u =>
+            `<button type="button" class="dropdown-item px-3 py-1 small"
+                     data-id="${u.id}" data-name="${u.name}">${u.name}</button>`
+        ).join('');
+        drop.style.display = 'block';
+    }
+
+    inp.addEventListener('input', () => {
+        hidId.value = '';
+        const q = inp.value.trim().toLowerCase();
+        if (!q) { drop.style.display = 'none'; return; }
+        showDrop(UNITS_FOR_DROP.filter(u => u.name.toLowerCase().includes(q)));
+    });
+
+    drop.addEventListener('mousedown', e => {
+        const btn = e.target.closest('.dropdown-item');
+        if (!btn) return;
+        e.preventDefault();
+        inp.value  = btn.dataset.name;
+        hidId.value = btn.dataset.id;
+        drop.style.display = 'none';
+    });
+
+    document.addEventListener('click', e => {
+        if (!inp.contains(e.target) && !drop.contains(e.target))
+            drop.style.display = 'none';
+    });
+})();
+
+// ── ТВО checkbox для реквізитів ──
+function setupTvo(cbId, rankId) {
+    const cb = document.getElementById(cbId);
+    const rk = document.getElementById(rankId);
+    if (!cb || !rk) return;
+    cb.addEventListener('change', () => {
+        if (cb.checked) {
+            if (!/^ТВО\s/i.test(rk.value)) rk.value = 'ТВО ' + rk.value;
+        } else {
+            rk.value = rk.value.replace(/^ТВО\s*/i, '');
+        }
+    });
+}
+setupTvo('hGivenTvo', 'hGivenRank');
+setupTvo('hChiefTvo', 'hChiefRank');
+setupTvo('hClerkTvo', 'hClerkRank');
+
+// Sync TVO checkboxes with pre-filled values on modal open
+document.getElementById('headerModal')?.addEventListener('show.bs.modal', () => {
+    const cr = document.getElementById('hChiefRank');
+    if (cr) document.getElementById('hChiefTvo').checked = /^ТВО\s/i.test(cr.value);
+    const gr = document.getElementById('hGivenRank');
+    if (gr) document.getElementById('hGivenTvo').checked = /^ТВО\s/i.test(gr.value);
+    const lkr = document.getElementById('hClerkRank');
+    if (lkr) document.getElementById('hClerkTvo').checked = /^ТВО\s/i.test(lkr.value);
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  Зберегти реквізити
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('btnSaveHeader')?.addEventListener('click', () => {
+    const fd = new FormData();
+    fd.append('unit_text',     document.getElementById('hUnitText').value);
+    fd.append('unit_id',       document.getElementById('hUnitId').value);
+    fd.append('doc_date',      document.getElementById('hDocDate').value);
+    fd.append('base_document', document.getElementById('hBaseDoc').value);
+    fd.append('notes',         document.getElementById('hNotes').value);
+    fd.append('given_by_rank', document.getElementById('hGivenRank').value);
+    fd.append('given_by_name', document.getElementById('hGivenName').value);
+    fd.append('chief_rank',    document.getElementById('hChiefRank').value);
+    fd.append('chief_name',    document.getElementById('hChiefName').value);
+    if (document.getElementById('hChiefTvo').checked) fd.append('chief_is_tvo', '1');
+    fd.append('clerk_rank',    document.getElementById('hClerkRank').value);
+    fd.append('clerk_name',    document.getElementById('hClerkName').value);
+    fetch(`/rv/${SID}/header/save`, { method: 'POST', body: fd })
+        .then(r => r.json()).then(d => {
+            if (d.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('headerModal'))?.hide();
+                location.reload();  // оновити статус-рядок з новим підрозділом/датою
+            } else alert(d.error);
+        });
+});
+</script>
+{% endblock %}

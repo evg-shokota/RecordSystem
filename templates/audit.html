@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Журнал дій — {{ unit_name }}{% endblock %}
+{% block page_title %}Журнал дій{% endblock %}
+
+{% block content %}
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:150px">Дата/час</th>
+                        <th style="width:120px">Користувач</th>
+                        <th style="width:100px">Дія</th>
+                        <th style="width:150px">Об'єкт</th>
+                        <th>Зміни</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rows %}
+                    <tr>
+                        <td class="text-muted small">{{ r.created_at }}</td>
+                        <td class="small">{{ r.user_full_name or r.username or '—' }}</td>
+                        <td>
+                            {% set action_labels = {
+                                'add': ('success', 'plus-circle', 'Додано'),
+                                'edit': ('primary', 'pencil', 'Змінено'),
+                                'delete': ('danger', 'trash', 'Видалено'),
+                                'move': ('warning', 'arrows-move', 'Переміщено'),
+                                'status_change': ('info', 'arrow-repeat', 'Статус'),
+                            } %}
+                            {% set ac = action_labels.get(r.action, ('secondary', 'question', r.action)) %}
+                            <span class="badge bg-{{ ac[0] }}">
+                                <i class="bi bi-{{ ac[1] }} me-1"></i>{{ ac[2] }}
+                            </span>
+                        </td>
+                        <td class="small text-muted">
+                            {{ r.table_name }}
+                            {% if r.record_id %}#{{ r.record_id }}{% endif %}
+                        </td>
+                        <td class="small">
+                            {% if r.new_data %}
+                            <span class="text-muted">→ </span>
+                            {% set nd = r.new_data | fromjson_dict %}
+                            {% for k, v in nd.items() %}
+                            <span class="badge bg-light text-dark border me-1">{{ k }}: {{ v }}</span>
+                            {% endfor %}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">Журнал порожній</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if rows|length == 100 %}
+<div class="d-flex justify-content-end mt-3">
+    <a href="?page={{ page + 1 }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-right me-1"></i>Наступна сторінка
+    </a>
+</div>
+{% endif %}
+
+{% if page > 1 %}
+<div class="d-flex justify-content-start mt-2">
+    <a href="?page={{ page - 1 }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Попередня сторінка
+    </a>
+</div>
+{% endif %}
+
+{% endblock %}

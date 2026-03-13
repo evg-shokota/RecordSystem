@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Планування видачі — {{ unit_name }}{% endblock %}
+{% block page_title %}Планування видачі майна{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('reports.needs') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-file-earmark-text me-1"></i>Звіт
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Фільтри ── #}
+<form method="GET" class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label form-label-sm mb-1">Підрозділ</label>
+                <select name="unit_id" class="form-select form-select-sm">
+                    <option value="">— всі підрозділи —</option>
+                    {% for u in units %}
+                    <option value="{{ u.id }}" {{ 'selected' if unit_id == u.id }}>
+                        {{ u.bat_name }} / {{ u.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label form-label-sm mb-1">Сезонність</label>
+                <select name="season" class="form-select form-select-sm">
+                    <option value="all"   {{ 'selected' if season == 'all' }}>Всі</option>
+                    <option value="winter" {{ 'selected' if season == 'winter' }}>Зимове</option>
+                    <option value="summer" {{ 'selected' if season == 'summer' }}>Літнє</option>
+                    <option value="demi"   {{ 'selected' if season == 'demi' }}>Демісезонне</option>
+                    <option value="all_season" {{ 'selected' if season == 'all_season' }}>Всесезонне</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-4">
+                    <input class="form-check-input" type="checkbox" name="only_needs" value="1"
+                           id="onlyNeeds" {{ 'checked' if only_needs }}>
+                    <label class="form-check-label form-label-sm" for="onlyNeeds">
+                        Тільки з потребою
+                    </label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100">
+                    <i class="bi bi-funnel me-1"></i>Застосувати
+                </button>
+            </div>
+        </div>
+    </div>
+</form>
+
+{# ── Підсумки ── #}
+<div class="row g-3 mb-3">
+    <div class="col-sm-6 col-md-4">
+        <div class="card border-0 shadow-sm text-center py-2">
+            <div class="fw-bold fs-4">{{ total_persons }}</div>
+            <div class="text-muted small">Військовослужбовців у вибірці</div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-md-4">
+        <div class="card border-0 shadow-sm text-center py-2 {% if total_needs > 0 %}border-start border-warning border-3{% endif %}">
+            <div class="fw-bold fs-4 {% if total_needs > 0 %}text-warning{% endif %}">{{ total_needs }}</div>
+            <div class="text-muted small">Позицій з потребою</div>
+        </div>
+    </div>
+</div>
+
+{# ── Таблиця ── #}
+{% if rows %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 align-middle">
+                <thead class="table-light sticky-top">
+                    <tr>
+                        <th>ПІБ</th>
+                        <th>Підрозділ</th>
+                        <th>Позиція норми</th>
+                        <th class="text-center">Норма</th>
+                        <th class="text-center">Видано</th>
+                        <th class="text-center">Залишок</th>
+                        <th class="text-center">Остання видача</th>
+                        <th class="text-center">Наступна видача</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr class="{% if row.remaining > 0 %}table-warning{% elif row.next_issue_days is not none and row.next_issue_days <= 30 %}table-info{% endif %}">
+                        <td>
+                            <a href="{{ url_for('personnel.card', person_id=row.personnel_id) }}"
+                               class="text-decoration-none fw-medium">
+                                {% if row.rank %}<span class="text-muted small">{{ row.rank }} </span>{% endif %}
+                                {{ row.full_name }}
+                            </a>
+                        </td>
+                        <td class="text-muted small">{{ row.unit_name or '—' }}</td>
+                        <td>{{ row.norm_dict_name }}</td>
+                        <td class="text-center">
+                            {{ row.norm_qty | int if row.norm_qty == row.norm_qty | int else row.norm_qty }}
+                            <span class="text-muted small">{{ row.unit }}</span>
+                        </td>
+                        <td class="text-center">
+                            {{ row.issued_qty | int if row.issued_qty == row.issued_qty | int else row.issued_qty }}
+                        </td>
+                        <td class="text-center fw-medium {% if row.remaining > 0 %}text-danger{% else %}text-success{% endif %}">
+                            {% if row.remaining > 0 %}
+                            <i class="bi bi-exclamation-circle me-1"></i>{{ row.remaining | int if row.remaining == row.remaining | int else row.remaining }}
+                            {% else %}
+                            <i class="bi bi-check-circle me-1"></i>0
+                            {% endif %}
+                        </td>
+                        <td class="text-center text-muted small">
+                            {{ row.last_issue_date or '—' }}
+                        </td>
+                        <td class="text-center">
+                            {% if row.next_issue_date %}
+                            <span class="
+                                {% if row.next_issue_days <= 0 %}text-danger fw-medium
+                                {% elif row.next_issue_days <= 30 %}text-warning fw-medium
+                                {% else %}text-muted small
+                                {% endif %}">
+                                {{ row.next_issue_date }}
+                                {% if row.next_issue_days <= 0 %}
+                                <span class="badge bg-danger ms-1">Прострочено</span>
+                                {% elif row.next_issue_days <= 30 %}
+                                <span class="badge bg-warning text-dark ms-1">{{ row.next_issue_days }} дн.</span>
+                                {% endif %}
+                            </span>
+                            {% else %}
+                            <span class="text-muted small">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-check2-all fs-2 text-success d-block mb-2"></i>
+        {% if only_needs %}
+        Всі позиції видані за нормою
+        {% else %}
+        Немає даних. Перевірте чи призначено норми видачі особовому складу.
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

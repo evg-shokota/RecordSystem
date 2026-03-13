@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{{ unit_name }} — Приклад модуля{% endblock %}
+{% block page_title %}Приклад модуля{% endblock %}
+
+{% block content %}
+<div class="alert alert-info border-0">
+    <i class="bi bi-puzzle-fill me-2"></i>
+    Це демонстраційний модуль — шаблон для написання власних розширень.
+    Дивіться <a href="/plugins/sdk-docs" class="alert-link">документацію SDK</a>.
+</div>
+
+{# ── Лічильники ─────────────────────────────────────────────────── #}
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm text-center py-4">
+            <div style="font-size:2.5rem; color:var(--app-primary)">{{ personnel_count }}</div>
+            <div class="text-muted small mt-1">Особового складу</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm text-center py-4">
+            <div style="font-size:2.5rem; color:var(--app-primary)">{{ stock | length }}</div>
+            <div class="text-muted small mt-1">Позицій на складі</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm text-center py-4">
+            <div style="font-size:2.5rem; color:var(--app-primary)">{{ recent_invoices | length }}</div>
+            <div class="text-muted small mt-1">Останніх накладних</div>
+        </div>
+    </div>
+</div>
+
+{# ── Останні накладні ────────────────────────────────────────────── #}
+{% if recent_invoices %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-transparent fw-medium">Останні накладні</div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr><th>№</th><th>Дата</th><th>Статус</th></tr>
+            </thead>
+            <tbody>
+                {% for inv in recent_invoices %}
+                <tr>
+                    <td>{{ inv.number or '—' }}</td>
+                    <td>{{ inv.created_at[:10] if inv.created_at else '—' }}</td>
+                    <td>{{ inv.status or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{# ── Власний журнал подій ────────────────────────────────────────── #}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent fw-medium d-flex align-items-center justify-content-between">
+        <span>Журнал подій модуля (власна таблиця example_plugin_log)</span>
+        <button class="btn btn-sm btn-outline-primary" onclick="logTestEvent()">
+            <i class="bi bi-plus-circle me-1"></i>Тестовий запис
+        </button>
+    </div>
+    <div class="card-body p-0" id="logContainer">
+        {% if log_entries %}
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr><th>Подія</th><th>Деталі</th><th>Час</th></tr>
+            </thead>
+            <tbody id="logBody">
+                {% for e in log_entries %}
+                <tr>
+                    <td><code>{{ e.event }}</code></td>
+                    <td class="text-muted small">{{ e.details or '—' }}</td>
+                    <td class="text-muted small">{{ e.created_at }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="text-muted p-3 small" id="logEmpty">Журнал порожній. Натисніть «Тестовий запис».</div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+async function logTestEvent() {
+    const r = await fetch('/example/api/log', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({event: 'manual_test', details: 'Тестовий запис з інтерфейсу'})
+    });
+    if ((await r.json()).ok) location.reload();
+}
+</script>
+{% endblock %}

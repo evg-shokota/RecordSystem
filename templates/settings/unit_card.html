@@ -1,0 +1,459 @@
+{% extends "base.html" %}
+{% block title %}{{ unit.name }} — Картка підрозділу — {{ unit_name }}{% endblock %}
+{% block page_title %}{{ unit.name }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('invoices.new') }}?recipient_type=unit&recipient_unit_id={{ unit.id }}"
+   class="btn btn-sm btn-primary">
+    <i class="bi bi-file-earmark-plus me-1"></i>Видати майно підрозділу
+</a>
+<a href="{{ url_for('units_redirect') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Підрозділи
+</a>
+{% endblock %}
+
+{% block content %}
+
+<div class="text-muted small mb-3">
+    <i class="bi bi-building me-1"></i>{{ unit.battalion_name }}
+    <span class="mx-1">›</span>
+    <strong>{{ unit.name }}</strong>
+</div>
+
+<div class="row g-3">
+
+    {# ══════════════════════════════════════
+       МАТЕРІАЛЬНО-ВІДПОВІДАЛЬНІ ОСОБИ
+    ══════════════════════════════════════ #}
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent d-flex align-items-center justify-content-between py-2">
+                <span class="fw-medium">
+                    <i class="bi bi-person-badge me-2 text-primary"></i>Матеріально-відповідальні особи
+                </span>
+                <button class="btn btn-sm btn-primary" id="btnAddResp">
+                    <i class="bi bi-plus-lg me-1"></i>Призначити
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0 align-middle" id="respTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:210px">Роль</th>
+                            <th>Звання / ПІБ / Посада</th>
+                            <th style="width:140px">Телефон</th>
+                            <th style="width:80px">Статус</th>
+                            <th style="width:90px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in responsible %}
+                        <tr data-rid="{{ r.id }}" class="{{ '' if r.is_active else 'text-muted' }}">
+                            <td>
+                                <span class="role-label badge bg-light text-dark border fw-normal">
+                                    {{ role_labels.get(r.role_name, r.role_name) }}
+                                </span>
+                            </td>
+                            <td>
+                                <div>
+                                    <span class="text-muted small">{{ r.rank or '' }}</span>
+                                    <a href="{{ url_for('personnel.card', person_id=r.personnel_id) }}"
+                                       class="fw-medium text-decoration-none ms-1">
+                                        {{ r.last_name }} {{ r.first_name }} {{ r.middle_name or '' }}
+                                    </a>
+                                </div>
+                                {% if r.position %}
+                                <div class="text-muted small">{{ r.position }}</div>
+                                {% endif %}
+                            </td>
+                            <td class="small">
+                                {% if r.phone %}
+                                <a href="tel:{{ r.phone }}" class="text-decoration-none">
+                                    <i class="bi bi-phone me-1 text-muted"></i>{{ r.phone }}
+                                </a>
+                                {% else %}
+                                <span class="text-muted fst-italic">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if r.is_active %}
+                                <span class="badge bg-success">Активний</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Неактивний</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <div class="d-flex gap-1 justify-content-end">
+                                    <button class="btn btn-sm btn-outline-secondary btn-edit-resp"
+                                            data-rid="{{ r.id }}"
+                                            data-role="{{ r.role_name }}"
+                                            title="Змінити роль">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary btn-toggle-resp"
+                                            data-rid="{{ r.id }}"
+                                            data-active="{{ r.is_active }}"
+                                            title="{{ 'Деактивувати' if r.is_active else 'Активувати' }}">
+                                        <i class="bi bi-{{ 'pause-circle' if r.is_active else 'play-circle' }}"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger btn-del-resp"
+                                            data-rid="{{ r.id }}"
+                                            data-name="{{ r.last_name }} {{ r.first_name }}"
+                                            title="Видалити">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr id="noRespRow">
+                            <td colspan="5" class="text-muted text-center py-3">
+                                Матеріально-відповідальних осіб не призначено
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {# ══════════════════════════════════════
+       ОСОБОВИЙ СКЛАД
+    ══════════════════════════════════════ #}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent py-2 fw-medium">
+                <i class="bi bi-people-fill me-2 text-success"></i>
+                Особовий склад
+                <span class="badge bg-success ms-1">
+                    {{ personnel | selectattr('is_active', 'equalto', 1) | list | length }}
+                </span>
+            </div>
+            <div class="card-body p-0" style="max-height:380px;overflow-y:auto">
+                <table class="table table-sm mb-0 align-middle">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>ПІБ</th>
+                            <th>Звання / Посада</th>
+                            <th style="width:80px">Стан</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in personnel %}
+                        <tr class="{{ '' if p.is_active else 'text-muted' }}">
+                            <td>
+                                <a href="{{ url_for('personnel.card', person_id=p.id) }}"
+                                   class="text-decoration-none">
+                                    {{ p.last_name }} {{ p.first_name }} {{ p.middle_name or '' }}
+                                </a>
+                            </td>
+                            <td class="small text-muted">
+                                {{ p.rank or '' }}{% if p.rank and p.position %} /{% endif %}
+                                {{ p.position or '' }}
+                            </td>
+                            <td>
+                                {% if p.is_active %}
+                                <span class="badge bg-success">Активний</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Вибув</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" class="text-muted text-center py-3">Особового складу немає</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {# ══════════════════════════════════════
+       МАЙНО ПІДРОЗДІЛУ
+    ══════════════════════════════════════ #}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent py-2 fw-medium">
+                <i class="bi bi-boxes me-2 text-warning"></i>
+                Майно підрозділу
+                <span class="badge bg-warning text-dark ms-1">{{ unit_items | length }}</span>
+            </div>
+            <div class="card-body p-0" style="max-height:380px;overflow-y:auto">
+                {% if unit_items %}
+                <table class="table table-sm mb-0 align-middle">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>Найменування</th>
+                            <th style="width:60px">Кат.</th>
+                            <th style="width:80px" class="text-end">К-сть</th>
+                            <th style="width:90px" class="text-end">Ціна</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in unit_items %}
+                        <tr>
+                            <td>
+                                {{ item.item_name }}
+                                {% if item.is_inventory %}
+                                <span class="badge bg-primary ms-1" style="font-size:.65em">НМ</span>
+                                {% endif %}
+                            </td>
+                            <td><span class="badge bg-secondary">{{ item.category }}</span></td>
+                            <td class="text-end">{{ item.quantity }} {{ item.unit_of_measure }}</td>
+                            <td class="text-end text-muted small">{{ "%.2f"|format(item.price) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="text-muted text-center py-4 small">Майна не закріплено</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{# ══════════════════════════════════════
+   МОДАЛКА: ПРИЗНАЧИТИ ВІДПОВІДАЛЬНУ ОСОБУ
+══════════════════════════════════════ #}
+<div class="modal fade" id="modalResp" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalRespTitle">Призначити відповідальну особу</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3" id="personnelSelectBlock">
+                    <label class="form-label">Військовослужбовець <span class="text-danger">*</span></label>
+                    <input type="text" id="personnelSearch" class="form-control mb-2"
+                           placeholder="Пошук за прізвищем або ім'ям...">
+                    <div id="personnelList" style="max-height:260px;overflow-y:auto;border:1px solid #dee2e6;border-radius:.375rem">
+                        {% for p in personnel_list %}
+                        <div class="personnel-option px-3 py-2 d-flex align-items-center gap-2"
+                             data-pid="{{ p.id }}"
+                             data-name="{{ p.last_name }} {{ p.first_name }} {{ p.middle_name or '' }}"
+                             data-rank="{{ p.rank or '' }}"
+                             data-position="{{ p.position or '' }}"
+                             style="cursor:pointer;border-bottom:1px solid #f0f0f0">
+                            <div class="flex-grow-1">
+                                <span class="text-muted small">{{ p.rank or '' }}</span>
+                                <strong class="ms-1">{{ p.last_name }} {{ p.first_name }} {{ p.middle_name or '' }}</strong>
+                                {% if p.unit_name %}
+                                <span class="badge bg-light text-dark border ms-1" style="font-weight:normal;font-size:.75em">{{ p.unit_name }}</span>
+                                {% endif %}
+                                {% if p.position %}
+                                <div class="text-muted small">{{ p.position }}</div>
+                                {% endif %}
+                            </div>
+                            <i class="bi bi-check-circle-fill text-primary d-none check-icon"></i>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div id="selectedPersonInfo" class="mt-2 p-2 bg-light rounded d-none">
+                        <i class="bi bi-person-check text-success me-1"></i>
+                        <span id="selectedPersonText"></span>
+                    </div>
+                </div>
+
+                {# Блок зміни ролі (видимий і при добавленні, і при редагуванні) #}
+                <div class="mb-0">
+                    <label class="form-label">Роль</label>
+                    <select id="respRole" class="form-select">
+                        {% for val, label in role_labels.items() %}
+                        <option value="{{ val }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-primary" id="btnSaveResp">Зберегти</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const unitId = {{ unit.id }};
+const respModal = new bootstrap.Modal(document.getElementById('modalResp'));
+let editRid = null;
+let selectedPid = null;
+
+// ── Пошук по списку о/с
+document.getElementById('personnelSearch').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('.personnel-option').forEach(el => {
+        const name = el.dataset.name.toLowerCase();
+        el.style.display = name.includes(q) ? '' : 'none';
+    });
+});
+
+// ── Вибір військовослужбовця
+document.querySelectorAll('.personnel-option').forEach(el => {
+    el.addEventListener('click', function() {
+        document.querySelectorAll('.personnel-option').forEach(e => {
+            e.classList.remove('bg-primary', 'bg-opacity-10');
+            e.querySelector('.check-icon').classList.add('d-none');
+        });
+        this.classList.add('bg-primary', 'bg-opacity-10');
+        this.querySelector('.check-icon').classList.remove('d-none');
+        selectedPid = parseInt(this.dataset.pid);
+        document.getElementById('selectedPersonText').textContent =
+            `${this.dataset.rank} ${this.dataset.name}${this.dataset.position ? ' — ' + this.dataset.position : ''}`;
+        document.getElementById('selectedPersonInfo').classList.remove('d-none');
+    });
+});
+
+// ── Відкрити "Призначити"
+document.getElementById('btnAddResp').addEventListener('click', () => {
+    editRid = null;
+    selectedPid = null;
+    document.getElementById('modalRespTitle').textContent = 'Призначити відповідальну особу';
+    document.getElementById('personnelSelectBlock').style.display = '';
+    document.getElementById('personnelSearch').value = '';
+    document.getElementById('selectedPersonInfo').classList.add('d-none');
+    document.querySelectorAll('.personnel-option').forEach(el => {
+        el.style.display = '';
+        el.classList.remove('bg-primary', 'bg-opacity-10');
+        el.querySelector('.check-icon').classList.add('d-none');
+    });
+    document.getElementById('respRole').value = 'commander';
+    respModal.show();
+});
+
+// ── Відкрити "Змінити роль"
+document.querySelectorAll('.btn-edit-resp').forEach(btn => {
+    btn.addEventListener('click', () => openEditModal(btn));
+});
+
+function openEditModal(btn) {
+    editRid = btn.dataset.rid;
+    document.getElementById('modalRespTitle').textContent = 'Змінити роль';
+    document.getElementById('personnelSelectBlock').style.display = 'none';
+    document.getElementById('respRole').value = btn.dataset.role;
+    respModal.show();
+}
+
+// ── Зберегти
+document.getElementById('btnSaveResp').addEventListener('click', async () => {
+    const fd = new FormData();
+    fd.append('role_name', document.getElementById('respRole').value);
+
+    let url;
+    if (editRid) {
+        url = `/settings/units/responsible/${editRid}/edit`;
+    } else {
+        if (!selectedPid) {
+            showToast('Оберіть військовослужбовця', 'danger');
+            return;
+        }
+        fd.append('personnel_id', selectedPid);
+        url = `/settings/units/${unitId}/responsible/add`;
+    }
+
+    const res  = await fetch(url, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!data.ok) { showToast(data.error || 'Помилка', 'danger'); return; }
+
+    if (editRid) {
+        const row = document.querySelector(`tr[data-rid="${editRid}"]`);
+        if (row) {
+            row.querySelector('.role-label').textContent = data.role_label;
+            row.querySelector('.btn-edit-resp').dataset.role =
+                document.getElementById('respRole').value;
+        }
+    } else {
+        // Видаляємо рядок "немає"
+        const noRow = document.getElementById('noRespRow');
+        if (noRow) noRow.remove();
+
+        const tbody = document.querySelector('#respTable tbody');
+        const tr = document.createElement('tr');
+        tr.dataset.rid = data.id;
+        tr.innerHTML = `
+            <td><span class="role-label badge bg-light text-dark border fw-normal">${data.role_label}</span></td>
+            <td>
+                <div>
+                    <span class="text-muted small">${data.rank}</span>
+                    <a href="/personnel/${data.personnel_id}/card" class="fw-medium text-decoration-none ms-1">${data.full_name}</a>
+                </div>
+                ${data.position ? `<div class="text-muted small">${data.position}</div>` : ''}
+            </td>
+            <td class="small">
+                ${data.phone
+                    ? `<a href="tel:${data.phone}" class="text-decoration-none"><i class="bi bi-phone me-1 text-muted"></i>${data.phone}</a>`
+                    : '<span class="text-muted fst-italic">—</span>'}
+            </td>
+            <td><span class="badge bg-success">Активний</span></td>
+            <td class="text-end">
+                <div class="d-flex gap-1 justify-content-end">
+                    <button class="btn btn-sm btn-outline-secondary btn-edit-resp"
+                            data-rid="${data.id}" data-role="${data.role_name}"
+                            title="Змінити роль" onclick="openEditModal(this)">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary btn-toggle-resp"
+                            data-rid="${data.id}" data-active="1"
+                            title="Деактивувати" onclick="toggleResp(this)">
+                        <i class="bi bi-pause-circle"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger btn-del-resp"
+                            data-rid="${data.id}" data-name="${data.full_name}"
+                            title="Видалити" onclick="delResp(this)">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </td>`;
+        tbody.appendChild(tr);
+    }
+
+    respModal.hide();
+    showToast('Збережено', 'success');
+});
+
+// ── Деактивувати / активувати
+function toggleResp(btn) {
+    const rid = btn.dataset.rid;
+    fetch(`/settings/units/responsible/${rid}/toggle`, { method: 'POST' })
+        .then(r => r.json()).then(data => {
+            if (!data.ok) { showToast(data.error, 'danger'); return; }
+            const row = btn.closest('tr');
+            const badge = row.querySelector('td:nth-child(4) .badge');
+            if (data.is_active) {
+                badge.className = 'badge bg-success'; badge.textContent = 'Активний';
+                row.classList.remove('text-muted');
+                btn.title = 'Деактивувати';
+                btn.innerHTML = '<i class="bi bi-pause-circle"></i>';
+            } else {
+                badge.className = 'badge bg-secondary'; badge.textContent = 'Неактивний';
+                row.classList.add('text-muted');
+                btn.title = 'Активувати';
+                btn.innerHTML = '<i class="bi bi-play-circle"></i>';
+            }
+            btn.dataset.active = data.is_active ? '1' : '0';
+        });
+}
+
+// ── Видалити
+function delResp(btn) {
+    if (!confirm(`Зняти призначення для "${btn.dataset.name}"?`)) return;
+    fetch(`/settings/units/responsible/${btn.dataset.rid}/delete`, { method: 'POST' })
+        .then(r => r.json()).then(data => {
+            if (data.ok) { btn.closest('tr').remove(); showToast('Видалено', 'success'); }
+            else showToast(data.error, 'danger');
+        });
+}
+
+// ── Обробники для існуючих кнопок
+document.querySelectorAll('.btn-toggle-resp').forEach(btn => btn.addEventListener('click', () => toggleResp(btn)));
+document.querySelectorAll('.btn-del-resp').forEach(btn => btn.addEventListener('click', () => delResp(btn)));
+</script>
+{% endblock %}

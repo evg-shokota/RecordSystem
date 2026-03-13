@@ -1,0 +1,495 @@
+{% extends "base.html" %}
+{% block title %}Зворотній зв'язок{% endblock %}
+{% block page_title %}Зворотній зв'язок{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('feedback.claude_report') }}" class="btn btn-sm btn-outline-warning"
+   title="Текстовий файл для Клода — активні записи з деревом коментарів">
+    <i class="bi bi-robot me-1"></i>Звіт для Клода
+</a>
+<a href="{{ url_for('feedback.export') }}" class="btn btn-sm btn-outline-success">
+    <i class="bi bi-download me-1"></i>Вигрузити .txt
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Пошук + Фільтри ── #}
+<div class="d-flex flex-column gap-2 mb-3">
+    <div class="position-relative">
+        <i class="bi bi-search position-absolute text-muted" style="left:.75rem;top:50%;transform:translateY(-50%)"></i>
+        <input type="text" id="fbSearch" class="form-control form-control-sm ps-4"
+               placeholder="Пошук за темою, описом, автором...">
+    </div>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+        <button class="btn btn-sm btn-outline-secondary active" data-filter="" data-status="">Всі</button>
+        {% for key, label in categories.items() %}
+        <button class="btn btn-sm btn-outline-secondary" data-filter="{{ key }}" data-status="">{{ label }}</button>
+        {% endfor %}
+        <span class="text-muted">|</span>
+        {% for skey, (slabel, scolor) in statuses.items() %}
+        <button class="btn btn-sm btn-outline-{{ scolor }}" data-filter="" data-status="{{ skey }}">{{ slabel }}</button>
+        {% endfor %}
+        <span class="ms-auto text-muted small" id="fbCount"></span>
+    </div>
+</div>
+
+{# ── Список (компактні рядки) ── #}
+{% if items %}
+<script>
+const FB_DATA = {
+{% for item in items %}
+    {{ item.id }}: {item: {{ item | tojson }}, comments: {{ comments.get(item.id, []) | tojson }}},
+{% endfor %}
+};
+</script>
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0 align-middle" id="fbTable">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:32px" class="text-center text-muted small">#</th>
+                    <th>Тема</th>
+                    <th style="width:100px">Категорія</th>
+                    <th style="width:90px">Пріоритет</th>
+                    <th style="width:110px">Статус</th>
+                    <th style="width:130px" class="text-muted small">Від</th>
+                    <th style="width:90px" class="text-muted small text-end">Дата</th>
+                    <th style="width:50px"></th>
+                </tr>
+            </thead>
+            <tbody id="fbTableBody">
+            {% for item in items %}
+            {% set stat_label, stat_color = statuses.get(item.status, ('Нове', 'primary')) %}
+            {% set item_comments = comments.get(item.id, []) %}
+            {% set comment_count = item_comments | length %}
+            <tr class="fb-item fb-row"
+                data-category="{{ item.category }}"
+                data-status="{{ item.status }}"
+                data-search="{{ (item.title ~ ' ' ~ item.body ~ ' ' ~ item.username) | lower | e }}"
+                id="fbrow-{{ item.id }}"
+                style="cursor:pointer"
+                onclick="openThreadById({{ item.id }})">
+                <td class="text-muted small text-center">{{ item.id }}</td>
+                <td>
+                    <span class="fw-medium">{{ item.title }}</span>
+                    {% if item.body %}
+                    <span class="text-muted small ms-2 d-none d-md-inline">{{ item.body[:60] }}{% if item.body|length > 60 %}…{% endif %}</span>
+                    {% endif %}
+                    {% if comment_count > 0 %}
+                    <span class="badge bg-secondary-subtle text-secondary ms-1 small">
+                        <i class="bi bi-chat me-1"></i>{{ comment_count }}
+                    </span>
+                    {% endif %}
+                </td>
+                <td><span class="small text-muted">{{ categories.get(item.category, item.category) }}</span></td>
+                <td>
+                    {% if item.priority == 'high' %}
+                    <span class="badge bg-danger-subtle text-danger small">Високий</span>
+                    {% elif item.priority == 'normal' %}
+                    <span class="text-muted small">Норм.</span>
+                    {% else %}
+                    <span class="text-muted small">Низький</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <span class="badge bg-{{ stat_color }}-subtle text-{{ stat_color }} small fb-status-badge"
+                          id="fbbadge-{{ item.id }}">{{ stat_label }}</span>
+                </td>
+                <td class="text-muted small">{{ item.username or '—' }}</td>
+                <td class="text-muted small text-end">{{ item.created_at[:10] }}</td>
+                <td class="text-end" onclick="event.stopPropagation()">
+                    <button class="btn btn-sm btn-outline-danger py-0 px-1"
+                            onclick="deleteFb({{ item.id }})" title="Видалити">
+                        <i class="bi bi-trash" style="font-size:.75rem"></i>
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+    <i class="bi bi-inbox fs-1 d-block mb-2 opacity-25"></i>
+    Повідомлень поки немає
+</div>
+{% endif %}
+
+
+{# ── Модаль: повна гілка ── #}
+<div class="modal fade" id="threadModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header pb-2">
+                <div class="flex-grow-1 me-3">
+                    <h5 class="modal-title mb-1" id="threadTitle"></h5>
+                    <div class="d-flex gap-2 flex-wrap align-items-center" id="threadMeta"></div>
+                </div>
+                <div class="d-flex gap-1 align-items-center flex-shrink-0">
+                    <select class="form-select form-select-sm" style="width:130px"
+                            id="threadStatusSel"
+                            onchange="openResolveModal(null, this.value, this)">
+                        {% for skey, (slabel, scolor) in statuses.items() %}
+                        <option value="{{ skey }}">{{ slabel }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+            </div>
+            <div class="modal-body py-2">
+                {# Опис #}
+                <div id="threadBody" class="text-muted small mb-3" style="white-space:pre-wrap;display:none"></div>
+
+                {# Нотатка вирішення #}
+                <div id="threadResolved" class="alert alert-success py-2 small mb-3" style="display:none"></div>
+
+                {# Дерево коментарів #}
+                <div id="threadComments"></div>
+
+                {# Форма нового коментаря #}
+                <div class="d-flex gap-2 align-items-start mt-3 pt-2 border-top">
+                    <i class="bi bi-chat-right-dots text-muted mt-2" style="flex-shrink:0"></i>
+                    <div class="flex-grow-1">
+                        <div id="threadReplyLabel" class="text-muted small mb-1" style="display:none"></div>
+                        <textarea id="threadCommentBody" class="form-control form-control-sm" rows="2"
+                                  placeholder="Додати коментар... (Enter — надіслати, Shift+Enter — рядок)"
+                                  style="resize:none"></textarea>
+                    </div>
+                    <div class="d-flex flex-column gap-1">
+                        <button class="btn btn-sm btn-primary py-0 px-2" onclick="threadSubmitComment()" title="Надіслати">
+                            <i class="bi bi-send"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary py-0 px-2" id="threadCancelReply"
+                                style="display:none" onclick="threadCancelReply()" title="Скасувати">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Модаль: нотатка при вирішенні ── #}
+<div class="modal fade" id="resolveModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="resolveModalTitle">Позначити як виконане</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label fw-medium">Нотатка (необов'язково)</label>
+                <textarea id="resolveNote" class="form-control" rows="3"
+                          placeholder="Що зроблено, де виправлено, версія..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"
+                        id="resolveCancelBtn">Скасувати</button>
+                <button type="button" class="btn btn-primary" onclick="confirmResolve()">
+                    <i class="bi bi-check-lg me-1"></i>Зберегти
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STATUSES    = {{ statuses | tojson }};
+const CATEGORIES  = {{ categories | tojson }};
+const PRIORITIES  = { low:'Низький', normal:'Нормальний', high:'Високий' };
+
+// ══════════════════════════════════════════════════════════════
+//  Пошук + фільтри
+// ══════════════════════════════════════════════════════════════
+let _activeFilter = '', _activeStatus = '';
+
+function applyFilters() {
+    const q = document.getElementById('fbSearch').value.trim().toLowerCase();
+    let visible = 0;
+    document.querySelectorAll('.fb-row').forEach(tr => {
+        const catOk  = !_activeFilter || tr.dataset.category === _activeFilter;
+        const statOk = !_activeStatus || tr.dataset.status   === _activeStatus;
+        const searchOk = !q || tr.dataset.search.includes(q);
+        const show = catOk && statOk && searchOk;
+        tr.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+    const cnt = document.getElementById('fbCount');
+    if (cnt) cnt.textContent = visible + ' записів';
+}
+
+document.getElementById('fbSearch')?.addEventListener('input', applyFilters);
+
+document.querySelectorAll('[data-filter], [data-status]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-filter], [data-status]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        _activeFilter = btn.dataset.filter;
+        _activeStatus = btn.dataset.status;
+        applyFilters();
+    });
+});
+
+// Початковий лічильник
+applyFilters();
+
+// ══════════════════════════════════════════════════════════════
+//  Модаль — відкрити гілку
+// ══════════════════════════════════════════════════════════════
+let _threadFid = null, _threadParentId = null;
+const _threadModal   = new bootstrap.Modal(document.getElementById('threadModal'));
+
+function _escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function _buildTree(flat, parentId = null) {
+    return flat
+        .filter(c => (c.parent_id ?? null) === parentId)
+        .map(c => ({...c, children: _buildTree(flat, c.id)}));
+}
+
+function _renderTree(nodes, fid, depth = 0) {
+    if (!nodes.length) return '';
+    return nodes.map(c => {
+        const indent = depth > 0 ? 'ms-4 ps-2 border-start border-2 border-light' : '';
+        return `
+        <div class="d-flex gap-2 align-items-start mb-2 ${indent}" id="fbc-${c.id}">
+            <i class="bi bi-person-circle text-muted mt-1 flex-shrink-0" style="font-size:.9rem"></i>
+            <div class="flex-grow-1">
+                <div class="d-flex align-items-center gap-1 flex-wrap">
+                    <span class="fw-medium small">${_escHtml(c.username || '—')}</span>
+                    <span class="text-muted" style="font-size:.72rem">${c.created_at.slice(0,16)}</span>
+                    <button class="btn btn-link btn-sm p-0 text-muted ms-1" style="font-size:.72rem"
+                            onclick="threadStartReply(${c.id}, '${_escHtml(c.username || '')}')">
+                        <i class="bi bi-reply"></i> відповісти
+                    </button>
+                    <button class="btn btn-link btn-sm p-0 text-muted" style="font-size:.72rem"
+                            onclick="threadDeleteComment(${fid}, ${c.id})">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+                <div class="small" style="white-space:pre-wrap">${_escHtml(c.body)}</div>
+                <div id="fbcchildren-${c.id}">${_renderTree(c.children, fid, depth + 1)}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function openThreadById(id) {
+    const d = (typeof FB_DATA !== 'undefined') ? FB_DATA[id] : null;
+    if (!d) return;
+    openThread(d.item, d.comments);
+}
+
+function openThread(item, flatComments) {
+    _threadFid = item.id;
+    _threadParentId = null;
+
+    // Заголовок
+    document.getElementById('threadTitle').textContent = item.title;
+
+    // Мета
+    const [statLabel, statColor] = STATUSES[item.status] || ['?','secondary'];
+    const catLabel = CATEGORIES[item.category] || item.category;
+    const priLabel = PRIORITIES[item.priority] || item.priority;
+    document.getElementById('threadMeta').innerHTML = `
+        <span class="badge bg-${statColor}-subtle text-${statColor} small" id="threadBadge">${_escHtml(statLabel)}</span>
+        <span class="text-muted small">${_escHtml(catLabel)}</span>
+        ${item.priority === 'high' ? '<span class="badge bg-danger-subtle text-danger small">Високий пріоритет</span>' : `<span class="text-muted small">${_escHtml(priLabel)}</span>`}
+        <span class="text-muted small"><i class="bi bi-person me-1"></i>${_escHtml(item.username || '—')}</span>
+        <span class="text-muted small"><i class="bi bi-clock me-1"></i>${item.created_at.slice(0,16)}</span>
+        ${item.page_url ? `<span class="text-muted small font-monospace">${_escHtml(item.page_url)}</span>` : ''}`;
+
+    // Sync select
+    const sel = document.getElementById('threadStatusSel');
+    sel.value = item.status;
+    sel.dataset.current = item.status;
+
+    // Опис
+    const bodyEl = document.getElementById('threadBody');
+    if (item.body) { bodyEl.textContent = item.body; bodyEl.style.display = ''; }
+    else bodyEl.style.display = 'none';
+
+    // Нотатка вирішення
+    const resolvedEl = document.getElementById('threadResolved');
+    if (item.resolved_by) {
+        resolvedEl.innerHTML = `<i class="bi bi-check2-circle me-1"></i><strong>${_escHtml(statLabel)}</strong> — ${_escHtml(item.resolved_by)}` +
+            (item.resolved_at ? ` · ${item.resolved_at.slice(0,16)}` : '') +
+            (item.resolve_note ? `: <em>${_escHtml(item.resolve_note)}</em>` : '');
+        resolvedEl.style.display = '';
+    } else resolvedEl.style.display = 'none';
+
+    // Дерево коментарів
+    const tree = _buildTree(flatComments);
+    document.getElementById('threadComments').innerHTML = _renderTree(tree, item.id);
+
+    // Скинути форму
+    threadCancelReply();
+    document.getElementById('threadCommentBody').value = '';
+
+    _threadModal.show();
+}
+
+// ── Відповідь у модалі ────────────────────────────────────────
+function threadStartReply(parentId, username) {
+    _threadParentId = parentId;
+    const label = document.getElementById('threadReplyLabel');
+    label.textContent = `↳ Відповідь на ${username}`;
+    label.style.display = '';
+    document.getElementById('threadCancelReply').style.display = '';
+    document.getElementById('threadCommentBody').placeholder = `Відповідь на ${username}...`;
+    document.getElementById('threadCommentBody').focus();
+}
+
+function threadCancelReply() {
+    _threadParentId = null;
+    document.getElementById('threadReplyLabel').style.display = 'none';
+    document.getElementById('threadCancelReply').style.display = 'none';
+    document.getElementById('threadCommentBody').placeholder = 'Додати коментар... (Enter — надіслати, Shift+Enter — рядок)';
+}
+
+async function threadSubmitComment() {
+    const ta   = document.getElementById('threadCommentBody');
+    const body = ta.value.trim();
+    if (!body || !_threadFid) return;
+
+    const r = await fetch(`/feedback/${_threadFid}/comment/add`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({body, parent_id: _threadParentId})
+    });
+    const d = await r.json();
+    if (!d.ok) { showToast(d.error || 'Помилка', 'danger'); return; }
+
+    ta.value = '';
+    const c = d.comment;
+    const html = _renderTree([{...c, children:[]}], _threadFid, _threadParentId ? 1 : 0);
+
+    if (_threadParentId) {
+        const ch = document.getElementById(`fbcchildren-${_threadParentId}`);
+        if (ch) { ch.insertAdjacentHTML('beforeend', html); }
+    } else {
+        document.getElementById('threadComments').insertAdjacentHTML('beforeend', html);
+    }
+
+    // Оновити лічильник у рядку таблиці
+    _updateRowCommentCount(_threadFid, 1);
+    threadCancelReply();
+}
+
+async function threadDeleteComment(fid, cid) {
+    const r = await fetch(`/feedback/${fid}/comment/${cid}/delete`, {method:'POST'});
+    if ((await r.json()).ok) {
+        document.getElementById(`fbc-${cid}`)?.remove();
+        _updateRowCommentCount(fid, -1);
+    } else showToast('Помилка', 'danger');
+}
+
+function _updateRowCommentCount(fid, delta) {
+    const row = document.getElementById(`fbrow-${fid}`);
+    if (!row) return;
+    let badge = row.querySelector('.comment-count-badge');
+    if (!badge) {
+        // Знайти або створити
+        const titleCell = row.querySelector('td:nth-child(2)');
+        if (!titleCell) return;
+        badge = document.createElement('span');
+        badge.className = 'badge bg-secondary-subtle text-secondary ms-1 small comment-count-badge';
+        titleCell.querySelector('.fw-medium').insertAdjacentElement('afterend', badge);
+    }
+    const cur = parseInt(badge.dataset.count || badge.textContent.replace(/\D/g,'') || '0');
+    const next = Math.max(0, cur + delta);
+    badge.dataset.count = next;
+    badge.innerHTML = `<i class="bi bi-chat me-1"></i>${next}`;
+    badge.style.display = next > 0 ? '' : 'none';
+}
+
+// Enter надсилає
+document.getElementById('threadCommentBody')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); threadSubmitComment(); }
+});
+
+// ══════════════════════════════════════════════════════════════
+//  Зміна статусу
+// ══════════════════════════════════════════════════════════════
+let _resolveId = null, _resolveStatus = null, _resolveSelectEl = null;
+const _resolveModal = new bootstrap.Modal(document.getElementById('resolveModal'));
+
+function openResolveModal(id, status, selectEl) {
+    // id може бути null — тоді беремо з _threadFid
+    const fid = id ?? _threadFid;
+    if (status === 'new' || status === 'in_progress' || status === 'rework') {
+        setStatus(fid, status, '', selectEl); return;
+    }
+    _resolveId = fid; _resolveStatus = status; _resolveSelectEl = selectEl;
+    document.getElementById('resolveModalTitle').textContent =
+        status === 'done' ? 'Позначити як виконане' : 'Відхилити запис';
+    document.getElementById('resolveNote').value = '';
+    document.getElementById('resolveCancelBtn').onclick = () => {
+        if (_resolveSelectEl) _resolveSelectEl.value = _resolveSelectEl.dataset.current;
+        _resolveModal.hide();
+    };
+    _resolveModal.show();
+}
+
+async function confirmResolve() {
+    await setStatus(_resolveId, _resolveStatus,
+        document.getElementById('resolveNote').value.trim(), _resolveSelectEl);
+    _resolveModal.hide();
+}
+
+async function setStatus(id, status, note, selectEl) {
+    const r = await fetch(`/feedback/${id}/status`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({status, note})
+    });
+    const d = await r.json();
+    if (!d.ok) { showToast(d.error || 'Помилка', 'danger'); return; }
+
+    if (selectEl) { selectEl.dataset.current = status; }
+
+    const [label, color] = STATUSES[status] || ['?','secondary'];
+
+    // Оновити badge в рядку таблиці
+    const rowBadge = document.getElementById(`fbbadge-${id}`);
+    if (rowBadge) {
+        rowBadge.className = `badge bg-${color}-subtle text-${color} small fb-status-badge`;
+        rowBadge.textContent = label;
+    }
+    // Оновити badge в модалі
+    const threadBadge = document.getElementById('threadBadge');
+    if (threadBadge) {
+        threadBadge.className = `badge bg-${color}-subtle text-${color} small`;
+        threadBadge.textContent = label;
+    }
+    // Оновити data-status рядка
+    const row = document.getElementById(`fbrow-${id}`);
+    if (row) row.dataset.status = status;
+
+    // Показати нотатку вирішення в модалі якщо є
+    const resolvedEl = document.getElementById('threadResolved');
+    if (resolvedEl && (status === 'done' || status === 'rejected') && note) {
+        resolvedEl.innerHTML = `<i class="bi bi-check2-circle me-1"></i><strong>${_escHtml(label)}</strong>: <em>${_escHtml(note)}</em>`;
+        resolvedEl.style.display = '';
+    }
+
+    applyFilters();
+}
+
+async function deleteFb(id) {
+    if (!confirm('Видалити повідомлення разом з коментарями?')) return;
+    const r = await fetch(`/feedback/${id}/delete`, {method: 'POST'});
+    if ((await r.json()).ok) {
+        document.getElementById(`fbrow-${id}`)?.remove();
+        if (_threadFid === id) _threadModal.hide();
+        applyFilters();
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Інвентаризації — {{ unit_name }}{% endblock %}
+{% block page_title %}Інвентаризації складу{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('warehouse.inventory_new') }}" class="btn btn-sm btn-primary">
+    <i class="bi bi-plus-lg me-1"></i>Нова інвентаризація
+</a>
+<a href="{{ url_for('warehouse.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Залишки
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        {% if rows %}
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:40px">№</th>
+                        <th style="width:120px">Дата</th>
+                        <th>Примітка</th>
+                        <th>Члени комісії</th>
+                        <th style="width:100px">Статус</th>
+                        <th style="width:130px">Створив</th>
+                        <th style="width:150px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rows %}
+                    <tr>
+                        <td class="text-muted">{{ loop.index }}</td>
+                        <td>{{ r.date }}</td>
+                        <td>{{ r.notes or '—' }}</td>
+                        <td class="text-muted small">{{ r.commission_members or '—' }}</td>
+                        <td>
+                            {% if r.status == 'done' %}
+                            <span class="badge bg-success">Проведено</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark">Чернетка</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted small">{{ r.created_by_name or '—' }}</td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <a href="{{ url_for('warehouse.inventory_view', inv_id=r.id) }}"
+                                   class="btn btn-sm btn-outline-primary py-0">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                <a href="{{ url_for('warehouse.inventory_print', inv_id=r.id) }}"
+                                   class="btn btn-sm btn-outline-secondary py-0" target="_blank">
+                                    <i class="bi bi-printer"></i>
+                                </a>
+                                <a href="{{ url_for('warehouse.inventory_export_xlsx', inv_id=r.id) }}"
+                                   class="btn btn-sm btn-outline-success py-0">
+                                    <i class="bi bi-file-earmark-excel"></i>
+                                </a>
+                                <form method="POST"
+                                      action="{{ url_for('warehouse.inventory_delete', inv_id=r.id) }}"
+                                      onsubmit="return confirm('Видалити інвентаризацію?')">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger py-0">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-clipboard-x fs-1 d-block mb-2"></i>
+            Інвентаризацій ще не проводилось —
+            <a href="{{ url_for('warehouse.inventory_new') }}">провести першу</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

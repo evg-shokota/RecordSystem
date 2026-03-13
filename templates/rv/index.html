@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Роздавальні відомості — {{ unit_name }}{% endblock %}
+{% block page_title %}Роздавальні відомості{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('rv.new') }}" class="btn btn-sm btn-primary">
+    <i class="bi bi-plus-lg me-1"></i>Нова РВ
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# Фільтри #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <form method="GET" class="d-flex gap-2 flex-wrap align-items-end">
+            <div>
+                <label class="form-label form-label-sm mb-1">Статус</label>
+                <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="" {{ 'selected' if not status_filter }}>Всі</option>
+                    {% for k, v in status_labels.items() %}
+                    <option value="{{ k }}" {{ 'selected' if status_filter == k }}>{{ v }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="form-label form-label-sm mb-1">Пошук</label>
+                <div class="input-group input-group-sm">
+                    <input type="text" name="q" class="form-control" value="{{ search }}"
+                           placeholder="номер, підрозділ, прізвище, майно">
+                    <button type="submit" class="btn btn-outline-secondary">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </div>
+            </div>
+            {% if status_filter or search %}
+            <a href="{{ url_for('rv.index') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-x-lg"></i>
+            </a>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        {% if rows %}
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:140px">Номер</th>
+                        <th style="width:110px">Дата</th>
+                        <th>Підрозділ</th>
+                        <th style="width:120px">Сума, грн</th>
+                        <th style="width:110px">Статус</th>
+                        <th style="width:60px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rows %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('rv.view', sid=r.id) }}" class="fw-medium">
+                                {% if r.status == 'draft' %}
+                                <span class="text-warning">Чернетка</span>
+                                {% else %}
+                                {{ r.number }}
+                                {% endif %}
+                            </a>
+                        </td>
+                        <td class="text-muted">{{ r.doc_date or r.created_at[:10] }}</td>
+                        <td>{{ r.unit_name or '—' }}</td>
+                        <td class="text-end">{{ "%.2f"|format(r.total_sum) }}</td>
+                        <td>
+                            <span class="badge bg-{{ status_colors.get(r.status, 'secondary') }}">
+                                {{ status_labels.get(r.status, r.status) }}
+                            </span>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('rv.view', sid=r.id) }}"
+                               class="btn btn-sm btn-outline-secondary py-0 px-1">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-list-columns fs-1 d-block mb-2"></i>
+            Роздавальних відомостей немає —
+            <a href="{{ url_for('rv.new') }}">створити першу</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

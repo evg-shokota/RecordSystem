@@ -1,0 +1,19 @@
+# Web framework
+flask>=3.0
+
+# Desktop wrapper (потрібен для збірки .exe)
+pywebview>=5.1
+
+# Excel
+openpyxl>=3.1
+xlsxwriter>=3.2
+
+# Word / PDF
+python-docx>=1.1
+reportlab>=4.2
+
+# Images
+pillow>=10.0
+
+# Security
+bcrypt>=4.2

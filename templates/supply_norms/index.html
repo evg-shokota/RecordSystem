@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Норми видачі — {{ unit_name }}{% endblock %}
+{% block page_title %}Норми видачі майна{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('supply_norms.new') }}" class="btn btn-sm btn-primary">
+    <i class="bi bi-plus-lg me-1"></i>Нова норма
+</a>
+{% endblock %}
+
+{% block content %}
+{% if norms %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Назва норми</th>
+                    <th>Опис</th>
+                    <th style="width:100px" class="text-center">Позицій</th>
+                    <th style="width:120px" class="text-center">Призначено о/с</th>
+                    <th style="width:90px" class="text-center">Активна</th>
+                    <th style="width:100px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for n in norms %}
+                <tr class="{{ 'text-muted' if not n.is_active }}">
+                    <td>
+                        <a href="{{ url_for('supply_norms.edit', norm_id=n.id) }}"
+                           class="fw-medium text-decoration-none">
+                            {{ n.name }}
+                        </a>
+                        {% if not n.is_active %}
+                        <span class="badge bg-secondary ms-1">архів</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-muted small">{{ n.description or '—' }}</td>
+                    <td class="text-center">
+                        <span class="badge bg-light text-dark border">{{ n.items_count }}</span>
+                    </td>
+                    <td class="text-center">
+                        {% if n.assigned_count %}
+                        <span class="badge bg-info text-dark">{{ n.assigned_count }} осіб</span>
+                        {% else %}
+                        <span class="text-muted small">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <button type="button"
+                                class="btn btn-sm {{ 'btn-success' if n.is_active else 'btn-outline-secondary' }} btn-toggle-norm"
+                                data-norm-id="{{ n.id }}"
+                                title="{{ 'Деактивувати' if n.is_active else 'Активувати' }}">
+                            <i class="bi {{ 'bi-check-circle-fill' if n.is_active else 'bi-circle' }}"></i>
+                        </button>
+                    </td>
+                    <td class="text-end">
+                        <a href="{{ url_for('supply_norms.edit', norm_id=n.id) }}"
+                           class="btn btn-sm btn-outline-secondary py-0">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        {% if n.assigned_count == 0 %}
+                        <form method="POST"
+                              action="{{ url_for('supply_norms.delete', norm_id=n.id) }}"
+                              class="d-inline"
+                              onsubmit="return confirm('Видалити норму «{{ n.name }}»?')">
+                            <button type="submit" class="btn btn-sm btn-outline-danger py-0">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+    <i class="bi bi-list-check" style="font-size:3rem"></i>
+    <div class="mt-2">Норм видачі ще немає</div>
+    <a href="{{ url_for('supply_norms.new') }}" class="btn btn-primary mt-3">
+        <i class="bi bi-plus-lg me-1"></i>Створити першу норму
+    </a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.btn-toggle-norm').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const normId = btn.dataset.normId;
+        const resp = await fetch(`/supply-norms/${normId}/toggle`, {method: 'POST'});
+        if (resp.ok) location.reload();
+    });
+});
+</script>
+{% endblock %}

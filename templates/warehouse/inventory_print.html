@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Інвентаризація {{ inv.date }} — {{ unit_name }}</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 11pt;
+            color: #000;
+            margin: 15mm 20mm 15mm 25mm;
+        }
+        h2 { font-size: 13pt; text-align: center; margin-bottom: 4px; }
+        .subtitle { text-align: center; margin-bottom: 12px; font-size: 10pt; color: #444; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #000;
+            padding: 4px 6px;
+            vertical-align: middle;
+        }
+        thead th {
+            background: #f0f0f0;
+            font-weight: bold;
+            text-align: center;
+            font-size: 10pt;
+        }
+        td.num   { text-align: center; }
+        td.right { text-align: right; }
+        td.name  { text-align: left; }
+        .diff-minus { color: #c00; font-weight: bold; }
+        .diff-plus  { color: #080; font-weight: bold; }
+        tfoot td { font-weight: bold; background: #f8f8f8; }
+        .meta { margin-top: 6px; font-size: 10pt; }
+        .signatures {
+            margin-top: 30px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 10pt;
+        }
+        .sign-block { width: 45%; }
+        .sign-line { border-bottom: 1px solid #000; margin: 20px 0 4px; }
+        @media print {
+            body { margin: 10mm 15mm 10mm 20mm; }
+            .no-print { display: none; }
+            @page { size: A4 landscape; margin: 10mm; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="no-print" style="background:#ffe;padding:8px;margin-bottom:12px;border:1px solid #ccc;">
+    <strong>Режим друку.</strong>
+    <button onclick="window.print()" style="margin-left:10px;">🖨 Друкувати</button>
+    <button onclick="window.close()" style="margin-left:6px;">Закрити</button>
+</div>
+
+<h2>ВІДОМІСТЬ НАЯВНОСТІ МАТЕРІАЛЬНИХ ЦІННОСТЕЙ</h2>
+<div class="subtitle">
+    Військова частина {{ unit_name }} &nbsp;|&nbsp; Дата: {{ inv.date }}
+</div>
+
+{% if inv.commission_members %}
+<div class="meta">Члени комісії: {{ inv.commission_members }}</div>
+{% endif %}
+{% if inv.notes %}
+<div class="meta">Примітка: {{ inv.notes }}</div>
+{% endif %}
+
+<table>
+    <thead>
+        <tr>
+            <th style="width:35px">№</th>
+            <th>Найменування матеріальних цінностей</th>
+            <th style="width:60px">Кат.</th>
+            <th style="width:50px">Од.</th>
+            <th style="width:90px">Ціна, грн</th>
+            <th style="width:90px">По обліку</th>
+            <th style="width:90px">Фактично</th>
+            <th style="width:90px">Різниця</th>
+            <th style="width:110px">Сума факт., грн</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in items %}
+        {% set diff = r.qty_actual - r.qty_expected %}
+        <tr>
+            <td class="num">{{ loop.index }}</td>
+            <td class="name">{{ r.item_name_snapshot }}</td>
+            <td class="num">{{ r.category }}</td>
+            <td class="num">{{ r.unit_of_measure }}</td>
+            <td class="right">{{ "%.2f"|format(r.price) }}</td>
+            <td class="right">{{ r.qty_expected }}</td>
+            <td class="right"><strong>{{ r.qty_actual }}</strong></td>
+            <td class="right
+                {% if diff < 0 %}diff-minus{% elif diff > 0 %}diff-plus{% endif %}">
+                {% if diff == 0 %}—
+                {% elif diff > 0 %}+{{ diff }}
+                {% else %}{{ diff }}
+                {% endif %}
+            </td>
+            <td class="right">{{ "%.2f"|format(r.qty_actual * r.price) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+    <tfoot>
+        <tr>
+            <td colspan="5" style="text-align:right">Разом:</td>
+            <td class="right">{{ "%.2f"|format(total_expected) }}</td>
+            <td class="right">{{ "%.2f"|format(total_actual) }}</td>
+            <td class="right
+                {% set td = total_actual - total_expected %}
+                {% if td < 0 %}diff-minus{% elif td > 0 %}diff-plus{% endif %}">
+                {% set td2 = total_actual - total_expected %}
+                {% if td2 == 0 %}—
+                {% elif td2 > 0 %}+{{ "%.2f"|format(td2) }}
+                {% else %}{{ "%.2f"|format(td2) }}
+                {% endif %}
+            </td>
+            <td class="right">{{ "%.2f"|format(total_actual) }} грн</td>
+        </tr>
+    </tfoot>
+</table>
+
+<div class="signatures">
+    <div class="sign-block">
+        <div>Матеріально-відповідальна особа:</div>
+        <div class="sign-line"></div>
+        <div style="font-size:9pt;color:#555">(підпис, прізвище)</div>
+    </div>
+    <div class="sign-block">
+        <div>Голова комісії:</div>
+        <div class="sign-line"></div>
+        <div style="font-size:9pt;color:#555">(підпис, прізвище)</div>
+    </div>
+</div>
+
+</body>
+</html>

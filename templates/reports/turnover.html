@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Оборот майна — {{ unit_name }}{% endblock %}
+{% block page_title %}Оборот майна за період{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-sm btn-outline-secondary" onclick="window.print()">
+    <i class="bi bi-printer me-1"></i>Друк
+</button>
+<a href="{{ url_for('reports.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>До звітів
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Фільтри ── #}
+<form method="GET" class="card border-0 shadow-sm mb-3 no-print">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label form-label-sm mb-1">Дата з</label>
+                <input type="date" name="date_from" class="form-control form-control-sm"
+                       value="{{ date_from }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label form-label-sm mb-1">Дата по</label>
+                <input type="date" name="date_to" class="form-control form-control-sm"
+                       value="{{ date_to }}">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100">
+                    <i class="bi bi-funnel me-1"></i>Застосувати
+                </button>
+            </div>
+        </div>
+    </div>
+</form>
+
+{# ── Заголовок для друку ── #}
+<div class="d-none d-print-block mb-3">
+    <h4 class="text-center">{{ unit_name }} — Оборот майна</h4>
+    <p class="text-center text-muted">Період: {{ date_from }} — {{ date_to }}</p>
+</div>
+
+<div class="row g-3">
+
+    {# ПРИХІД #}
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-success bg-opacity-10 d-flex align-items-center">
+                <i class="bi bi-arrow-down-circle text-success me-2"></i>
+                <strong>Прихід</strong>
+                <span class="ms-auto badge bg-success">{{ "%.2f"|format(income_total) }} грн</span>
+            </div>
+            {% if income_rows %}
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Найменування</th>
+                            <th class="text-center">Кат.</th>
+                            <th class="text-end">К-сть</th>
+                            <th class="text-end">Сума</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in income_rows %}
+                        <tr>
+                            <td class="small">{{ r.item_name }}</td>
+                            <td class="text-center"><span class="badge bg-secondary small">{{ r.category }}</span></td>
+                            <td class="text-end small">{{ r.qty }} {{ r.unit_of_measure }}</td>
+                            <td class="text-end small">{{ "%.2f"|format(r.total_sum or 0) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="card-body text-center text-muted py-3 small">Приходів за цей період немає</div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# ВИДАЧА #}
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-danger bg-opacity-10 d-flex align-items-center">
+                <i class="bi bi-arrow-up-circle text-danger me-2"></i>
+                <strong>Видача</strong>
+                <span class="ms-auto badge bg-danger">{{ "%.2f"|format(issue_total) }} грн</span>
+            </div>
+            {% if issue_rows %}
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Найменування</th>
+                            <th class="text-center">Кат.</th>
+                            <th class="text-end">К-сть</th>
+                            <th class="text-end">Сума</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in issue_rows %}
+                        <tr>
+                            <td class="small">{{ r.item_name }}</td>
+                            <td class="text-center"><span class="badge bg-secondary small">{{ r.category }}</span></td>
+                            <td class="text-end small">{{ r.qty }} {{ r.unit_of_measure }}</td>
+                            <td class="text-end small">{{ "%.2f"|format(r.total_sum or 0) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="card-body text-center text-muted py-3 small">Видач за цей період немає</div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

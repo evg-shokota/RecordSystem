@@ -1,0 +1,586 @@
+{% extends "base.html" %}
+{% block title %}Словник норм — Налаштування{% endblock %}
+{% block page_title %}Словник норм видачі{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('settings.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+<button class="btn btn-sm btn-outline-primary" id="btnAddGroup">
+    <i class="bi bi-folder-plus me-1"></i>Нова група
+</button>
+<button class="btn btn-sm btn-primary" id="btnAddItem" data-bs-toggle="modal" data-bs-target="#modalItem">
+    <i class="bi bi-plus-lg me-1"></i>Нова позиція
+</button>
+{% endblock %}
+
+{% block content %}
+
+<div class="alert alert-info border-0 py-2 mb-3 small">
+    <i class="bi bi-info-circle me-1"></i>
+    Стандартизовані назви та норми видачі (Норма №1, Наказ МОУ №232).
+    Прив'язка фактичних назв — у <a href="{{ url_for('settings.items') }}" class="alert-link">Словнику майна</a>.
+</div>
+
+<div class="row g-3">
+    <!-- Ліва колонка: групи -->
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                <span class="fw-bold small">Групи</span>
+                <span class="badge bg-secondary">{{ groups|length }}</span>
+            </div>
+            <div class="list-group list-group-flush" id="groupList">
+                {% for g in groups %}
+                <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center
+                            group-item {% if loop.first %}active{% endif %}"
+                     data-id="{{ g.id }}" data-name="{{ g.name }}" style="cursor:pointer">
+                    <span class="group-label fw-medium small">{{ g.name }}</span>
+                    <div class="d-flex align-items-center gap-1">
+                        <span class="badge bg-light text-dark border small group-count" id="gc-{{ g.id }}">
+                            {{ items | selectattr('group_id','eq', g.id) | list | length }}
+                        </span>
+                        <button class="btn btn-xs btn-outline-secondary border-0 p-0 px-1 btn-edit-group"
+                                data-id="{{ g.id }}" data-name="{{ g.name }}" title="Перейменувати">
+                            <i class="bi bi-pencil" style="font-size:0.75rem"></i>
+                        </button>
+                        <button class="btn btn-xs btn-outline-danger border-0 p-0 px-1 btn-del-group"
+                                data-id="{{ g.id }}" data-name="{{ g.name }}" title="Видалити">
+                            <i class="bi bi-trash" style="font-size:0.75rem"></i>
+                        </button>
+                    </div>
+                </div>
+                {% else %}
+                <div class="list-group-item text-muted small text-center py-3" id="noGroups">Груп немає</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Права колонка: позиції вибраної групи -->
+    <div class="col-md-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                <span class="fw-bold small" id="groupTitle">
+                    {% if groups %}{{ groups[0].name }}{% else %}Оберіть групу{% endif %}
+                </span>
+                <span class="badge bg-secondary" id="itemCount">
+                    {{ items | selectattr('group_id','eq', groups[0].id if groups else 0) | list | length }}
+                </span>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0 small" id="itemsTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Назва позиції</th>
+                            <th class="text-center" style="width:55px">Од.</th>
+                            <th class="text-center" style="width:80px">Прив'язано</th>
+                            <th class="text-center" style="width:90px">Складові</th>
+                            <th style="width:70px"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemsTbody">
+                        {% set first_gid = groups[0].id if groups else 0 %}
+                        {% for item in items %}
+                        <tr class="item-row" data-id="{{ item.id }}" data-gid="{{ item.group_id }}"
+                            data-unit="{{ item.unit or 'шт' }}"
+                            data-has-components="{{ item.has_components or 0 }}"
+                            {% if item.group_id != first_gid %}style="display:none"{% endif %}>
+                            <td class="align-middle item-name fw-medium">
+                                {{ item.name }}
+                                {% if item.has_components %}
+                                <span class="badge bg-primary ms-1 kit-badge" style="font-size:0.65em">комплект</span>
+                                {% endif %}
+                                {% if item.note_refs %}
+                                <span class="text-muted ms-1" style="font-size:0.7em" title="Примітки: {{ item.note_refs }}">
+                                    <i class="bi bi-info-circle"></i>
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center align-middle text-muted small">{{ item.unit or 'шт' }}</td>
+                            <td class="text-center align-middle">
+                                {% set cnt = linked.get(item.id, 0) %}
+                                {% if cnt > 0 %}
+                                <span class="badge bg-success" title="{{ cnt }} позицій зі словника майна">{{ cnt }}</span>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center align-middle">
+                                <button class="btn btn-sm btn-outline-primary btn-components py-0 px-1"
+                                        data-id="{{ item.id }}" data-name="{{ item.name }}"
+                                        title="Складові комплекту">
+                                    <i class="bi bi-diagram-3"></i>
+                                    {% if item.has_components %}
+                                    <span class="badge bg-primary ms-1 comp-count-badge" style="font-size:0.65em">
+                                        {{ components_count.get(item.id, '') }}
+                                    </span>
+                                    {% endif %}
+                                </button>
+                            </td>
+                            <td class="text-end align-middle">
+                                <button class="btn btn-sm btn-outline-secondary btn-edit-item"
+                                        data-id="{{ item.id }}" data-name="{{ item.name }}"
+                                        data-gid="{{ item.group_id }}" data-unit="{{ item.unit or 'шт' }}"
+                                        title="Редагувати">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger btn-del-item"
+                                        data-id="{{ item.id }}" data-name="{{ item.name }}" title="Видалити">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {# Inline-панель складових — розкривається під рядком #}
+                        <tr class="comp-panel-row" data-for="{{ item.id }}" style="display:none">
+                            <td colspan="5" class="p-0">
+                                <div class="border-start border-primary border-3 bg-light px-3 py-2 ms-2">
+                                    <div class="d-flex align-items-center mb-2">
+                                        <i class="bi bi-diagram-3 text-primary me-2"></i>
+                                        <span class="fw-medium small">Складові комплекту: {{ item.name }}</span>
+                                        <button type="button" class="btn btn-xs btn-link ms-auto p-0 btn-close-comp"
+                                                data-for="{{ item.id }}" title="Закрити">
+                                            <i class="bi bi-x-lg text-muted"></i>
+                                        </button>
+                                    </div>
+
+                                    {# Таблиця поточних складових #}
+                                    <table class="table table-sm mb-2 bg-white rounded comp-table">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Складова</th>
+                                                <th style="width:90px" class="text-center">К-сть</th>
+                                                <th style="width:36px"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="comp-tbody">
+                                            <tr class="comp-empty-row">
+                                                <td colspan="3" class="text-center text-muted py-2 small">
+                                                    Складових немає — видається як єдине ціле
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+
+                                    {# Рядок додавання #}
+                                    <div class="d-flex gap-2 align-items-end">
+                                        <div style="flex:1">
+                                            <label class="form-label form-label-sm mb-1">Додати складову зі словника норм</label>
+                                            <input type="hidden" class="comp-child-id">
+                                            <div class="comp-child-ss"></div>
+                                        </div>
+                                        <div style="width:80px">
+                                            <label class="form-label form-label-sm mb-1">К-сть</label>
+                                            <input type="number" class="form-control form-control-sm comp-add-qty"
+                                                   value="1" min="0.001" step="any">
+                                        </div>
+                                        <div>
+                                            <button type="button" class="btn btn-sm btn-primary btn-add-comp"
+                                                    data-parent="{{ item.id }}">
+                                                <i class="bi bi-plus-lg"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        <tr id="noItems" {% if items | selectattr('group_id','eq', first_gid) | list %}style="display:none"{% endif %}>
+                            <td colspan="5" class="text-center text-muted py-4">В цій групі немає позицій</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модаль: нова/редагувати позиція -->
+<div class="modal fade" id="modalItem" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title" id="modalItemTitle">Нова позиція</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="itemId">
+                <div class="mb-2">
+                    <label class="form-label form-label-sm mb-1">Група <span class="text-danger">*</span></label>
+                    <select id="itemGroupId" class="form-select form-select-sm">
+                        {% for g in groups %}
+                        <option value="{{ g.id }}">{{ g.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label form-label-sm mb-1">Назва <span class="text-danger">*</span></label>
+                    <input type="text" id="itemName" class="form-control form-control-sm"
+                           placeholder="Наприклад: Куртка зимова польова">
+                </div>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="form-label form-label-sm mb-1">Одиниця виміру</label>
+                        <input type="text" id="itemUnit" class="form-control form-control-sm"
+                               placeholder="шт" value="шт">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnSaveItem">Зберегти</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модаль: нова/редагувати група -->
+<div class="modal fade" id="modalGroup" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title" id="modalGroupTitle">Нова група</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="groupId">
+                <label class="form-label form-label-sm mb-1">Назва групи <span class="text-danger">*</span></label>
+                <input type="text" id="groupName" class="form-control form-control-sm"
+                       placeholder="Наприклад: Головні убори">
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnSaveGroup">Зберегти</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const modalItem  = new bootstrap.Modal(document.getElementById('modalItem'));
+const modalGroup = new bootstrap.Modal(document.getElementById('modalGroup'));
+
+let activeGroupId = {{ groups[0].id if groups else 'null' }};
+
+// ── Перемикання груп ──
+document.getElementById('groupList').addEventListener('click', function(e) {
+    const item = e.target.closest('.group-item');
+    if (!item || e.target.closest('button')) return;
+
+    document.querySelectorAll('.group-item').forEach(el => el.classList.remove('active'));
+    item.classList.add('active');
+    activeGroupId = parseInt(item.dataset.id);
+    document.getElementById('groupTitle').textContent = item.dataset.name;
+
+    // Закрити всі відкриті панелі складових
+    document.querySelectorAll('.comp-panel-row').forEach(r => r.style.display = 'none');
+
+    let count = 0;
+    document.querySelectorAll('#itemsTbody tr.item-row').forEach(tr => {
+        const show = parseInt(tr.dataset.gid) === activeGroupId;
+        tr.style.display = show ? '' : 'none';
+        if (show) count++;
+    });
+    document.getElementById('itemCount').textContent = count;
+    document.getElementById('noItems').style.display = count === 0 ? '' : 'none';
+});
+
+// ── Нова група ──
+document.getElementById('btnAddGroup').addEventListener('click', () => {
+    document.getElementById('groupId').value = '';
+    document.getElementById('groupName').value = '';
+    document.getElementById('modalGroupTitle').textContent = 'Нова група';
+    modalGroup.show();
+    setTimeout(() => document.getElementById('groupName').focus(), 300);
+});
+
+document.querySelectorAll('.btn-edit-group').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.getElementById('groupId').value = btn.dataset.id;
+        document.getElementById('groupName').value = btn.dataset.name;
+        document.getElementById('modalGroupTitle').textContent = 'Перейменувати групу';
+        modalGroup.show();
+        setTimeout(() => document.getElementById('groupName').focus(), 300);
+    });
+});
+
+document.getElementById('btnSaveGroup').addEventListener('click', async () => {
+    const id   = document.getElementById('groupId').value;
+    const name = document.getElementById('groupName').value.trim();
+    if (!name) { showToast('Введіть назву групи', 'warning'); return; }
+    const fd = new FormData();
+    fd.append('name', name);
+    const url = id ? `/settings/norm-dict/group/${id}/edit` : '/settings/norm-dict/group/add';
+    const res  = await fetch(url, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!data.ok) { showToast(data.error, 'danger'); return; }
+    modalGroup.hide();
+    showToast('Збережено', 'success');
+    setTimeout(() => location.reload(), 400);
+});
+
+// ── Видалити групу ──
+document.querySelectorAll('.btn-del-group').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        if (!confirm(`Видалити групу "${btn.dataset.name}"? Це видалить усі позиції в ній!`)) return;
+        const res  = await fetch(`/settings/norm-dict/group/${btn.dataset.id}/delete`, { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) { showToast('Видалено', 'success'); setTimeout(() => location.reload(), 400); }
+        else showToast(data.error, 'danger');
+    });
+});
+
+// ── Нова позиція ──
+document.getElementById('btnAddItem').addEventListener('click', () => {
+    document.getElementById('itemId').value = '';
+    document.getElementById('itemName').value = '';
+    document.getElementById('itemUnit').value = 'шт';
+    document.getElementById('modalItemTitle').textContent = 'Нова позиція';
+    if (activeGroupId) document.getElementById('itemGroupId').value = activeGroupId;
+});
+
+document.querySelectorAll('.btn-edit-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.getElementById('itemId').value = btn.dataset.id;
+        document.getElementById('itemName').value = btn.dataset.name;
+        document.getElementById('itemUnit').value = btn.dataset.unit || 'шт';
+        document.getElementById('itemGroupId').value = btn.dataset.gid;
+        document.getElementById('modalItemTitle').textContent = 'Редагувати позицію';
+        modalItem.show();
+        setTimeout(() => document.getElementById('itemName').focus(), 300);
+    });
+});
+
+document.getElementById('btnSaveItem').addEventListener('click', async () => {
+    const id      = document.getElementById('itemId').value;
+    const name    = document.getElementById('itemName').value.trim();
+    const unit    = document.getElementById('itemUnit').value.trim() || 'шт';
+    const groupId = document.getElementById('itemGroupId').value;
+    if (!name) { showToast('Введіть назву', 'warning'); return; }
+
+    const fd = new FormData();
+    fd.append('name', name);
+    fd.append('unit', unit);
+    fd.append('group_id', groupId);
+    const url = id ? `/settings/norm-dict/item/${id}/edit` : '/settings/norm-dict/item/add';
+    const res  = await fetch(url, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!data.ok) { showToast(data.error, 'danger'); return; }
+    modalItem.hide();
+    showToast('Збережено', 'success');
+    setTimeout(() => location.reload(), 400);
+});
+
+// ── Видалити позицію ──
+document.querySelectorAll('.btn-del-item').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        if (!confirm(`Видалити "${btn.dataset.name}"?`)) return;
+        const res  = await fetch(`/settings/norm-dict/item/${btn.dataset.id}/delete`, { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) { btn.closest('tr').remove(); showToast('Видалено', 'success'); }
+        else showToast(data.error, 'danger');
+    });
+});
+
+// ══════════════════════════════════════════════
+//  СКЛАДОВІ КОМПЛЕКТУ — inline панель
+// ══════════════════════════════════════════════
+
+// Всі позиції словника для SearchableSelect
+const ALL_NORM_OPTIONS = [
+    {% for item in items %}
+    { value: '{{ item.id }}', label: {{ item.name | tojson }}, meta: { unit: {{ (item.unit or 'шт') | tojson }} } },
+    {% endfor %}
+];
+
+// Зберігаємо SS-інстанси по parentId
+const _compSS = {};
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function initCompPanel(panelRow, parentId) {
+    // Ініціалізуємо SS тільки один раз
+    if (_compSS[parentId]) return;
+
+    const hiddenInput = panelRow.querySelector('.comp-child-id');
+    const ssContainer = panelRow.querySelector('.comp-child-ss');
+    const opts = ALL_NORM_OPTIONS.filter(o => o.value !== String(parentId));
+
+    _compSS[parentId] = new SearchableSelect({
+        container:   ssContainer,
+        hiddenInput: hiddenInput,
+        options:     opts,
+        placeholder: '— оберіть складову —',
+        allowClear:  true,
+        size:        'sm',
+    });
+}
+
+function renderCompRow(panelRow, c) {
+    const tbody = panelRow.querySelector('.comp-tbody');
+    const emptyRow = panelRow.querySelector('.comp-empty-row');
+
+    const tr = document.createElement('tr');
+    tr.dataset.cid = c.id;
+    tr.innerHTML = `
+        <td class="align-middle">${escHtml(c.child_name)}
+            <span class="text-muted small ms-1">(${escHtml(c.child_unit || 'шт')})</span>
+        </td>
+        <td class="text-center align-middle">
+            <input type="number" class="form-control form-control-sm comp-qty-input"
+                   value="${c.qty}" min="0.001" step="any" style="width:70px;margin:auto">
+        </td>
+        <td class="text-end align-middle">
+            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 btn-del-comp">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </td>
+    `;
+
+    tr.querySelector('.comp-qty-input').addEventListener('change', async function() {
+        const qty = parseFloat(this.value);
+        if (!qty || qty <= 0) { this.value = c.qty; return; }
+        const res  = await fetch(`/settings/norm-dict/component/${c.id}/edit`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ qty })
+        });
+        const data = await res.json();
+        if (data.ok) { c.qty = qty; showToast('Збережено', 'success'); }
+        else showToast(data.error, 'danger');
+    });
+
+    tr.querySelector('.btn-del-comp').addEventListener('click', async () => {
+        if (!confirm('Видалити складову?')) return;
+        const res  = await fetch(`/settings/norm-dict/component/${c.id}/delete`, { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+            tr.remove();
+            refreshEmptyRow(panelRow);
+            refreshParentBadge(panelRow);
+            showToast('Видалено', 'success');
+        } else showToast(data.error, 'danger');
+    });
+
+    tbody.insertBefore(tr, emptyRow);
+    emptyRow.style.display = 'none';
+}
+
+function refreshEmptyRow(panelRow) {
+    const rows = panelRow.querySelectorAll('.comp-tbody tr[data-cid]');
+    panelRow.querySelector('.comp-empty-row').style.display = rows.length === 0 ? '' : 'none';
+}
+
+function refreshParentBadge(panelRow) {
+    const parentId = parseInt(panelRow.dataset.for);
+    const count = panelRow.querySelectorAll('.comp-tbody tr[data-cid]').length;
+    const itemRow = document.querySelector(`tr.item-row[data-id="${parentId}"]`);
+    if (!itemRow) return;
+
+    // Бейдж "комплект" в назві
+    const nameCell = itemRow.querySelector('.item-name');
+    let kitBadge = nameCell.querySelector('.kit-badge');
+    if (count > 0 && !kitBadge) {
+        kitBadge = document.createElement('span');
+        kitBadge.className = 'badge bg-primary ms-1 kit-badge';
+        kitBadge.style.fontSize = '0.65em';
+        kitBadge.textContent = 'комплект';
+        nameCell.appendChild(kitBadge);
+    } else if (count === 0 && kitBadge) {
+        kitBadge.remove();
+    }
+
+    // Лічильник на кнопці
+    const compBtn = itemRow.querySelector('.btn-components');
+    let cntBadge = compBtn.querySelector('.comp-count-badge');
+    if (count > 0) {
+        if (!cntBadge) {
+            cntBadge = document.createElement('span');
+            cntBadge.className = 'badge bg-primary ms-1 comp-count-badge';
+            cntBadge.style.fontSize = '0.65em';
+            compBtn.appendChild(cntBadge);
+        }
+        cntBadge.textContent = count;
+    } else if (cntBadge) {
+        cntBadge.remove();
+    }
+}
+
+async function openCompPanel(parentId) {
+    const panelRow = document.querySelector(`.comp-panel-row[data-for="${parentId}"]`);
+    if (!panelRow) return;
+
+    // Якщо вже відкрита — закрити
+    if (panelRow.style.display !== 'none') {
+        panelRow.style.display = 'none';
+        return;
+    }
+
+    // Закрити всі інші
+    document.querySelectorAll('.comp-panel-row').forEach(r => r.style.display = 'none');
+
+    // Ініціалізувати SS
+    initCompPanel(panelRow, parentId);
+
+    // Завантажити складові
+    panelRow.querySelector('.comp-tbody').querySelectorAll('tr[data-cid]').forEach(r => r.remove());
+    panelRow.querySelector('.comp-empty-row').style.display = '';
+
+    const res  = await fetch(`/settings/norm-dict/item/${parentId}/components`);
+    const data = await res.json();
+    if (data.ok) {
+        data.components.forEach(c => renderCompRow(panelRow, c));
+    }
+
+    panelRow.style.display = '';
+}
+
+// Кнопки "Складові"
+document.querySelectorAll('.btn-components').forEach(btn => {
+    btn.addEventListener('click', () => openCompPanel(parseInt(btn.dataset.id)));
+});
+
+// Кнопки закриття панелі
+document.querySelectorAll('.btn-close-comp').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const panelRow = document.querySelector(`.comp-panel-row[data-for="${btn.dataset.for}"]`);
+        if (panelRow) panelRow.style.display = 'none';
+    });
+});
+
+// Кнопки "Додати складову"
+document.querySelectorAll('.btn-add-comp').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const parentId = parseInt(btn.dataset.parent);
+        const panelRow = btn.closest('.comp-panel-row');
+        const childId  = parseInt(panelRow.querySelector('.comp-child-id').value);
+        const qty      = parseFloat(panelRow.querySelector('.comp-add-qty').value);
+
+        if (!childId) { showToast('Оберіть складову', 'warning'); return; }
+        if (!qty || qty <= 0) { showToast('Невірна кількість', 'warning'); return; }
+
+        const res  = await fetch(`/settings/norm-dict/item/${parentId}/components/add`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ child_id: childId, qty })
+        });
+        const data = await res.json();
+        if (!data.ok) { showToast(data.error, 'danger'); return; }
+
+        // Перезавантажити список
+        const res2  = await fetch(`/settings/norm-dict/item/${parentId}/components`);
+        const data2 = await res2.json();
+        panelRow.querySelector('.comp-tbody').querySelectorAll('tr[data-cid]').forEach(r => r.remove());
+        panelRow.querySelector('.comp-empty-row').style.display = '';
+        if (data2.ok) data2.components.forEach(c => renderCompRow(panelRow, c));
+
+        refreshParentBadge(panelRow);
+        _compSS[parentId]?.reset();
+        panelRow.querySelector('.comp-add-qty').value = '1';
+        showToast('Складову додано', 'success');
+    });
+});
+</script>
+{% endblock %}

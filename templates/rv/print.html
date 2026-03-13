@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>РВ {{ sheet.number }}</title>
+    <style>
+        @page { size: A4 landscape; margin: 15mm 10mm; }
+        body { font-family: Arial, sans-serif; font-size: 9pt; }
+        h2 { text-align: center; font-size: 11pt; margin-bottom: 4px; }
+        .meta { text-align: center; font-size: 9pt; margin-bottom: 12px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #000; padding: 2px 4px; text-align: center; }
+        th { background: #f0f0f0; font-weight: bold; }
+        td.name-cell { text-align: left; min-width: 150px; }
+        .total-row td { font-weight: bold; background: #f8f8f8; }
+        .signatures { margin-top: 20px; display: flex; justify-content: space-between; }
+        .sig-block { width: 30%; }
+        .sig-line { border-bottom: 1px solid #000; margin-top: 24px; font-size: 8pt; }
+        @media print { .no-print { display: none; } }
+    </style>
+</head>
+<body>
+<div class="no-print" style="padding:10px;background:#eee;margin-bottom:10px">
+    <button onclick="window.print()" style="padding:5px 15px">Друк</button>
+    <button onclick="window.close()" style="padding:5px 15px;margin-left:10px">Закрити</button>
+</div>
+
+<h2>РОЗДАВАЛЬНА ВІДОМІСТЬ № {{ sheet.number }}</h2>
+<div class="meta">
+    {% if sheet.unit_name %}Підрозділ: <strong>{{ sheet.unit_name }}</strong> | {% endif %}
+    Дата: <strong>{{ sheet.doc_date or '___________' }}</strong>
+    {% if sheet.base_document %} | Підстава: {{ sheet.base_document }}{% endif %}
+</div>
+
+{% if matrix.rows and matrix.cols %}
+<table>
+    <thead>
+        <tr>
+            <th style="width:25px">№</th>
+            <th class="name-cell">П.І.Б.</th>
+            <th style="width:80px">Звання</th>
+            {% for item in matrix.cols %}
+            <th style="min-width:60px">
+                {{ item.item_name }}<br>
+                <span style="font-size:7pt;font-weight:normal">{{ item.unit_of_measure }}</span>
+            </th>
+            {% endfor %}
+            <th style="width:80px">Сума, грн</th>
+            <th style="width:80px">Підпис</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in matrix.rows %}
+        {% set row_sum = namespace(val=0) %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td class="name-cell">{{ row.last_name }} {{ row.first_name[0] }}.{% if row.middle_name %} {{ row.middle_name[0] }}.{% endif %}</td>
+            <td>{{ row.rank or '' }}</td>
+            {% for item in matrix.cols %}
+            {% set cell = matrix.qty.get((row.id, item.item_id), {}) %}
+            {% set qty = cell.get('quantity', 0) or 0 %}
+            {% set _ = row_sum.__setattr__('val', row_sum.val + qty * item.price) %}
+            <td>{{ qty if qty else '' }}</td>
+            {% endfor %}
+            <td>{{ "%.2f"|format(row_sum.val) }}</td>
+            <td></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+    <tfoot>
+        <tr class="total-row">
+            <td colspan="3" style="text-align:right">Разом:</td>
+            {% for item in matrix.cols %}
+            {% set col_total = namespace(val=0) %}
+            {% for row in matrix.rows %}
+                {% set cell = matrix.qty.get((row.id, item.item_id), {}) %}
+                {% set _ = col_total.__setattr__('val', col_total.val + (cell.get('quantity', 0) or 0)) %}
+            {% endfor %}
+            <td>{{ col_total.val if col_total.val else '' }}</td>
+            {% endfor %}
+            <td>{{ "%.2f"|format(sheet.total_sum) }}</td>
+            <td></td>
+        </tr>
+    </tfoot>
+</table>
+{% else %}
+<p><em>Матриця порожня</em></p>
+{% endif %}
+
+<div class="signatures">
+    <div class="sig-block">
+        <div>Видав:</div>
+        <div class="sig-line">{{ sheet.given_by_rank or '' }} {{ sheet.given_by_name or '________________________' }}</div>
+    </div>
+    <div class="sig-block">
+        {% if sheet.chief_is_tvo %}<div style="font-size:8pt">В.о. </div>{% endif %}
+        <div>{{ sheet.service_name or 'Начальник служби' }}:</div>
+        <div class="sig-line">{{ sheet.chief_rank or '' }} {{ sheet.chief_name or '________________________' }}</div>
+    </div>
+    <div class="sig-block">
+        <div>Діловод РС:</div>
+        <div class="sig-line">{{ sheet.clerk_rank or '' }} {{ sheet.clerk_name or '________________________' }}</div>
+    </div>
+</div>
+
+</body>
+</html>

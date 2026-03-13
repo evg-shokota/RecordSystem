@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Заміна БД — {{ unit_name }}{% endblock %}
+{% block page_title %}Замінити базу даних{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('import_export.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endblock %}
+
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+{% for category, message in messages %}
+<div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+    {{ message }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endfor %}
+{% endif %}
+{% endwith %}
+
+<div class="alert alert-danger d-flex gap-2 align-items-center mb-4">
+    <i class="bi bi-exclamation-triangle-fill fs-4"></i>
+    <div>
+        <strong>Увага!</strong> Ця операція <strong>замінює поточну базу даних</strong> новою.
+        Всі поточні дані будуть втрачені та замінені даними з завантаженого файлу.
+        Автоматично створиться резервна копія.
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm border-danger border-opacity-25">
+            <div class="card-header fw-medium bg-danger bg-opacity-10">
+                <i class="bi bi-database-up me-1 text-danger"></i>Завантажити нову базу даних
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data"
+                      onsubmit="return confirm('Ви впевнені? Поточна база даних буде замінена!')">
+                    <div class="mb-3">
+                        <label class="form-label">Файл бази даних (.db) <span class="text-danger">*</span></label>
+                        <input type="file" name="db_file" class="form-control" accept=".db" required>
+                        <div class="form-text">Файл повинен бути сумісним з поточною версією системи</div>
+                    </div>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-exclamation-triangle me-1"></i>Замінити базу даних
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header fw-medium bg-light">
+                <i class="bi bi-info-circle me-1 text-info"></i>Що відбудеться
+            </div>
+            <div class="card-body small">
+                <ol class="mb-0">
+                    <li>Поточна БД буде скопійована як <code>database_backup_ДАТА.db</code></li>
+                    <li>Ваш файл замінить поточну <code>database.db</code></li>
+                    <li>Потрібно перезапустити застосунок</li>
+                </ol>
+                <hr>
+                <p class="text-muted mb-0">
+                    Резервні копії зберігаються в тій самій папці що й база даних.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

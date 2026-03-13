@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Особистий кабінет{% endblock %}
+{% block page_title %}Особистий кабінет{% endblock %}
+
+{% block content %}
+{% if error %}
+<div class="alert alert-danger border-0">{{ error }}</div>
+{% endif %}
+{% if success %}
+<div class="alert alert-success border-0">{{ success }}</div>
+{% endif %}
+
+<div class="row g-3">
+
+    {# ── Інформація про акаунт ── #}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent fw-medium py-2">
+                <i class="bi bi-person-circle me-2 text-primary"></i>Мій акаунт
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    <input type="hidden" name="action" value="update_info">
+                    <div class="mb-3">
+                        <label class="form-label text-muted small">ПІБ</label>
+                        <input type="text" name="full_name" class="form-control"
+                               value="{{ user.full_name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-muted small">Логін</label>
+                        <input type="text" class="form-control" value="{{ user.username }}" disabled>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-muted small">Роль</label>
+                        <input type="text" class="form-control" value="{{ user.role_name }}" disabled>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-muted small">Акаунт створено</label>
+                        <input type="text" class="form-control"
+                               value="{{ user.created_at[:16] if user.created_at else '—' }}" disabled>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg me-1"></i>Зберегти зміни
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {# ── Зміна пароля ── #}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent fw-medium py-2">
+                <i class="bi bi-key me-2 text-warning"></i>Зміна пароля
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    <input type="hidden" name="action" value="change_password">
+                    <div class="mb-3">
+                        <label class="form-label text-muted small">Поточний пароль</label>
+                        <input type="password" name="old_password" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-muted small">Новий пароль</label>
+                        <input type="password" name="new_password" class="form-control"
+                               required minlength="4">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-muted small">Повторіть пароль</label>
+                        <input type="password" name="confirm_password" class="form-control"
+                               required minlength="4">
+                    </div>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-key me-1"></i>Змінити пароль
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+
+    {# ── Тема оформлення ── #}
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent fw-medium py-2">
+                <i class="bi bi-palette me-2 text-primary"></i>Тема оформлення
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">Особиста тема перевизначає системну тему за замовченням.</p>
+                <form method="post">
+                    <input type="hidden" name="action" value="change_theme">
+                    <div class="d-flex gap-2 flex-wrap mb-3">
+                        {% set themes = [
+                            ('default', 'bi-circle-half', 'Дефолтна (синя)'),
+                            ('dark',    'bi-moon-stars-fill', 'Темна'),
+                            ('zsu',     'bi-shield-fill', 'Військова (ЗСУ)')
+                        ] %}
+                        {% for tval, ticon, tlabel in themes %}
+                        <label class="theme-pick-card {% if (user.theme or 'default') == tval %}active{% endif %}"
+                               onclick="pickTheme(this)">
+                            <input type="radio" name="theme" value="{{ tval }}" class="d-none"
+                                   {% if (user.theme or 'default') == tval %}checked{% endif %}>
+                            <i class="bi {{ ticon }} fs-4 d-block mb-1"></i>
+                            <span class="small">{{ tlabel }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="bi bi-floppy me-1"></i>Застосувати тему
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function pickTheme(el) {
+    el.closest('.d-flex').querySelectorAll('.theme-pick-card').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    el.querySelector('input[type=radio]').checked = true;
+}
+</script>
+<style>
+.theme-pick-card {
+    display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: .75rem 1.25rem; border: 2px solid var(--card-border, #dee2e6); border-radius: .5rem;
+    cursor: pointer; transition: border-color .15s, box-shadow .15s; min-width: 100px; text-align: center;
+}
+.theme-pick-card:hover { border-color: var(--app-primary, #1a56a0); }
+.theme-pick-card.active { border-color: var(--app-primary, #1a56a0); box-shadow: 0 0 0 .2rem rgba(var(--app-primary-rgb, 26,86,160),.18); }
+</style>
+{% endblock %}

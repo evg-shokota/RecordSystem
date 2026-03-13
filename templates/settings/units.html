@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+{% block title %}Підрозділи — Налаштування{% endblock %}
+{% block page_title %}Структура підрозділів{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('settings.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+
+    <!-- БАТАЛЬЙОНИ -->
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-0 pt-3 d-flex align-items-center justify-content-between">
+                <h6 class="fw-bold mb-0"><i class="bi bi-building me-2 text-primary"></i>Батальйони</h6>
+                <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modalAddBattalion">
+                    <i class="bi bi-plus-lg"></i>
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <ul class="list-group list-group-flush" id="battalionList">
+                    {% for b in battalions %}
+                    <li class="list-group-item d-flex align-items-center justify-content-between py-2 px-3"
+                        data-id="{{ b.id }}">
+                        <span class="battalion-name">{{ b.name }}</span>
+                        <div class="d-flex gap-1">
+                            <button class="btn btn-sm btn-outline-secondary btn-edit-battalion"
+                                    data-id="{{ b.id }}" data-name="{{ b.name }}" title="Редагувати">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger btn-del-battalion"
+                                    data-id="{{ b.id }}" data-name="{{ b.name }}" title="Видалити">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </li>
+                    {% else %}
+                    <li class="list-group-item text-muted text-center py-3">Батальйонів немає</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ПІДРОЗДІЛИ -->
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-0 pt-3 d-flex align-items-center justify-content-between">
+                <h6 class="fw-bold mb-0"><i class="bi bi-diagram-2 me-2 text-success"></i>Підрозділи</h6>
+                <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#modalAddUnit">
+                    <i class="bi bi-plus-lg"></i>
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <ul class="list-group list-group-flush">
+                    {% for u in units %}
+                    <li class="list-group-item py-2 px-3" data-id="{{ u.id }}">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div>
+                                <div class="unit-name fw-medium">{{ u.name }}</div>
+                                <small class="text-muted">{{ u.battalion_name }}
+                                    {% if unit_counts.get(u.id) %}
+                                    · <span class="badge bg-light text-dark border">{{ unit_counts[u.id] }} ос.</span>
+                                    {% endif %}
+                                </small>
+                            </div>
+                            <div class="d-flex gap-1">
+                                <a href="{{ url_for('settings.unit_card', uid=u.id) }}"
+                                   class="btn btn-sm btn-outline-primary" title="Картка підрозділу">
+                                    <i class="bi bi-card-text"></i>
+                                </a>
+                                <button class="btn btn-sm btn-outline-secondary btn-edit-unit"
+                                        data-id="{{ u.id }}" data-name="{{ u.name }}" title="Редагувати">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger btn-del-unit"
+                                        data-id="{{ u.id }}" data-name="{{ u.name }}" title="Видалити">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </li>
+                    {% else %}
+                    <li class="list-group-item text-muted text-center py-3">Підрозділів немає</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ВЗВОДИ -->
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-0 pt-3 d-flex align-items-center justify-content-between">
+                <h6 class="fw-bold mb-0"><i class="bi bi-people me-2 text-info"></i>Взводи <small class="text-muted fw-normal">(опціонально)</small></h6>
+                <button class="btn btn-sm btn-info text-white" data-bs-toggle="modal" data-bs-target="#modalAddPlatoon">
+                    <i class="bi bi-plus-lg"></i>
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <ul class="list-group list-group-flush">
+                    {% for p in platoons %}
+                    <li class="list-group-item py-2 px-3" data-id="{{ p.id }}">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div>
+                                <div class="platoon-name fw-medium">{{ p.name }}</div>
+                                <small class="text-muted">{{ p.unit_name }}</small>
+                            </div>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-sm btn-outline-secondary btn-edit-platoon"
+                                        data-id="{{ p.id }}" data-name="{{ p.name }}" title="Редагувати">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger btn-del-platoon"
+                                        data-id="{{ p.id }}" data-name="{{ p.name }}" title="Видалити">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </li>
+                    {% else %}
+                    <li class="list-group-item text-muted text-center py-3">Взводів немає</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Модальне: додати батальйон -->
+<div class="modal fade" id="modalAddBattalion" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title">Новий батальйон</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('settings.battalion_add') }}">
+                <div class="modal-body">
+                    <input type="text" name="name" class="form-control" placeholder="Назва батальйону" required autofocus>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-primary btn-sm">Додати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальне: додати підрозділ -->
+<div class="modal fade" id="modalAddUnit" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title">Новий підрозділ</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('settings.unit_add') }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Батальйон</label>
+                        <select name="battalion_id" class="form-select" required>
+                            <option value="">— оберіть батальйон —</option>
+                            {% for b in battalions %}
+                            <option value="{{ b.id }}">{{ b.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label">Назва підрозділу</label>
+                        <input type="text" name="name" class="form-control" placeholder="напр. 1 РУБАК" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-success btn-sm">Додати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальне: додати взвод -->
+<div class="modal fade" id="modalAddPlatoon" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title">Новий взвод</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('settings.platoon_add') }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Підрозділ</label>
+                        <select name="unit_id" class="form-select" required>
+                            <option value="">— оберіть підрозділ —</option>
+                            {% for u in units %}
+                            <option value="{{ u.id }}">{{ u.battalion_name }} / {{ u.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label">Назва взводу</label>
+                        <input type="text" name="name" class="form-control" placeholder="напр. 1 взвод" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-info text-white btn-sm">Додати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальне: редагування (спільне) -->
+<div class="modal fade" id="modalEdit" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title" id="modalEditTitle">Редагувати</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="editName" class="form-control" placeholder="Нова назва">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnSaveEdit">Зберегти</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const editModal = new bootstrap.Modal(document.getElementById('modalEdit'));
+let editUrl = '', editTarget = null;
+
+function setupEdit(btnClass, urlTemplate, titleText) {
+    document.querySelectorAll(btnClass).forEach(btn => {
+        btn.addEventListener('click', () => {
+            editUrl = urlTemplate.replace('__ID__', btn.dataset.id);
+            editTarget = btn.closest('li');
+            document.getElementById('modalEditTitle').textContent = titleText;
+            document.getElementById('editName').value = btn.dataset.name;
+            editModal.show();
+            setTimeout(() => document.getElementById('editName').select(), 300);
+        });
+    });
+}
+
+setupEdit('.btn-edit-battalion', '/settings/units/battalion/__ID__/edit', 'Редагувати батальйон');
+setupEdit('.btn-edit-unit',      '/settings/units/unit/__ID__/edit',      'Редагувати підрозділ');
+setupEdit('.btn-edit-platoon',   '/settings/units/platoon/__ID__/edit',   'Редагувати взвод');
+
+document.getElementById('btnSaveEdit').addEventListener('click', async () => {
+    const name = document.getElementById('editName').value.trim();
+    if (!name) return;
+    const fd = new FormData(); fd.append('name', name);
+    const res = await fetch(editUrl, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.ok) {
+        editTarget.querySelector('[class$="-name"]').textContent = name;
+        editTarget.querySelector('[data-name]').dataset.name = name;
+        editModal.hide();
+        showToast('Збережено', 'success');
+    } else {
+        showToast(data.error, 'danger');
+    }
+});
+
+function setupDelete(btnClass, urlTemplate) {
+    document.querySelectorAll(btnClass).forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!confirm(`Видалити "${btn.dataset.name}"?`)) return;
+            const res = await fetch(urlTemplate.replace('__ID__', btn.dataset.id), { method: 'POST' });
+            const data = await res.json();
+            if (data.ok) {
+                btn.closest('li').remove();
+                showToast('Видалено', 'success');
+            } else {
+                showToast(data.error, 'danger');
+            }
+        });
+    });
+}
+
+setupDelete('.btn-del-battalion', '/settings/units/battalion/__ID__/delete');
+setupDelete('.btn-del-unit',      '/settings/units/unit/__ID__/delete');
+setupDelete('.btn-del-platoon',   '/settings/units/platoon/__ID__/delete');
+</script>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ plugin.name }} — Налаштування{% endblock %}
+{% block page_title %}{{ plugin.name }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('plugins.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад до модулів
+</a>
+{% endblock %}
+
+{% block content %}
+<form method="post">
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-transparent">
+            <h6 class="mb-0"><i class="{{ plugin.icon }} me-2"></i>Налаштування модуля</h6>
+        </div>
+        <div class="card-body">
+            {% if not schema %}
+            <p class="text-muted mb-0">Цей модуль не має налаштувань.</p>
+            {% else %}
+            <div class="row g-3">
+                {% for field in schema %}
+                <div class="col-md-6">
+                    {% if field.type == 'switch' %}
+                    <div class="form-check form-switch">
+                        <input type="checkbox" class="form-check-input" role="switch"
+                               id="f_{{ field.key }}" name="{{ field.key }}"
+                               {% if current[field.key] == '1' %}checked{% endif %}>
+                        <label class="form-check-label" for="f_{{ field.key }}">
+                            <strong>{{ field.label }}</strong>
+                            {% if field.help %}<small class="text-muted d-block">{{ field.help }}</small>{% endif %}
+                        </label>
+                    </div>
+                    {% elif field.type == 'textarea' %}
+                    <label class="form-label form-label-sm">{{ field.label }}</label>
+                    <textarea class="form-control form-control-sm" name="{{ field.key }}"
+                              rows="3">{{ current[field.key] }}</textarea>
+                    {% if field.help %}<div class="form-text">{{ field.help }}</div>{% endif %}
+                    {% elif field.type == 'select' %}
+                    <label class="form-label form-label-sm">{{ field.label }}</label>
+                    <select class="form-select form-select-sm" name="{{ field.key }}">
+                        {% for opt in field.options %}
+                        <option value="{{ opt.value }}"
+                            {% if current[field.key] == opt.value %}selected{% endif %}>
+                            {{ opt.label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% if field.help %}<div class="form-text">{{ field.help }}</div>{% endif %}
+                    {% else %}
+                    <label class="form-label form-label-sm">{{ field.label }}</label>
+                    <input type="{{ field.type }}" class="form-control form-control-sm"
+                           name="{{ field.key }}" value="{{ current[field.key] }}">
+                    {% if field.help %}<div class="form-text">{{ field.help }}</div>{% endif %}
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% if schema %}
+        <div class="card-footer bg-transparent">
+            <button type="submit" class="btn btn-primary btn-sm">
+                <i class="bi bi-save me-1"></i>Зберегти
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</form>
+{% endblock %}

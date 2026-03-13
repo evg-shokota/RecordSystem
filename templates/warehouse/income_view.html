@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Прихід №{{ head.document_number or income_id }} — {{ unit_name }}{% endblock %}
+{% block page_title %}Прихід на склад{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('warehouse.income_edit', income_id=income_id) }}" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-pencil me-1"></i>Редагувати
+</a>
+<a href="{{ url_for('warehouse.income_list') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Журнал приходів
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Шапка ── #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-2">
+                <div class="text-muted small">Дата</div>
+                <div class="fw-semibold">{{ head.date or '—' }}</div>
+            </div>
+            <div class="col-md-2">
+                <div class="text-muted small">Тип документа</div>
+                <div>{{ head.doc_type_name or '—' }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">Номер документа</div>
+                <div class="fw-semibold">{{ head.document_number or '—' }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">Постачальник</div>
+                <div>{{ head.supplier or '—' }}</div>
+            </div>
+            <div class="col-md-2">
+                <div class="text-muted small">Статус</div>
+                <div><span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Проведено</span></div>
+            </div>
+            {% if head.notes %}
+            <div class="col-12">
+                <div class="text-muted small">Примітки</div>
+                <div class="fst-italic">{{ head.notes }}</div>
+            </div>
+            {% endif %}
+            {% if head.scan_path %}
+            <div class="col-12">
+                <a href="{{ url_for('warehouse.income_scan', income_id=income_id) }}"
+                   target="_blank" class="btn btn-sm btn-outline-info">
+                    <i class="bi bi-file-earmark-image me-1"></i>{{ head.scan_original_name or 'Скан документа' }}
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# ── Позиції ── #}
+<div class="card border-0 shadow-sm">
+    <div class="card-header d-flex align-items-center justify-content-between">
+        <span class="fw-semibold">Позиції приходу</span>
+        <span class="text-muted small">{{ rows|length }} позицій</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:36px" class="text-center">№</th>
+                        <th>Найменування</th>
+                        <th style="width:60px" class="text-center">Кат.</th>
+                        <th style="width:60px" class="text-center">Од.</th>
+                        <th style="width:80px" class="text-end">Кіл-ть</th>
+                        <th style="width:110px" class="text-end">Ціна, грн</th>
+                        <th style="width:120px" class="text-end">Сума, грн</th>
+                        <th>Серійні №</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set total = namespace(val=0) %}
+                    {% for r in rows %}
+                    {% set sum = r.quantity * r.price %}
+                    {% set _ = total.__setattr__('val', total.val + sum) %}
+                    <tr>
+                        <td class="text-center text-muted">{{ loop.index }}</td>
+                        <td>
+                            <div class="fw-medium">{{ r.item_name }}</div>
+                            {% if r.nom_code %}
+                            <div class="text-muted" style="font-size:.75em">НК: {{ r.nom_code }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if r.category %}<span class="badge bg-secondary">{{ r.category }}</span>{% else %}—{% endif %}
+                        </td>
+                        <td class="text-center text-muted small">{{ r.unit_of_measure or '—' }}</td>
+                        <td class="text-end fw-semibold">{{ r.quantity }}</td>
+                        <td class="text-end">{{ "%.2f"|format(r.price) }}</td>
+                        <td class="text-end fw-semibold">{{ "%.2f"|format(sum) }}</td>
+                        <td class="text-muted small">
+                            {% if r.serial_numbers %}{{ r.serial_numbers }}{% else %}—{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold">
+                        <td colspan="6" class="text-end">Разом:</td>
+                        <td class="text-end">{{ "%.2f"|format(total.val) }}</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# ── Небезпечна зона ── #}
+<div class="mt-3 d-flex justify-content-end">
+    <form method="POST" action="{{ url_for('warehouse.income_delete', income_id=income_id) }}"
+          onsubmit="return confirm('Видалити цей прихід? Майно буде знято зі складу.')">
+        <button type="submit" class="btn btn-sm btn-outline-danger">
+            <i class="bi bi-trash me-1"></i>Видалити прихід
+        </button>
+    </form>
+</div>
+
+{% endblock %}

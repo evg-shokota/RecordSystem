@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Типи документів — Налаштування{% endblock %}
+{% block page_title %}Типи документів{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('settings.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white border-0 pt-3 d-flex align-items-center justify-content-between">
+        <h6 class="fw-bold mb-0">Всі типи документів</h6>
+        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modalAddDoctype">
+            <i class="bi bi-plus-lg me-1"></i>Новий тип
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Назва</th>
+                    <th>Скорочення</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dt in doctypes %}
+                <tr data-id="{{ dt.id }}">
+                    <td class="fw-medium">
+                        {{ dt.name }}
+                        {% if dt.is_system %}
+                        <span class="badge bg-secondary ms-1">системний</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-muted">{{ dt.short_name or '—' }}</td>
+                    <td class="text-end">
+                        {% if not dt.is_system %}
+                        <button class="btn btn-sm btn-outline-secondary btn-edit-dt me-1"
+                                data-id="{{ dt.id }}" data-name="{{ dt.name }}"
+                                data-short="{{ dt.short_name or '' }}">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger btn-del-dt"
+                                data-id="{{ dt.id }}" data-name="{{ dt.name }}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="modalAddDoctype" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title" id="dtModalTitle">Новий тип документу</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="dtId">
+                <div class="mb-3">
+                    <label class="form-label">Повна назва</label>
+                    <input type="text" id="dtName" class="form-control" placeholder="напр. Акт технічного стану">
+                </div>
+                <div class="mb-0">
+                    <label class="form-label">Скорочення</label>
+                    <input type="text" id="dtShort" class="form-control" placeholder="напр. АТС">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnSaveDt">Зберегти</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const dtModal = new bootstrap.Modal(document.getElementById('modalAddDoctype'));
+
+document.querySelectorAll('.btn-edit-dt').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.getElementById('dtModalTitle').textContent = 'Редагувати тип';
+        document.getElementById('dtId').value = btn.dataset.id;
+        document.getElementById('dtName').value = btn.dataset.name;
+        document.getElementById('dtShort').value = btn.dataset.short;
+        dtModal.show();
+    });
+});
+
+document.getElementById('btnSaveDt').addEventListener('click', async () => {
+    const id   = document.getElementById('dtId').value;
+    const name = document.getElementById('dtName').value.trim();
+    const short= document.getElementById('dtShort').value.trim();
+    if (!name) return;
+    const fd = new FormData();
+    fd.append('name', name); fd.append('short_name', short);
+    const url = id ? `/settings/doctypes/${id}/edit` : '/settings/doctypes/add';
+    const res = await fetch(url, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.ok) { dtModal.hide(); showToast('Збережено', 'success'); setTimeout(() => location.reload(), 500); }
+    else showToast(data.error, 'danger');
+});
+
+document.querySelectorAll('.btn-del-dt').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        if (!confirm(`Видалити "${btn.dataset.name}"?`)) return;
+        const res = await fetch(`/settings/doctypes/${btn.dataset.id}/delete`, { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) { btn.closest('tr').remove(); showToast('Видалено', 'success'); }
+        else showToast(data.error, 'danger');
+    });
+});
+</script>
+{% endblock %}

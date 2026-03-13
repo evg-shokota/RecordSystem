@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>{{ doc_title }}</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    background: #e8e8e8;
+    font-family: {{ tpl.font_family or 'Times New Roman' }}, serif;
+    font-size: {{ tpl.base_font_size or 12 }}pt;
+    line-height: 1.5;
+}
+
+/* Сторінка */
+.page {
+    {% set MM = 3.7795 %}
+    {% set size = tpl.page_size or 'A4' %}
+    {% set orient = tpl.page_orientation or 'portrait' %}
+    {% if size == 'A5' %}
+        {% set pw = 148 %}{% set ph = 210 %}
+    {% else %}
+        {% set pw = 210 %}{% set ph = 297 %}
+    {% endif %}
+    {% if orient == 'landscape' %}
+        {% set pw, ph = ph, pw %}
+    {% endif %}
+    width:  {{ (pw * MM)|round|int }}px;
+    min-height: {{ (ph * MM)|round|int }}px;
+    background: white;
+    margin: 20px auto;
+    box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    padding: {{ (tpl.margin_top or 20) * MM }}px
+             {{ (tpl.margin_right or 10) * MM }}px
+             {{ (tpl.margin_bottom or 20) * MM }}px
+             {{ (tpl.margin_left or 30) * MM }}px;
+}
+
+/* Таблиці */
+table { border-collapse: collapse; }
+table td, table th { padding: 3px 6px; }
+
+/* Друк */
+@media print {
+    body { background: white; }
+    .no-print { display: none !important; }
+    .page {
+        width: 100%;
+        min-height: 0;
+        margin: 0;
+        box-shadow: none;
+        padding: {{ tpl.margin_top or 20 }}mm
+                 {{ tpl.margin_right or 10 }}mm
+                 {{ tpl.margin_bottom or 20 }}mm
+                 {{ tpl.margin_left or 30 }}mm;
+    }
+    @page {
+        size: {{ tpl.page_size or 'A4' }} {{ tpl.page_orientation or 'portrait' }};
+        margin: 0;
+    }
+}
+</style>
+</head>
+<body>
+
+<div class="no-print" style="text-align:center;padding:10px;background:#fff3cd;border-bottom:1px solid #ffc107">
+    <strong>{{ doc_title }}</strong>
+    &nbsp;
+    <button onclick="window.print()" style="padding:4px 16px;cursor:pointer;margin-left:8px">🖨 Друк</button>
+    <button onclick="window.close()" style="padding:4px 12px;cursor:pointer;margin-left:4px">✕ Закрити</button>
+    {% if tpl.id %}
+    <span style="color:#888;font-size:.8rem;margin-left:16px">
+        Шаблон: {{ tpl.name }}
+        (<a href="/doc-templates/{{ tpl.id }}/edit" target="_blank">редагувати</a>)
+    </span>
+    {% endif %}
+</div>
+
+<div class="page">{{ rendered_body | safe }}</div>
+
+</body>
+</html>

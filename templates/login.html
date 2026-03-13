@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Вхід — Облік речового майна {{ unit_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme-' ~ (default_theme or 'default') ~ '.css') }}">
+</head>
+<body>
+<div class="login-wrapper">
+    <div class="login-card card border-0">
+        <div class="card-body p-4 p-md-5">
+
+            <div class="text-center mb-4">
+                <i class="bi bi-shield-fill login-logo"></i>
+                <h2 class="fw-bold mt-2 mb-1">Речова служба</h2>
+                <p class="text-muted small">Військова частина {{ unit_name }}</p>
+            </div>
+
+            {% if error %}
+            <div class="alert alert-danger py-2">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ error }}
+            </div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('login_page') }}">
+                <div class="mb-3">
+                    <label class="form-label fw-medium">Логін</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-person"></i></span>
+                        <input type="text" name="username" class="form-control"
+                               placeholder="Введіть логін" required autofocus>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-medium">Пароль</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                        <input type="password" name="password" class="form-control"
+                               placeholder="Введіть пароль" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary w-100 py-2 fw-medium">
+                    <i class="bi bi-box-arrow-in-right me-1"></i>Увійти
+                </button>
+            </form>
+
+        </div>
+        <div class="card-footer text-center text-muted small py-2 bg-transparent border-0">
+            v1.0 &mdash; {{ unit_name }}
+        </div>
+    </div>
+</div>
+</body>
+</html>

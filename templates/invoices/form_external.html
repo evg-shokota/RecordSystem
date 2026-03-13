@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}Зовнішня накладна — {{ unit_name }}{% endblock %}
+{% block page_title %}Реєстрація зовнішньої накладної{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('invoices.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endblock %}
+
+{% block content %}
+
+<div class="alert alert-info d-flex gap-2 align-items-center mb-3">
+    <i class="bi bi-info-circle-fill fs-5"></i>
+    <div>
+        <strong>Зовнішня (вже надрукована) накладна.</strong>
+        Введіть реквізити документа. Залишки складу <strong>не перевіряються</strong>.
+        Статус після збереження — <span class="badge bg-success">Видана</span>.
+    </div>
+</div>
+
+{% if errors %}
+<div class="alert alert-danger">
+    <ul class="mb-0">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="POST" enctype="multipart/form-data" id="extForm" novalidate>
+<input type="hidden" name="is_external" value="1">
+
+    {# ── Реквізити ── #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent fw-medium">
+            <i class="bi bi-file-earmark-text me-1 text-primary"></i>Реквізити документа
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Номер документа <span class="text-danger">*</span></label>
+                    <input type="text" name="external_number" class="form-control"
+                           value="{{ form.get('external_number', '') }}"
+                           placeholder="напр. 2025/15/НВ"
+                           required>
+                    <div class="form-text">Номер з оригінального документа</div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Дата документа</label>
+                    <input type="date" name="doc_date" class="form-control"
+                           value="{{ form.get('doc_date', '') or today }}">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">Примітка</label>
+                    <input type="text" name="notes" class="form-control"
+                           value="{{ form.get('notes', '') }}"
+                           placeholder="Додаткові відомості">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Одержувач ── #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent fw-medium">
+            <i class="bi bi-person me-1 text-primary"></i>Одержувач
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Тип одержувача</label>
+                    <select name="recipient_type" class="form-select" id="recipientTypeSel">
+                        <option value="personnel" {{ 'selected' if (form.get('recipient_type','personnel'))=='personnel' }}>Особа (о/с)</option>
+                        <option value="unit"      {{ 'selected' if form.get('recipient_type')=='unit' }}>Підрозділ</option>
+                    </select>
+                </div>
+                <div class="col-md-9" id="recPersonBlock">
+                    <label class="form-label">Одержувач <span class="text-danger">*</span></label>
+                    <select name="recipient_personnel_id" class="form-select">
+                        <option value="">— оберіть особу —</option>
+                        {% for p in personnel_list %}
+                        <option value="{{ p.id }}"
+                            {{ 'selected' if form.get('recipient_personnel_id','') | string == p.id | string }}>
+                            {{ p.rank or '' }} {{ p.full_name | trim }}
+                            {% if p.unit_name %} ({{ p.unit_name }}){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-9" id="recUnitBlock" style="display:none">
+                    <label class="form-label">Підрозділ <span class="text-danger">*</span></label>
+                    <select name="recipient_unit_id" class="form-select">
+                        <option value="">— оберіть підрозділ —</option>
+                        {% for u in units_list %}
+                        <option value="{{ u.id }}"
+                            {{ 'selected' if form.get('recipient_unit_id','') | string == u.id | string }}>
+                            {{ u.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Перелік майна ── #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent d-flex align-items-center">
+            <span class="fw-medium"><i class="bi bi-list-ul me-1 text-primary"></i>Перелік майна</span>
+            <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="btnAddRow">
+                <i class="bi bi-plus-lg me-1"></i>Додати позицію
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle" id="itemsTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:30px" class="text-center">#</th>
+                            <th>Найменування <span class="text-danger">*</span></th>
+                            <th style="width:80px">Кат.</th>
+                            <th style="width:110px">К-сть <span class="text-danger">*</span></th>
+                            <th style="width:110px">Ціна, грн</th>
+                            <th style="width:35px"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemRows">
+                        {# Шаблон рядка (прихований) #}
+                        <tr id="rowTemplate" style="display:none">
+                            <td class="text-muted text-center row-num small"></td>
+                            <td>
+                                <select name="item_id[]" class="form-select form-select-sm item-sel" required>
+                                    <option value="">— оберіть —</option>
+                                    {% for item in all_items %}
+                                    <option value="{{ item.id }}"
+                                            data-unit="{{ item.unit_of_measure or 'шт' }}">
+                                        {{ item.name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td>
+                                <select name="category[]" class="form-select form-select-sm">
+                                    {% for cat in categories %}
+                                    <option value="{{ cat }}">{{ cat }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" name="planned_qty[]"
+                                           class="form-control form-control-sm qty-input"
+                                           min="1" step="1" value="" required>
+                                    <span class="input-group-text unit-label px-1" style="min-width:30px">шт</span>
+                                </div>
+                            </td>
+                            <td>
+                                <input type="text" inputmode="decimal" name="price[]"
+                                       class="form-control form-control-sm num-comma"
+                                       value="0">
+                            </td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 btn-del">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {# ── Скан ── #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent fw-medium">
+            <i class="bi bi-paperclip me-1 text-primary"></i>Скан документа
+            <span class="text-muted fw-normal small">(необов'язково)</span>
+        </div>
+        <div class="card-body">
+            <input type="file" name="scan" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
+            <div class="form-text">Дозволені формати: PDF, JPG, PNG. Можна завантажити пізніше.</div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2 justify-content-end mb-4">
+        <a href="{{ url_for('invoices.index') }}" class="btn btn-outline-secondary">Скасувати</a>
+        <button type="submit" class="btn btn-success">
+            <i class="bi bi-check-lg me-1"></i>Зареєструвати як видану
+        </button>
+    </div>
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Перемикач типу одержувача ──────────────────────────────────
+document.getElementById('recipientTypeSel').addEventListener('change', function() {
+    const isPersonnel = this.value === 'personnel';
+    document.getElementById('recPersonBlock').style.display = isPersonnel ? '' : 'none';
+    document.getElementById('recUnitBlock').style.display   = isPersonnel ? 'none' : '';
+});
+// Ініціалізація
+if (document.getElementById('recipientTypeSel').value !== 'personnel') {
+    document.getElementById('recPersonBlock').style.display = 'none';
+    document.getElementById('recUnitBlock').style.display   = '';
+}
+
+// ── Конструктор позицій ────────────────────────────────────────
+let rowCount = 0;
+
+function addRow() {
+    const tpl   = document.getElementById('rowTemplate');
+    const clone = tpl.cloneNode(true);
+    clone.id    = 'extrow_' + (++rowCount);
+    clone.style.display = '';
+
+    clone.querySelectorAll('input[type=number]').forEach(i => {
+        if (i.name.includes('price')) i.value = '0';
+        else i.value = '';
+    });
+
+    // Оновити одиницю виміру при виборі позиції
+    const itemSel  = clone.querySelector('.item-sel');
+    const unitSpan = clone.querySelector('.unit-label');
+    if (itemSel) {
+        itemSel.addEventListener('change', function() {
+            const opt = this.options[this.selectedIndex];
+            if (unitSpan && opt) unitSpan.textContent = opt.dataset.unit || 'шт';
+        });
+    }
+
+    clone.querySelector('.btn-del').addEventListener('click', function() {
+        clone.remove();
+        renum();
+    });
+
+    document.getElementById('itemRows').appendChild(clone);
+    renum();
+    if (itemSel) itemSel.focus();
+}
+
+function renum() {
+    document.querySelectorAll('#itemRows tr:not(#rowTemplate)').forEach((tr, i) => {
+        const n = tr.querySelector('.row-num');
+        if (n) n.textContent = i + 1;
+    });
+}
+
+document.getElementById('btnAddRow').addEventListener('click', addRow);
+
+// Початковий рядок
+addRow();
+
+// Сьогоднішня дата для doc_date якщо порожня
+const dateInput = document.querySelector('[name=doc_date]');
+if (dateInput && !dateInput.value) {
+    dateInput.value = new Date().toISOString().split('T')[0];
+}
+</script>
+{% endblock %}

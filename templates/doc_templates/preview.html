@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Перегляд: {{ t.name }} — {{ unit_name }}{% endblock %}
+{% block page_title %}Перегляд шаблону: {{ t.name }}{% endblock %}
+
+{% block topbar_actions %}
+<button type="button" onclick="window.print()" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-printer me-1"></i>Друк
+</button>
+<a href="{{ url_for('doc_templates.edit', tpl_id=t.id) }}" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-pencil me-1"></i>Редагувати
+</a>
+<a href="{{ url_for('doc_templates.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endblock %}
+
+{% block content %}
+
+<div class="alert alert-info py-2 small mb-3">
+    <i class="bi bi-info-circle me-1"></i>
+    Показано демодані — реальні значення підставляються при формуванні документа.
+    Орієнтація: <strong>{{ 'Альбомна' if t.page_orientation == 'landscape' else 'Книжна' }}</strong>,
+    розмір: <strong>{{ t.page_size }}</strong>,
+    поля: <strong>{{ t.margin_top|int }}/{{ t.margin_bottom|int }}/{{ t.margin_left|int }}/{{ t.margin_right|int }} мм</strong>.
+</div>
+
+<div id="printArea" style="
+    background: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+    max-width: {{ '297mm' if t.page_orientation == 'landscape' else '210mm' }};
+    margin: 0 auto;
+    padding: {{ t.margin_top|int }}mm {{ t.margin_right|int }}mm {{ t.margin_bottom|int }}mm {{ t.margin_left|int }}mm;
+    font-family: 'Times New Roman', serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: {{ '210mm' if t.page_orientation == 'landscape' else '297mm' }};
+">
+{{ rendered | safe }}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+@media print {
+    .app-sidebar, .app-topbar, .alert, nav { display: none !important; }
+    .app-main { margin: 0 !important; padding: 0 !important; }
+    .app-content { padding: 0 !important; }
+    #printArea {
+        box-shadow: none !important;
+        max-width: none !important;
+        margin: 0 !important;
+    }
+}
+</style>
+{% endblock %}

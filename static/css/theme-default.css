@@ -1,0 +1,52 @@
+/* ===================================================
+   ТЕМА: Дефолтна (синя)
+   =================================================== */
+:root {
+    --theme-name: "default";
+
+    /* Кольори сайдбару */
+    --sidebar-bg:          #1a56a0;
+    --sidebar-bg-dark:     #134080;
+    --sidebar-text:        rgba(255,255,255,.82);
+    --sidebar-text-active: #ffffff;
+    --sidebar-hover-bg:    rgba(255,255,255,.13);
+    --sidebar-active-bg:   rgba(255,255,255,.18);
+    --sidebar-border:      rgba(255,255,255,.15);
+    --sidebar-brand-icon:  #ffffff;
+
+    /* Кольори контенту */
+    --body-bg:             #f4f6f9;
+    --topbar-bg:           #ffffff;
+    --topbar-border:       #dee2e6;
+    --card-bg:             #ffffff;
+    --card-border:         rgba(0,0,0,.08);
+
+    /* Акцентний колір */
+    --app-primary:         #1a56a0;
+    --app-primary-dark:    #134080;
+    --app-primary-rgb:     26, 86, 160;
+    --link-color:          #1a56a0;
+
+    /* Текст */
+    --text-primary:        #212529;
+    --text-muted:          #6c757d;
+    --text-heading:        #1a1a2e;
+
+    /* Логін сторінка */
+    --login-bg:            #1a56a0;
+    --login-card-bg:       #ffffff;
+
+    /* Stat value */
+    --stat-value-color:    #1a56a0;
+
+    /* Таблиці */
+    --table-header-bg:     #f8f9fa;
+    --table-hover-bg:      rgba(0,0,0,.03);
+
+    /* Форми */
+    --input-bg:            #ffffff;
+    --input-border:        #dee2e6;
+    --input-bg-focus:      #ffffff;
+}
+
+a { color: var(--link-color); }

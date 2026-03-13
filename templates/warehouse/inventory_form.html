@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Нова інвентаризація — {{ unit_name }}{% endblock %}
+{% block page_title %}Нова інвентаризація складу{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('warehouse.inventory_list') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endblock %}
+
+{% block content %}
+
+{% if errors %}
+<div class="alert alert-danger">
+    <ul class="mb-0">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="POST">
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent fw-medium">Відомості про інвентаризацію</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-2">
+                    <label class="form-label">Дата <span class="text-danger">*</span></label>
+                    <input type="date" name="date" class="form-control"
+                           value="{{ form.date or '' }}" required>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">Члени комісії</label>
+                    <input type="text" name="members" class="form-control"
+                           value="{{ form.members or '' }}"
+                           placeholder="напр. майор Іваненко, ст. сержант Петренко">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">Примітка</label>
+                    <input type="text" name="notes" class="form-control"
+                           value="{{ form.notes or '' }}">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent fw-medium d-flex align-items-center">
+            Перелік майна
+            <span class="ms-2 text-muted small fw-normal">
+                — заповніть колонку "Фактично" за результатами підрахунку
+            </span>
+        </div>
+        <div class="card-body p-0">
+            {% if stock %}
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:35px">№</th>
+                            <th>Найменування</th>
+                            <th style="width:80px">Кат.</th>
+                            <th style="width:80px">Од.</th>
+                            <th style="width:100px">Ціна, грн</th>
+                            <th style="width:110px" class="table-info">По обліку</th>
+                            <th style="width:110px" class="table-warning">
+                                Фактично <span class="text-danger">*</span>
+                            </th>
+                            <th style="width:100px">Різниця</th>
+
+                            {# Приховані поля для передачі #}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in stock %}
+                        <tr>
+                            <td class="text-muted">{{ loop.index }}</td>
+                            <td>{{ r.item_name }}</td>
+                            <td><span class="badge bg-secondary">Кат. {{ r.category }}</span></td>
+                            <td class="text-muted">{{ r.unit_of_measure }}</td>
+                            <td class="text-end">{{ "%.2f"|format(r.price) }}</td>
+                            <td class="text-end table-info">
+                                <strong>{{ r.qty_balance }}</strong>
+                            </td>
+                            <td class="table-warning">
+                                <input type="number"
+                                       name="qty_actual[]"
+                                       class="form-control form-control-sm text-end actual-input"
+                                       value="{{ r.qty_balance }}"
+                                       min="0" step="1"
+                                       data-expected="{{ r.qty_balance }}"
+                                       required>
+                            </td>
+                            <td class="text-end diff-cell text-muted">0</td>
+
+                            {# Приховані поля #}
+                            <input type="hidden" name="item_id[]"      value="{{ r.item_id }}">
+                            <input type="hidden" name="category[]"     value="{{ r.category }}">
+                            <input type="hidden" name="price[]"        value="{{ r.price }}">
+                            <input type="hidden" name="qty_expected[]" value="{{ r.qty_balance }}">
+                            <input type="hidden" name="item_name[]"    value="{{ r.item_name }}">
+                            <input type="hidden" name="unit_of_measure[]" value="{{ r.unit_of_measure }}">
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                На складі немає залишків для інвентаризації.
+                <a href="{{ url_for('warehouse.income_new') }}">Внести прихід</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if stock %}
+    <div class="d-flex gap-2 justify-content-end">
+        <a href="{{ url_for('warehouse.inventory_list') }}" class="btn btn-outline-secondary">Скасувати</a>
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-lg me-1"></i>Зберегти інвентаризацію
+        </button>
+    </div>
+    {% endif %}
+
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Автоматичне обчислення різниці
+document.querySelectorAll('.actual-input').forEach(inp => {
+    inp.addEventListener('input', function() {
+        const expected = parseFloat(this.dataset.expected) || 0;
+        const actual   = parseFloat(this.value) || 0;
+        const diff     = Math.round((actual - expected) * 10000) / 10000;
+        const cell = this.closest('tr').querySelector('.diff-cell');
+        cell.textContent = diff === 0 ? '0' : (diff > 0 ? '+' + diff : diff);
+        cell.className = 'text-end diff-cell fw-bold ' +
+            (diff > 0 ? 'text-success' : diff < 0 ? 'text-danger' : 'text-muted');
+    });
+    // Ініціалізувати
+    inp.dispatchEvent(new Event('input'));
+});
+</script>
+{% endblock %}

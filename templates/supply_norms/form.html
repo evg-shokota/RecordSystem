@@ -1,0 +1,406 @@
+{% extends "base.html" %}
+{% block title %}{% if norm %}{{ norm.name }}{% else %}Нова норма{% endif %} — {{ unit_name }}{% endblock %}
+{% block page_title %}{% if norm and norm.id %}Норма: {{ norm.name }}{% else %}Нова норма видачі{% endif %}{% endblock %}
+
+{% block topbar_actions %}
+{% if norm and norm.id %}
+<a href="{{ url_for('supply_norms.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+
+{# ── Шапка норми ── #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-transparent fw-medium">Параметри норми</div>
+    <div class="card-body">
+        <form method="POST" id="normForm">
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <label class="form-label">Назва норми <span class="text-danger">*</span></label>
+                    <input type="text" name="name" class="form-control"
+                           value="{{ norm.name if norm else '' }}"
+                           placeholder="напр. Контракт 3 форма, Мобілізований..."
+                           required>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">Опис</label>
+                    <input type="text" name="description" class="form-control"
+                           value="{{ norm.description if norm else '' }}"
+                           placeholder="необов'язково">
+                </div>
+                {% if norm and norm.id %}
+                <div class="col-md-2 d-flex align-items-end">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="is_active"
+                               id="chkActive" value="1"
+                               {{ 'checked' if norm.is_active }}>
+                        <label class="form-check-label" for="chkActive">Активна</label>
+                    </div>
+                </div>
+                {% endif %}
+                <div class="col-12 text-end">
+                    <a href="{{ url_for('supply_norms.index') }}"
+                       class="btn btn-outline-secondary me-2">Скасувати</a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-floppy me-1"></i>Зберегти
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if norm and norm.id %}
+{# ── Позиції норми ── #}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent d-flex align-items-center">
+        <span class="fw-medium">Перелік майна</span>
+        <span class="badge bg-secondary ms-2" id="itemsCount">{{ items | length }}</span>
+    </div>
+    <div class="card-body">
+
+        {# Форма додавання нової позиції #}
+        <div class="row g-2 align-items-end mb-3 border-bottom pb-3">
+            <div class="col-md-4">
+                <label class="form-label form-label-sm">Найменування майна</label>
+                <input type="hidden" id="addItemSelect" value="">
+                <div id="addItemSS"></div>
+            </div>
+            <div class="col-md-1">
+                <label class="form-label form-label-sm">К-сть</label>
+                <input type="number" id="addQty" class="form-control form-control-sm"
+                       value="1" min="0.01" step="0.01">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label form-label-sm">Строк носіння (рок.)</label>
+                <input type="number" id="addWear" class="form-control form-control-sm"
+                       value="0" min="0" step="0.5"
+                       title="0 = до зносу">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label form-label-sm">Категорія</label>
+                <select id="addCategory" class="form-select form-select-sm">
+                    <option value="I">I</option>
+                    <option value="II">II</option>
+                    <option value="III">III</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label form-label-sm">Примітка</label>
+                <input type="text" id="addNotes" class="form-control form-control-sm"
+                       placeholder="необов'язково">
+            </div>
+            <div class="col-md-1">
+                <button type="button" class="btn btn-sm btn-primary w-100" id="btnAddItem">
+                    <i class="bi bi-plus-lg"></i>
+                </button>
+            </div>
+        </div>
+        <div id="addError" class="alert alert-danger py-1 small d-none"></div>
+
+        {# Таблиця позицій #}
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0" id="normItemsTable">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:30px" class="text-center text-muted">#</th>
+                        <th>Найменування</th>
+                        <th style="width:60px" class="text-center">Од.</th>
+                        <th style="width:80px" class="text-center">К-сть</th>
+                        <th style="width:120px" class="text-center">Строк носіння</th>
+                        <th style="width:80px" class="text-center">Кат.</th>
+                        <th>Примітка</th>
+                        <th style="width:50px" class="text-center">↕</th>
+                        <th style="width:40px"></th>
+                    </tr>
+                </thead>
+                <tbody id="normItemsBody">
+                    {% for item in items %}
+                    <tr data-row-id="{{ item.id }}" data-sort="{{ item.sort_order }}">
+                        <td class="text-center text-muted row-num small">{{ loop.index }}</td>
+                        <td class="fw-medium">{{ item.item_name }}</td>
+                        <td class="text-center text-muted small">{{ item.unit_of_measure }}</td>
+                        <td class="text-center">
+                            <input type="number" class="form-control form-control-sm text-center p-1 field-qty"
+                                   value="{{ item.quantity }}" min="0.01" step="0.01"
+                                   style="width:60px;margin:auto">
+                        </td>
+                        <td class="text-center">
+                            <div class="d-flex align-items-center justify-content-center gap-1">
+                                <input type="number" class="form-control form-control-sm text-center p-1 field-wear"
+                                       value="{{ item.wear_years }}" min="0" step="0.5"
+                                       style="width:55px" title="0 = до зносу">
+                                <span class="text-muted small">
+                                    {% if item.wear_years == 0 %}до зносу
+                                    {% elif item.wear_years < 1 %}{{ (item.wear_years * 12)|int }} міс.
+                                    {% else %}р.{% endif %}
+                                </span>
+                            </div>
+                        </td>
+                        <td class="text-center">
+                            <select class="form-select form-select-sm field-cat" style="width:60px;margin:auto">
+                                <option value="I"   {{ 'selected' if item.category=='I' }}>I</option>
+                                <option value="II"  {{ 'selected' if item.category=='II' }}>II</option>
+                                <option value="III" {{ 'selected' if item.category=='III' }}>III</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input type="text" class="form-control form-control-sm field-notes"
+                                   value="{{ item.notes or '' }}" placeholder="—">
+                        </td>
+                        <td class="text-center">
+                            <div class="d-flex gap-1 justify-content-center">
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 btn-up"
+                                        title="Вгору"><i class="bi bi-chevron-up"></i></button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 btn-dn"
+                                        title="Вниз"><i class="bi bi-chevron-down"></i></button>
+                            </div>
+                        </td>
+                        <td class="text-center">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-danger py-0 px-1 btn-del-item"
+                                    data-row-id="{{ item.id }}"
+                                    title="Видалити">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% if not items %}
+                <tbody id="emptyMsg">
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-3">
+                            <i class="bi bi-inbox me-1"></i>Позицій ще немає — додайте майно вище
+                        </td>
+                    </tr>
+                </tbody>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{% if norm and norm.id %}
+<script>
+const NORM_ID = {{ norm.id }};
+
+// SearchableSelect для "Найменування майна"
+const SUPPLY_NORM_OPTIONS = [
+    {% for g in norm_groups %}
+    {% for nd in g.norms %}
+    { value: '{{ nd.id }}', label: {{ nd.name | tojson }}, group: {{ g.name | tojson }}, meta: { unit: {{ (nd.unit or 'шт') | tojson }}, qty: {{ nd.default_qty or 1 }}, wear: {{ nd.default_wear_years or 0 }} } },
+    {% endfor %}
+    {% endfor %}
+];
+const _addItemHidden = document.getElementById('addItemSelect');
+const _addItemSS = new SearchableSelect({
+    container:   document.getElementById('addItemSS'),
+    hiddenInput: _addItemHidden,
+    options:     SUPPLY_NORM_OPTIONS,
+    placeholder: '— оберіть зі словника —',
+    allowClear:  true,
+    size:        'sm',
+    onChange(val, opt) {
+        if (opt && opt.meta) {
+            // Автопідставити qty і wear якщо не змінено
+            const qtyField  = document.getElementById('addQty');
+            const wearField = document.getElementById('addWear');
+            if (qtyField.value  === '1')  qtyField.value  = opt.meta.qty;
+            if (wearField.value === '0')  wearField.value = opt.meta.wear;
+        }
+    }
+});
+
+// ── Додати позицію ───────────────────────────────────────────
+document.getElementById('btnAddItem').addEventListener('click', async () => {
+    const normDictId = parseInt(_addItemHidden.value);
+    const qty        = parseFloat(document.getElementById('addQty').value) || 1;
+    const wear       = parseFloat(document.getElementById('addWear').value) || 0;
+    const cat        = document.getElementById('addCategory').value;
+    const notes      = document.getElementById('addNotes').value.trim();
+
+    const errDiv = document.getElementById('addError');
+    if (!normDictId) {
+        errDiv.textContent = 'Оберіть найменування зі списку';
+        errDiv.classList.remove('d-none');
+        return;
+    }
+    errDiv.classList.add('d-none');
+
+    const resp = await fetch(`/supply-norms/${NORM_ID}/items/add`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({norm_dict_id: normDictId, quantity: qty, wear_years: wear,
+                              category: cat, notes: notes})
+    });
+    const d = await resp.json();
+    if (!d.ok) {
+        errDiv.textContent = d.error || 'Помилка';
+        errDiv.classList.remove('d-none');
+        return;
+    }
+
+    // Додати рядок в таблицю
+    appendItemRow(d.item);
+
+    // Очистити форму
+    _addItemSS.reset();
+    document.getElementById('addQty').value  = '1';
+    document.getElementById('addWear').value = '0';
+    document.getElementById('addNotes').value = '';
+
+    // Сховати "порожньо"
+    const empty = document.getElementById('emptyMsg');
+    if (empty) empty.remove();
+    updateRowNums();
+    updateCount();
+});
+
+// ── Рендер нового рядка ──────────────────────────────────────
+function wearLabel(w) {
+    if (w === 0) return 'до зносу';
+    if (w < 1) return Math.round(w * 12) + ' міс.';
+    return 'р.';
+}
+
+function appendItemRow(item) {
+    const tbody = document.getElementById('normItemsBody');
+    const tr = document.createElement('tr');
+    tr.dataset.rowId = item.id;
+    tr.innerHTML = `
+        <td class="text-center text-muted row-num small"></td>
+        <td class="fw-medium">${escH(item.item_name)}</td>
+        <td class="text-center text-muted small">${escH(item.unit_of_measure)}</td>
+        <td class="text-center">
+            <input type="number" class="form-control form-control-sm text-center p-1 field-qty"
+                   value="${item.quantity}" min="0.01" step="0.01" style="width:60px;margin:auto">
+        </td>
+        <td class="text-center">
+            <div class="d-flex align-items-center justify-content-center gap-1">
+                <input type="number" class="form-control form-control-sm text-center p-1 field-wear"
+                       value="${item.wear_years}" min="0" step="0.5" style="width:55px" title="0 = до зносу">
+                <span class="text-muted small">${wearLabel(item.wear_years)}</span>
+            </div>
+        </td>
+        <td class="text-center">
+            <select class="form-select form-select-sm field-cat" style="width:60px;margin:auto">
+                <option value="I"   ${item.category==='I'?'selected':''}>I</option>
+                <option value="II"  ${item.category==='II'?'selected':''}>II</option>
+                <option value="III" ${item.category==='III'?'selected':''}>III</option>
+            </select>
+        </td>
+        <td>
+            <input type="text" class="form-control form-control-sm field-notes"
+                   value="${escH(item.notes||'')}" placeholder="—">
+        </td>
+        <td class="text-center">
+            <div class="d-flex gap-1 justify-content-center">
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 btn-up" title="Вгору">
+                    <i class="bi bi-chevron-up"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 btn-dn" title="Вниз">
+                    <i class="bi bi-chevron-down"></i></button>
+            </div>
+        </td>
+        <td class="text-center">
+            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 btn-del-item"
+                    data-row-id="${item.id}" title="Видалити">
+                <i class="bi bi-x-lg"></i></button>
+        </td>
+    `;
+    tbody.appendChild(tr);
+    bindRowEvents(tr);
+}
+
+// ── Обробники для рядків ─────────────────────────────────────
+function bindRowEvents(tr) {
+    const rowId = tr.dataset.rowId;
+
+    // Збереження при blur
+    async function saveRow() {
+        const qty   = parseFloat(tr.querySelector('.field-qty').value) || 1;
+        const wear  = parseFloat(tr.querySelector('.field-wear').value) || 0;
+        const cat   = tr.querySelector('.field-cat').value;
+        const notes = tr.querySelector('.field-notes').value.trim();
+
+        // Оновити підпис строку
+        const wearSpan = tr.querySelector('.field-wear').nextElementSibling;
+        if (wearSpan) wearSpan.textContent = wearLabel(wear);
+
+        await fetch(`/supply-norms/${NORM_ID}/items/${rowId}/edit`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({quantity: qty, wear_years: wear, category: cat, notes: notes})
+        });
+    }
+
+    tr.querySelectorAll('.field-qty,.field-wear,.field-notes').forEach(el =>
+        el.addEventListener('blur', saveRow)
+    );
+    tr.querySelector('.field-cat').addEventListener('change', saveRow);
+
+    // Видалити
+    tr.querySelector('.btn-del-item').addEventListener('click', async () => {
+        if (!confirm('Видалити позицію з норми?')) return;
+        const resp = await fetch(`/supply-norms/${NORM_ID}/items/${rowId}/delete`, {method: 'POST'});
+        const d = await resp.json();
+        if (d.ok) {
+            tr.remove();
+            updateRowNums();
+            updateCount();
+        }
+    });
+
+    // Вгору / Вниз
+    tr.querySelector('.btn-up').addEventListener('click', () => {
+        const prev = tr.previousElementSibling;
+        if (prev) { tr.parentNode.insertBefore(tr, prev); updateRowNums(); saveOrder(); }
+    });
+    tr.querySelector('.btn-dn').addEventListener('click', () => {
+        const next = tr.nextElementSibling;
+        if (next) { tr.parentNode.insertBefore(next, tr); updateRowNums(); saveOrder(); }
+    });
+}
+
+// Прив'язати події до існуючих рядків
+document.querySelectorAll('#normItemsBody tr').forEach(bindRowEvents);
+
+// ── Допоміжні функції ────────────────────────────────────────
+function updateRowNums() {
+    document.querySelectorAll('#normItemsBody tr').forEach((tr, i) => {
+        const n = tr.querySelector('.row-num');
+        if (n) n.textContent = i + 1;
+    });
+}
+
+function updateCount() {
+    const cnt = document.querySelectorAll('#normItemsBody tr').length;
+    const badge = document.getElementById('itemsCount');
+    if (badge) badge.textContent = cnt;
+}
+
+async function saveOrder() {
+    const ids = Array.from(document.querySelectorAll('#normItemsBody tr'))
+                     .map(tr => parseInt(tr.dataset.rowId));
+    await fetch(`/supply-norms/${NORM_ID}/items/reorder`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids: ids})
+    });
+}
+
+function escH(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+updateRowNums();
+</script>
+{% endif %}
+{% endblock %}

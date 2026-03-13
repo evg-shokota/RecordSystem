@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Зведена відомість — {{ unit_name }}{% endblock %}
+{% block page_title %}Зведена відомість{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-sm btn-outline-secondary" onclick="window.print()">
+    <i class="bi bi-printer me-1"></i>Друк
+</button>
+<a href="{{ url_for('reports.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>До звітів
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Фільтри ── #}
+<form method="GET" class="card border-0 shadow-sm mb-3 no-print">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label form-label-sm mb-1">Підрозділ</label>
+                <select name="unit_id" class="form-select form-select-sm">
+                    <option value="">— всі підрозділи —</option>
+                    {% for u in units %}
+                    <option value="{{ u.id }}" {{ 'selected' if unit_id == u.id }}>
+                        {{ u.bat_name }} / {{ u.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100">
+                    <i class="bi bi-funnel me-1"></i>Застосувати
+                </button>
+            </div>
+        </div>
+    </div>
+</form>
+
+{# ── Заголовок для друку ── #}
+<div class="d-none d-print-block mb-3">
+    <h4 class="text-center">{{ unit_name }} — Зведена відомість майна особового складу</h4>
+    <p class="text-center text-muted">Дата: {{ today }}</p>
+</div>
+
+{% if by_unit %}
+{% for unit_name_key, persons in by_unit.items() %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-light d-flex align-items-center">
+        <i class="bi bi-building me-2 text-primary"></i>
+        <strong>{{ unit_name_key }}</strong>
+        <span class="ms-2 badge bg-secondary">{{ persons | length }} осіб</span>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:30px">#</th>
+                    <th>ПІБ / звання</th>
+                    <th>Майно (активне)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in persons %}
+                <tr>
+                    <td class="text-muted small text-center">{{ loop.index }}</td>
+                    <td>
+                        <a href="{{ url_for('personnel.card', person_id=p.id) }}"
+                           class="text-decoration-none fw-medium">
+                            {% if p.rank %}<span class="text-muted small">{{ p.rank }} </span>{% endif %}
+                            {{ p.last_name }} {{ p.first_name }}
+                            {% if p.middle_name %} {{ p.middle_name }}{% endif %}
+                        </a>
+                    </td>
+                    <td>
+                        {% if p.items %}
+                        <div class="d-flex flex-wrap gap-1">
+                            {% for item in p.items %}
+                            <span class="badge bg-light text-dark border small">
+                                {{ item.item_name }}
+                                <span class="text-muted">×{{ item.quantity | int if item.quantity == item.quantity | int else item.quantity }}</span>
+                                <span class="badge bg-secondary" style="font-size:9px">{{ item.category }}</span>
+                            </span>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <span class="text-muted small">Немає закріпленого майна</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-people fs-2 d-block mb-2"></i>
+        Особовий склад не знайдений
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

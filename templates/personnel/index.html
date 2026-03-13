@@ -1,0 +1,469 @@
+{% extends "base.html" %}
+{% block title %}Картотека — {{ unit_name }}{% endblock %}
+{% block page_title %}Картотека особового складу{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('personnel.add') }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-person-plus-fill me-1"></i>Додати
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Фільтри ── #}
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" action="{{ url_for('personnel.index') }}" id="filterForm" class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label form-label-sm mb-0">Підрозділ</label>
+                <select name="unit_id" class="form-select form-select-sm" id="filterUnit" onchange="this.form.submit()">
+                    <option value="">Всі підрозділи</option>
+                    {% for u in all_units %}
+                    <option value="{{ u.id }}" {% if filter_unit_id == u.id %}selected{% endif %}>{{ u.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label form-label-sm mb-0">Група</label>
+                <select name="group_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">Всі групи</option>
+                    {% for g in groups %}
+                    <option value="{{ g.id }}" {% if filter_group_id == g.id %}selected{% endif %}>{{ g.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col">
+                <label class="form-label form-label-sm mb-0">Пошук (ПІБ / ІПН)</label>
+                <div class="input-group input-group-sm">
+                    <input type="text" name="q" class="form-control form-control-sm"
+                           placeholder="Введіть ПІБ або ІПН..."
+                           value="{{ filter_search }}">
+                    <button class="btn btn-outline-secondary" type="submit">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="col-auto">
+                <div class="form-check form-check-sm mt-3">
+                    <input class="form-check-input" type="checkbox" name="archived" value="1"
+                           id="chkArchived" {% if show_arch %}checked{% endif %} onchange="this.form.submit()">
+                    <label class="form-check-label" for="chkArchived">Архів</label>
+                </div>
+            </div>
+            {%- for f in slot('personnel.list.filters') %}
+            <div class="col-auto">
+                {{ f | safe }}
+            </div>
+            {%- endfor %}
+            {% if filter_search or filter_unit_id or filter_group_id or show_arch %}
+            <div class="col-auto mt-3">
+                <a href="{{ url_for('personnel.index') }}" class="btn btn-sm btn-outline-danger">
+                    <i class="bi bi-x-circle"></i> Скинути
+                </a>
+            </div>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+{# ── Панель масових дій ── #}
+<div id="bulk-actions" class="alert alert-primary py-2 d-none align-items-center gap-3 mb-2"
+     style="display:none!important;">
+    <span class="selected-count fw-semibold">Обрано: 0</span>
+    <button class="btn btn-sm btn-outline-primary"
+            onclick="openMoveModal()">
+        <i class="bi bi-arrows-move me-1"></i>Перемістити
+    </button>
+</div>
+
+{# ── Таблиця ── #}
+<div class="card table-card">
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <span class="fw-semibold text-muted" style="font-size:13px;">
+            Всього: <strong>{{ total }}</strong>
+            {% if total > per_page %} / сторінка {{ page }} з {{ total_pages }}{% endif %}
+        </span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0 selectable-table">
+            <thead>
+                <tr>
+                    <th style="width:36px;">
+                        <input type="checkbox" class="form-check-input select-all" title="Обрати всіх">
+                    </th>
+                    <th style="width:42px;">#</th>
+                    <th>Прізвище Ім'я По-батькові</th>
+                    <th>Звання</th>
+                    <th>Посада</th>
+                    <th>Підрозділ</th>
+                    <th>Група</th>
+                    <th class="text-center" style="width:80px" title="Позицій потребують видачі">Потреби</th>
+                    {%- for col in slot('personnel.list.columns') %}
+                    <th>{{ col.label }}</th>
+                    {%- endfor %}
+                    <th style="width:90px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% if personnel %}
+                {% set row_offset = (page - 1) * per_page %}
+                {% for p in personnel %}
+                <tr class="cursor-pointer" onclick="rowClick(event, {{ p.id }})">
+                    <td onclick="event.stopPropagation()">
+                        <input type="checkbox" class="form-check-input row-check" data-id="{{ p.id }}">
+                    </td>
+                    <td class="text-muted">{{ row_offset + loop.index }}</td>
+                    <td>
+                        <a href="{{ url_for('personnel.card', person_id=p.id) }}"
+                           class="fw-semibold text-decoration-none text-dark">
+                            {{ p.last_name }} {{ p.first_name }}{% if p.middle_name %} {{ p.middle_name }}{% endif %}
+                        </a>
+                    </td>
+                    <td>{{ p.rank or '—' }}</td>
+                    <td class="text-truncate" style="max-width:160px;">{{ p.position or '—' }}</td>
+                    <td>
+                        {% if p.unit_name %}
+                            <span class="text-truncate d-inline-block" style="max-width:130px;" title="{{ p.battalion_name }} / {{ p.unit_name }}">
+                                {{ p.unit_name }}
+                            </span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>
+                        {% if p.group_type == 'active' %}
+                            <span class="badge bg-success-subtle text-success border border-success-subtle">{{ p.group_name or '—' }}</span>
+                        {% elif p.group_type == 'dismissed' %}
+                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{{ p.group_name or '—' }}</span>
+                        {% elif p.group_type == 'szch' %}
+                            <span class="badge bg-warning-subtle text-warning border border-warning-subtle">{{ p.group_name or '—' }}</span>
+                        {% elif p.group_type == 'deceased' %}
+                            <span class="badge bg-dark-subtle text-dark border border-dark-subtle">{{ p.group_name or '—' }}</span>
+                        {% elif p.group_type == 'missing' %}
+                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle">{{ p.group_name or '—' }}</span>
+                        {% else %}
+                            <span class="badge bg-light text-secondary border">{{ p.group_name or '—' }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center" onclick="event.stopPropagation()">
+                        {% set need = needs_map.get(p.id, 0) %}
+                        {% if need > 0 %}
+                        <a href="{{ url_for('personnel.card', person_id=p.id) }}#pane-property-card"
+                           class="badge bg-danger-subtle text-danger border border-danger-subtle text-decoration-none"
+                           title="{{ need }} позицій потребують видачі">
+                            <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ need }}
+                        </a>
+                        {% else %}
+                        <span class="text-muted small">—</span>
+                        {% endif %}
+                    </td>
+                    {%- for col in slot('personnel.list.columns') %}
+                    <td>{{ col.render(p) | safe if col.render is defined else (p[col.field] or '—') }}</td>
+                    {%- endfor %}
+                    <td onclick="event.stopPropagation()" class="text-end">
+                        <a href="{{ url_for('personnel.card', person_id=p.id) }}"
+                           class="btn btn-sm btn-outline-secondary py-0 px-1" title="Картка">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                        <a href="{{ url_for('personnel.edit', person_id=p.id) }}"
+                           class="btn btn-sm btn-outline-primary py-0 px-1" title="Редагувати">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        {% if p.is_active %}
+                        <button class="btn btn-sm btn-outline-warning py-0 px-1"
+                                title="Архівувати"
+                                onclick="openArchiveModal({{ p.id }}, '{{ p.last_name }} {{ p.first_name }}')">
+                            <i class="bi bi-archive"></i>
+                        </button>
+                        {% else %}
+                        <button class="btn btn-sm btn-outline-success py-0 px-1"
+                                title="Відновити"
+                                onclick="restorePerson({{ p.id }})">
+                            <i class="bi bi-arrow-counterclockwise"></i>
+                        </button>
+                        {% endif %}
+                        {%- for act in slot('personnel.list.row_actions', person=p) %}
+                        <a href="{{ act.url }}" class="btn btn-sm {{ act.class|default('btn-outline-secondary') }} py-0 px-1"
+                           title="{{ act.label }}">
+                            <i class="{{ act.icon }}"></i>
+                        </a>
+                        {%- endfor %}
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="9" class="text-center text-muted py-4">
+                        <i class="bi bi-inbox fs-4 d-block mb-1"></i>
+                        Нікого не знайдено
+                    </td>
+                </tr>
+            {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    {# ── Пагінація ── #}
+    {% if total_pages > 1 %}
+    <div class="card-footer d-flex justify-content-center py-2">
+        <nav>
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('personnel.index',
+                        page=page-1, unit_id=filter_unit_id, group_id=filter_group_id,
+                        q=filter_search, archived='1' if show_arch else '') }}">
+                        <i class="bi bi-chevron-left"></i>
+                    </a>
+                </li>
+                {% for p_num in range(1, total_pages + 1) %}
+                    {% if p_num == 1 or p_num == total_pages
+                          or (p_num >= page - 2 and p_num <= page + 2) %}
+                    <li class="page-item {% if p_num == page %}active{% endif %}">
+                        <a class="page-link" href="{{ url_for('personnel.index',
+                            page=p_num, unit_id=filter_unit_id, group_id=filter_group_id,
+                            q=filter_search, archived='1' if show_arch else '') }}">
+                            {{ p_num }}
+                        </a>
+                    </li>
+                    {% elif p_num == page - 3 or p_num == page + 3 %}
+                    <li class="page-item disabled"><span class="page-link">…</span></li>
+                    {% endif %}
+                {% endfor %}
+                <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('personnel.index',
+                        page=page+1, unit_id=filter_unit_id, group_id=filter_group_id,
+                        q=filter_search, archived='1' if show_arch else '') }}">
+                        <i class="bi bi-chevron-right"></i>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+
+{# ══════════════════════════════════════════════════════════
+   Модальне вікно — Переміщення
+══════════════════════════════════════════════════════════ #}
+<div class="modal fade" id="modalMove" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-arrows-move me-2"></i>Переміщення особового складу</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-3">
+                    Обрано: <strong id="moveCount">0</strong> осіб
+                </p>
+                <div class="mb-3">
+                    <label class="form-label form-label-sm">Група</label>
+                    <select class="form-select form-select-sm" id="moveGroup">
+                        <option value="">— не змінювати —</option>
+                        {% for g in groups %}
+                        <option value="{{ g.id }}">{{ g.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label form-label-sm">Батальйон</label>
+                    <select class="form-select form-select-sm" id="moveBattalion" onchange="loadMoveUnits()">
+                        <option value="">— не змінювати —</option>
+                        {% for b in battalions %}
+                        <option value="{{ b.id }}">{{ b.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label form-label-sm">Підрозділ</label>
+                    <select class="form-select form-select-sm" id="moveUnit" onchange="loadMovePlatoons()" disabled>
+                        <option value="">— не змінювати —</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label form-label-sm">Взвод</label>
+                    <select class="form-select form-select-sm" id="movePlatoon" disabled>
+                        <option value="">— не змінювати —</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="submitMove()">
+                    <i class="bi bi-check-lg me-1"></i>Перемістити
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════
+   Модальне вікно — Архівування
+══════════════════════════════════════════════════════════ #}
+<div class="modal fade" id="modalArchive" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning-subtle">
+                <h5 class="modal-title"><i class="bi bi-archive me-2"></i>Архівувати особу</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2">Особа: <strong id="archiveName"></strong></p>
+                <div id="archiveInventoryWarning" class="alert alert-danger d-none py-2">
+                    <strong><i class="bi bi-exclamation-triangle me-1"></i>Є не здане інвентарне майно:</strong>
+                    <ul class="mb-0 mt-1" id="archiveInventoryList"></ul>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label form-label-sm">Причина вибуття <span class="text-danger">*</span></label>
+                    <select class="form-select form-select-sm" id="archiveReason">
+                        <option value="">— оберіть причину —</option>
+                        <option>переведення</option>
+                        <option>демобілізація</option>
+                        <option>загибель</option>
+                        <option>самовільне залишення частини (СЗЧ)</option>
+                        <option>безвісті зниклий</option>
+                        <option>інше</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label form-label-sm">Примітка</label>
+                    <input type="text" class="form-control form-control-sm" id="archiveNote"
+                           placeholder="Додаткова інформація (опціонально)">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-warning btn-sm" id="archiveConfirmBtn"
+                        onclick="submitArchive()">
+                    <i class="bi bi-archive me-1"></i>Архівувати
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _archivePersonId = null;
+const modalMove    = new bootstrap.Modal(document.getElementById('modalMove'));
+const modalArchive = new bootstrap.Modal(document.getElementById('modalArchive'));
+
+// ── Клік по рядку ──
+function rowClick(e, id) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON'
+        || e.target.tagName === 'A' || e.target.closest('a') || e.target.closest('button')) return;
+    window.location = '/personnel/' + id;
+}
+
+// ── Масові дії ──
+function openMoveModal() {
+    const ids = getSelectedIds('.selectable-table');
+    if (!ids.length) { showToast('Оберіть хоча б одну особу', 'warning'); return; }
+    document.getElementById('moveCount').textContent = ids.length;
+    document.getElementById('moveBattalion').value = '';
+    document.getElementById('moveGroup').value = '';
+    const unitSel = document.getElementById('moveUnit');
+    unitSel.innerHTML = '<option value="">— не змінювати —</option>';
+    unitSel.disabled = true;
+    const platSel = document.getElementById('movePlatoon');
+    platSel.innerHTML = '<option value="">— не змінювати —</option>';
+    platSel.disabled = true;
+    modalMove.show();
+}
+
+async function loadMoveUnits() {
+    const batId = document.getElementById('moveBattalion').value;
+    const sel = document.getElementById('moveUnit');
+    sel.innerHTML = '<option value="">— не змінювати —</option>';
+    sel.disabled = !batId;
+    const platSel = document.getElementById('movePlatoon');
+    platSel.innerHTML = '<option value="">— не змінювати —</option>';
+    platSel.disabled = true;
+    if (!batId) return;
+    const data = await apiGet('/personnel/api/units?battalion_id=' + batId);
+    if (!data) return;
+    data.forEach(u => {
+        const opt = document.createElement('option');
+        opt.value = u.id; opt.textContent = u.name;
+        sel.appendChild(opt);
+    });
+}
+
+async function loadMovePlatoons() {
+    const unitId = document.getElementById('moveUnit').value;
+    const sel = document.getElementById('movePlatoon');
+    sel.innerHTML = '<option value="">— не змінювати —</option>';
+    sel.disabled = !unitId;
+    if (!unitId) return;
+    const data = await apiGet('/personnel/api/platoons?unit_id=' + unitId);
+    if (!data) return;
+    data.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id; opt.textContent = p.name;
+        sel.appendChild(opt);
+    });
+}
+
+async function submitMove() {
+    const ids = getSelectedIds('.selectable-table');
+    const group_id   = document.getElementById('moveGroup').value || null;
+    const unit_id    = document.getElementById('moveUnit').value || null;
+    const platoon_id = document.getElementById('movePlatoon').value || null;
+
+    if (!group_id && !unit_id) {
+        showToast('Оберіть групу або підрозділ для переміщення', 'warning');
+        return;
+    }
+    const result = await apiPost('/personnel/move', { ids, group_id, unit_id, platoon_id });
+    if (!result) return;
+    if (result.error) { showToast(result.error, 'danger'); return; }
+    modalMove.hide();
+    showToast(`Переміщено ${result.count} осіб`, 'success');
+    setTimeout(() => window.location.reload(), 800);
+}
+
+// ── Архівування ──
+function openArchiveModal(id, name) {
+    _archivePersonId = id;
+    document.getElementById('archiveName').textContent = name;
+    document.getElementById('archiveReason').value = '';
+    document.getElementById('archiveNote').value = '';
+    document.getElementById('archiveInventoryWarning').classList.add('d-none');
+    modalArchive.show();
+}
+
+async function submitArchive() {
+    const reason = document.getElementById('archiveReason').value;
+    if (!reason) { showToast('Оберіть причину вибуття', 'warning'); return; }
+    const note = document.getElementById('archiveNote').value;
+    const result = await apiPost(`/personnel/${_archivePersonId}/archive`, { reason, note });
+    if (!result) return;
+    if (result.error) {
+        if (result.items) {
+            // є інвентарне майно
+            const warn = document.getElementById('archiveInventoryWarning');
+            const list = document.getElementById('archiveInventoryList');
+            list.innerHTML = result.items.map(i =>
+                `<li>${i.name} — ${i.quantity} шт.</li>`
+            ).join('');
+            warn.classList.remove('d-none');
+        }
+        showToast(result.error, 'danger');
+        return;
+    }
+    modalArchive.hide();
+    showToast('Особу заархівовано', 'success');
+    setTimeout(() => window.location.reload(), 800);
+}
+
+// ── Відновлення ──
+async function restorePerson(id) {
+    if (!confirm('Відновити особу з архіву?')) return;
+    const result = await apiPost(`/personnel/${id}/restore`, {});
+    if (!result) return;
+    if (result.error) { showToast(result.error, 'danger'); return; }
+    showToast('Особу відновлено', 'success');
+    setTimeout(() => window.location.reload(), 800);
+}
+</script>
+{% endblock %}

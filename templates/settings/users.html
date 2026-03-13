@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block title %}Користувачі — Налаштування{% endblock %}
+{% block page_title %}Користувачі системи{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('settings.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Налаштування
+</a>
+<a href="{{ url_for('settings.roles') }}" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-shield-lock me-1"></i>Групи доступу
+</a>
+<button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#modalAddUser">
+    <i class="bi bi-person-plus me-1"></i>Додати користувача
+</button>
+{% endblock %}
+
+{% block content %}
+
+{# ── Таблиця користувачів ── #}
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:40px">#</th>
+                    <th>ПІБ</th>
+                    <th>Логін</th>
+                    <th>Роль</th>
+                    <th>Статус</th>
+                    <th>Створено</th>
+                    <th style="width:100px"></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for u in users %}
+            <tr id="urow-{{ u.id }}">
+                <td class="text-muted small">{{ u.id }}</td>
+                <td class="fw-medium">{{ u.full_name }}</td>
+                <td><code class="small">{{ u.username }}</code></td>
+                <td>
+                    <span class="badge bg-secondary bg-opacity-75">{{ u.role_name }}</span>
+                </td>
+                <td>
+                    {% if u.is_active %}
+                    <span class="badge bg-success-subtle text-success" id="ubadge-{{ u.id }}">Активний</span>
+                    {% else %}
+                    <span class="badge bg-secondary-subtle text-secondary" id="ubadge-{{ u.id }}">Неактивний</span>
+                    {% endif %}
+                </td>
+                <td class="text-muted small">{{ u.created_at[:10] if u.created_at else '—' }}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-secondary py-0 me-1"
+                            title="Редагувати"
+                            data-user="{{ u | tojson | e }}"
+                            onclick="openEditUser(JSON.parse(this.dataset.user))">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-warning py-0 me-1"
+                            title="{{ 'Деактивувати' if u.is_active else 'Активувати' }}"
+                            id="utoggle-{{ u.id }}"
+                            onclick="toggleUser({{ u.id }}, this)">
+                        <i class="bi {{ 'bi-person-dash' if u.is_active else 'bi-person-check' }}"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger py-0"
+                            title="Видалити"
+                            onclick="deleteUser({{ u.id }}, '{{ u.full_name | e }}')">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-muted text-center py-4">Немає користувачів</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{# ── Модаль: Додати ── #}
+<div class="modal fade" id="modalAddUser" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" action="{{ url_for('settings.user_add') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-person-plus me-2"></i>Додати користувача</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">ПІБ <span class="text-danger">*</span></label>
+                        <input type="text" name="full_name" class="form-control" required placeholder="Іванов Іван Іванович">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">Логін <span class="text-danger">*</span></label>
+                        <input type="text" name="username" class="form-control" required placeholder="ivanov"
+                               pattern="[a-zA-Z0-9_]{3,32}" title="Латиниця, цифри, підкреслення, 3–32 символи">
+                        <div class="form-text">Латиниця, цифри, підкреслення. Від 3 символів.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">Пароль <span class="text-danger">*</span></label>
+                        <input type="password" name="password" class="form-control" required minlength="4">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">Роль <span class="text-danger">*</span></label>
+                        <select name="role_id" class="form-select" required>
+                            <option value="">— оберіть роль —</option>
+                            {% for r in roles %}
+                            <option value="{{ r.id }}">{{ r.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-check-lg me-1"></i>Створити
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{# ── Модаль: Редагувати ── #}
+<div class="modal fade" id="modalEditUser" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Редагувати користувача</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-medium">ПІБ <span class="text-danger">*</span></label>
+                    <input type="text" id="editFullName" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-medium">Логін</label>
+                    <input type="text" id="editUsername" class="form-control" disabled>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-medium">Новий пароль</label>
+                    <input type="password" id="editPassword" class="form-control" minlength="4"
+                           placeholder="Залиште порожнім щоб не змінювати">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-medium">Роль <span class="text-danger">*</span></label>
+                    <select id="editRoleId" class="form-select" required>
+                        {% for r in roles %}
+                        <option value="{{ r.id }}">{{ r.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-primary" onclick="saveEditUser()">
+                    <i class="bi bi-check-lg me-1"></i>Зберегти
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _editUid = null;
+const _editModal = new bootstrap.Modal(document.getElementById('modalEditUser'));
+
+function openEditUser(u) {
+    _editUid = u.id;
+    document.getElementById('editFullName').value = u.full_name;
+    document.getElementById('editUsername').value = u.username;
+    document.getElementById('editPassword').value = '';
+    document.getElementById('editRoleId').value   = u.role_id;
+    _editModal.show();
+}
+
+async function saveEditUser() {
+    const fd = new FormData();
+    fd.append('full_name', document.getElementById('editFullName').value);
+    fd.append('role_id',   document.getElementById('editRoleId').value);
+    fd.append('password',  document.getElementById('editPassword').value);
+    const r = await fetch(`/settings/users/${_editUid}/edit`, { method: 'POST', body: fd });
+    const d = await r.json();
+    if (d.ok) { _editModal.hide(); location.reload(); }
+    else showToast(d.error || 'Помилка', 'danger');
+}
+
+async function toggleUser(uid, btn) {
+    const r = await fetch(`/settings/users/${uid}/toggle`, { method: 'POST' });
+    const d = await r.json();
+    if (d.error) { showToast(d.error, 'danger'); return; }
+    const badge = document.getElementById(`ubadge-${uid}`);
+    if (d.is_active) {
+        badge.className = 'badge bg-success-subtle text-success';
+        badge.textContent = 'Активний';
+        btn.title = 'Деактивувати';
+        btn.querySelector('i').className = 'bi bi-person-dash';
+    } else {
+        badge.className = 'badge bg-secondary-subtle text-secondary';
+        badge.textContent = 'Неактивний';
+        btn.title = 'Активувати';
+        btn.querySelector('i').className = 'bi bi-person-check';
+    }
+}
+
+async function deleteUser(uid, name) {
+    if (!confirm(`Видалити користувача «${name}»?\nЦю дію неможливо скасувати.`)) return;
+    const r = await fetch(`/settings/users/${uid}/delete`, { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) document.getElementById(`urow-${uid}`)?.remove();
+    else showToast(d.error || 'Помилка', 'danger');
+}
+</script>
+{% endblock %}

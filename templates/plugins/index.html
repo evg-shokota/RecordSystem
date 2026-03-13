@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+{% block title %}Модулі розширення{% endblock %}
+{% block page_title %}Модулі розширення{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modalUpload">
+    <i class="bi bi-cloud-upload me-1"></i>Завантажити модуль
+</button>
+{% endblock %}
+
+{% block content %}
+
+{% if not plugins %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-puzzle fs-1 d-block mb-3 opacity-25"></i>
+        <h5>Модулі не знайдено</h5>
+        <p class="small mb-3">Помістіть папку плагіна в <code>plugins/</code> або завантажте .zip архів</p>
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalUpload">
+            <i class="bi bi-cloud-upload me-1"></i>Завантажити модуль
+        </button>
+    </div>
+</div>
+{% else %}
+
+<div class="row g-3">
+    {% for p in plugins %}
+    <div class="col-md-6 col-xl-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-start gap-3">
+                    <!-- Іконка -->
+                    <div class="rounded-3 p-2 flex-shrink-0
+                        {% if p.is_active %}bg-primary bg-opacity-10{% else %}bg-secondary bg-opacity-10{% endif %}">
+                        <i class="{{ p.icon }} fs-4
+                            {% if p.is_active %}text-primary{% else %}text-secondary{% endif %}"></i>
+                    </div>
+                    <!-- Назва та опис -->
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <h6 class="fw-bold mb-0 text-truncate">{{ p.name }}</h6>
+                            <span class="badge {% if p.is_active %}bg-success{% elif p.is_installed %}bg-secondary{% else %}bg-light text-dark border{% endif %} flex-shrink-0">
+                                {% if p.is_active %}Активний
+                                {% elif p.is_installed %}Вимкнено
+                                {% else %}Не встановлено{% endif %}
+                            </span>
+                        </div>
+                        <p class="text-muted small mb-1">{{ p.description or "Без опису" }}</p>
+                        <div class="text-muted" style="font-size:.75rem">
+                            <span class="me-2"><i class="bi bi-tag me-1"></i>v{{ p.version }}</span>
+                            {% if p.author %}<span><i class="bi bi-person me-1"></i>{{ p.author }}</span>{% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Кнопки дій -->
+            <div class="card-footer bg-transparent border-top-0 pt-0 pb-3 px-3">
+                <div class="d-flex gap-2">
+                    {% if not p.is_installed %}
+                        <!-- Встановити -->
+                        <form method="post" action="/plugins/{{ p.slug }}/install" class="d-inline">
+                            <button class="btn btn-sm btn-primary">
+                                <i class="bi bi-download me-1"></i>Встановити
+                            </button>
+                        </form>
+                    {% else %}
+                        <!-- Увімкнути / Вимкнути -->
+                        <button class="btn btn-sm {% if p.is_active %}btn-outline-warning{% else %}btn-outline-success{% endif %} btn-toggle"
+                                data-slug="{{ p.slug }}" data-active="{{ p.is_active }}">
+                            <i class="bi {% if p.is_active %}bi-pause-circle{% else %}bi-play-circle{% endif %} me-1"></i>
+                            {% if p.is_active %}Вимкнути{% else %}Увімкнути{% endif %}
+                        </button>
+
+                        <!-- Налаштування (якщо є) -->
+                        {% if p.has_settings %}
+                        <a href="/plugins/{{ p.slug }}/settings" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-sliders me-1"></i>Налаштування
+                        </a>
+                        {% endif %}
+
+                        <!-- Видалити -->
+                        <button class="btn btn-sm btn-outline-danger ms-auto btn-uninstall"
+                                data-slug="{{ p.slug }}" data-name="{{ p.name }}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+
+<!-- Інфо-блок: як писати модулі -->
+<div class="card border-0 shadow-sm mt-4">
+    <div class="card-header bg-transparent border-bottom py-2">
+        <h6 class="mb-0 fw-bold"><i class="bi bi-info-circle text-primary me-2"></i>Як додати власний модуль</h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <div class="d-flex gap-2">
+                    <div class="fw-bold text-primary fs-5 flex-shrink-0">1</div>
+                    <div>
+                        <div class="fw-bold small">Створіть папку</div>
+                        <code class="small">plugins/my_module/</code>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="d-flex gap-2">
+                    <div class="fw-bold text-primary fs-5 flex-shrink-0">2</div>
+                    <div>
+                        <div class="fw-bold small">Додайте plugin.py</div>
+                        <span class="small text-muted">з класом Plugin : BasePlugin</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="d-flex gap-2">
+                    <div class="fw-bold text-primary fs-5 flex-shrink-0">3</div>
+                    <div>
+                        <div class="fw-bold small">Натисніть «Встановити»</div>
+                        <span class="small text-muted">або завантажте .zip архів</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="mt-3">
+            <a href="/plugins/sdk-docs" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-book me-1"></i>Документація SDK
+            </a>
+        </div>
+    </div>
+</div>
+
+
+<!-- Модальне: завантажити .zip -->
+<div class="modal fade" id="modalUpload" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title">Завантажити модуль (.zip)</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info small py-2">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Архів має містити папку з файлом <strong>plugin.py</strong> всередині.<br>
+                    Приклад: <code>my_module.zip → my_module/plugin.py</code>
+                </div>
+                <div id="uploadDropzone" class="border-2 border-dashed rounded-3 p-4 text-center text-muted"
+                     style="border-style:dashed; cursor:pointer;">
+                    <i class="bi bi-cloud-upload fs-2 d-block mb-2"></i>
+                    <div>Перетягніть .zip або <span class="text-primary fw-bold">оберіть файл</span></div>
+                    <input type="file" id="uploadInput" accept=".zip" class="d-none">
+                    <div id="uploadFileName" class="small mt-2 fw-bold text-primary d-none"></div>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
+                <button class="btn btn-primary btn-sm" id="btnUpload" disabled>
+                    <i class="bi bi-upload me-1"></i>Завантажити
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальне: підтвердження видалення -->
+<div class="modal fade" id="modalUninstall" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title">Видалити модуль?</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body small">
+                Модуль <strong id="uninstallName"></strong> буде деактивовано.
+                <div class="form-check mt-2">
+                    <input type="checkbox" id="keepData" class="form-check-input" checked>
+                    <label class="form-check-label" for="keepData">Зберегти дані модуля в БД</label>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
+                <form id="uninstallForm" method="post">
+                    <input type="hidden" name="keep_data" id="keepDataInput" value="1">
+                    <button class="btn btn-danger btn-sm">Видалити</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Увімкнути / вимкнути ─────────────────────────────
+document.querySelectorAll('.btn-toggle').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const slug   = btn.dataset.slug;
+        const active = btn.dataset.active == '1';
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Зачекайте...';
+
+        const res  = await fetch(`/plugins/${slug}/toggle`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({active: !active})
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast((active ? 'Модуль вимкнено' : 'Модуль увімкнено') + '. Перезапуск сервера...', 'warning');
+            // Перезапустити процес, потім перезавантажити сторінку
+            await fetch('/plugins/restart', {method: 'POST'}).catch(() => {});
+            // Чекаємо поки сервер підніметься і перезавантажуємо
+            const _tryReload = (attempts) => {
+                fetch('/').then(() => location.reload()).catch(() => {
+                    if (attempts > 0) setTimeout(() => _tryReload(attempts - 1), 800);
+                });
+            };
+            setTimeout(() => _tryReload(15), 1000);
+        } else {
+            showToast(data.error, 'danger');
+            btn.disabled = false;
+        }
+    });
+});
+
+// ── Видалити ──────────────────────────────────────────
+const modalUninstall = new bootstrap.Modal(document.getElementById('modalUninstall'));
+document.querySelectorAll('.btn-uninstall').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.getElementById('uninstallName').textContent = btn.dataset.name;
+        document.getElementById('uninstallForm').action = `/plugins/${btn.dataset.slug}/uninstall`;
+        modalUninstall.show();
+    });
+});
+document.getElementById('keepData').addEventListener('change', function() {
+    document.getElementById('keepDataInput').value = this.checked ? '1' : '0';
+});
+
+// ── Завантаження .zip ─────────────────────────────────
+const uploadInput   = document.getElementById('uploadInput');
+const uploadDropzone = document.getElementById('uploadDropzone');
+const uploadBtn     = document.getElementById('btnUpload');
+const uploadName    = document.getElementById('uploadFileName');
+
+uploadDropzone.addEventListener('click', () => uploadInput.click());
+uploadDropzone.addEventListener('dragover', e => { e.preventDefault(); uploadDropzone.classList.add('border-primary'); });
+uploadDropzone.addEventListener('dragleave', () => uploadDropzone.classList.remove('border-primary'));
+uploadDropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadDropzone.classList.remove('border-primary');
+    if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+});
+uploadInput.addEventListener('change', () => { if (uploadInput.files[0]) setFile(uploadInput.files[0]); });
+
+function setFile(file) {
+    uploadName.textContent = file.name;
+    uploadName.classList.remove('d-none');
+    uploadBtn.disabled = false;
+    uploadBtn._file = file;
+}
+
+uploadBtn.addEventListener('click', async () => {
+    const file = uploadBtn._file;
+    if (!file) return;
+    uploadBtn.disabled = true;
+    uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Завантаження...';
+
+    const fd = new FormData();
+    fd.append('plugin_zip', file);
+    const res  = await fetch('/plugins/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+
+    if (data.ok) {
+        showToast('Модуль завантажено. Натисніть «Встановити»', 'success');
+        setTimeout(() => location.reload(), 800);
+    } else {
+        showToast(data.error, 'danger');
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '<i class="bi bi-upload me-1"></i>Завантажити';
+    }
+});
+</script>
+{% endblock %}

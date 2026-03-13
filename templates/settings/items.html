@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block title %}Словник майна — Налаштування{% endblock %}
+{% block page_title %}Словник майна{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('settings.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+<button class="btn btn-sm btn-primary" id="btnNewItem"
+        data-bs-toggle="modal" data-bs-target="#modalItem">
+    <i class="bi bi-plus-lg me-1"></i>Нова позиція
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <input type="text" id="searchItems" class="form-control form-control-sm"
+               placeholder="Пошук по назві...">
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="itemsTable">
+                <thead class="table-light">
+                    <tr>
+                        <th>Назва</th>
+                        <th>Од.</th>
+                        <th class="text-center">Інв.</th>
+                        <th class="text-center">Сезон</th>
+                        <th class="text-center">Стать</th>
+                        <th>Норма (словник)</th>
+                        <th style="width:80px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr data-id="{{ item.id }}" data-name="{{ item.name|lower }}">
+                        <td class="fw-medium">
+                            {{ item.name }}
+                            {% if item.is_inventory %}
+                            <span class="badge bg-warning text-dark ms-1" title="Інвентарне">І</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted">{{ item.unit_of_measure }}</td>
+                        <td class="text-center">
+                            {% if item.is_inventory %}
+                            <i class="bi bi-check-circle-fill text-warning"></i>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if item.season == 'winter' %}
+                                <span class="badge bg-info text-dark">Зима</span>
+                            {% elif item.season == 'summer' %}
+                                <span class="badge bg-warning text-dark">Літо</span>
+                            {% else %}
+                                <span class="badge bg-light text-dark border">Демісезон</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if item.gender == 'male' %}
+                                <i class="bi bi-gender-male text-primary" title="Чоловіче"></i>
+                            {% elif item.gender == 'female' %}
+                                <i class="bi bi-gender-female text-danger" title="Жіноче"></i>
+                            {% else %}
+                                <i class="bi bi-people text-muted" title="Унісекс"></i>
+                            {% endif %}
+                        </td>
+                        <td class="small text-muted">
+                            {% if item.norm_dict_name %}
+                                <span class="text-muted d-block" style="font-size:0.7em">{{ item.norm_dict_group_name }}</span>
+                                {{ item.norm_dict_name }}
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-secondary btn-edit-item"
+                                    data-item='{{ item | tojson }}' title="Редагувати">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger btn-del-item"
+                                    data-id="{{ item.id }}" data-name="{{ item.name }}" title="Видалити">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted py-4">Словник порожній</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Модальне: нова/редагувати позиція -->
+<div class="modal fade" id="modalItem" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title" id="modalItemTitle">Нова позиція</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pb-2">
+                <input type="hidden" id="itemId">
+
+                <!-- Рядок 1: назва + од + сезон + стать -->
+                <div class="row g-2 mb-2">
+                    <div class="col-md-5">
+                        <label class="form-label form-label-sm mb-1">Назва <span class="text-danger">*</span></label>
+                        <input type="text" id="itemName" class="form-control form-control-sm" placeholder="Назва майна">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label form-label-sm mb-1">Од. виміру</label>
+                        <input type="text" id="itemUnit" class="form-control form-control-sm" value="шт">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label form-label-sm mb-1">Сезон</label>
+                        <select id="itemSeason" class="form-select form-select-sm">
+                            <option value="demi">Демісезон</option>
+                            <option value="winter">Зима</option>
+                            <option value="summer">Літо</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label form-label-sm mb-1">Стать</label>
+                        <select id="itemGender" class="form-select form-select-sm">
+                            <option value="unisex">Унісекс</option>
+                            <option value="male">Чол.</option>
+                            <option value="female">Жін.</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Рядок 2: ознаки (4 перемикачі в одну лінію) -->
+                <div class="border rounded px-3 py-2 mb-2 bg-light">
+                    <div class="row g-0">
+                        <div class="col-6 col-md-3 py-1">
+                            <div class="form-check form-switch mb-0">
+                                <input type="checkbox" id="itemInventory" class="form-check-input" role="switch">
+                                <label class="form-check-label small" for="itemInventory">
+                                    Інвентарне
+                                    <i class="bi bi-question-circle text-muted ms-1"
+                                       data-bs-toggle="tooltip"
+                                       title="Броня, шолом та ін. — обов'язкова здача при вибутті"></i>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3 py-1">
+                            <div class="form-check form-switch mb-0">
+                                <input type="checkbox" id="itemSerial" class="form-check-input" role="switch">
+                                <label class="form-check-label small" for="itemSerial">
+                                    Серійний №
+                                    <i class="bi bi-question-circle text-muted ms-1"
+                                       data-bs-toggle="tooltip"
+                                       title="При видачі обов'язково вводити s/n. Видається по 1 шт"></i>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3 py-1">
+                            <div class="form-check form-switch mb-0">
+                                <input type="checkbox" id="itemPassport" class="form-check-input" role="switch">
+                                <label class="form-check-label small" for="itemPassport">
+                                    Паспорт
+                                    <i class="bi bi-question-circle text-muted ms-1"
+                                       data-bs-toggle="tooltip"
+                                       title="Потрібен технічний паспорт (пральна машина та ін.)"></i>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3 py-1">
+                            <div class="form-check form-switch mb-0">
+                                <input type="checkbox" id="itemExploitAct" class="form-check-input" role="switch">
+                                <label class="form-check-label small" for="itemExploitAct">
+                                    Акт вв. експл.
+                                    <i class="bi bi-question-circle text-muted ms-1"
+                                       data-bs-toggle="tooltip"
+                                       title="Потрібен акт введення в експлуатацію при видачі (палатка, пральна машина та ін.)"></i>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Рядок 2б: норма зі словника -->
+                <div class="row g-2 mb-2">
+                    <div class="col-12">
+                        <label class="form-label form-label-sm mb-1">
+                            Відповідність у словнику норм
+                            <span class="text-muted fw-normal">(не обов'язково)</span>
+                        </label>
+                        <input type="hidden" id="itemNormDict" value="">
+                        <div id="itemNormDictSS"></div>
+                    </div>
+                </div>
+
+
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnSaveItem">Зберегти</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const itemModal = new bootstrap.Modal(document.getElementById('modalItem'));
+
+// Ініціалізація tooltips
+document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+    new bootstrap.Tooltip(el, { trigger: 'hover' });
+});
+
+document.getElementById('searchItems').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('#itemsTable tbody tr[data-id]').forEach(tr => {
+        tr.style.display = tr.dataset.name.includes(q) ? '' : 'none';
+    });
+});
+
+// SearchableSelect для "Відповідність у словнику норм"
+const ITEMS_NORM_OPTIONS = [
+    {% for group in norm_groups %}
+    {% for nd in group.norms %}
+    { value: '{{ nd.id }}', label: {{ nd.name | tojson }}, group: {{ group.name | tojson }}, meta: { unit: {{ (nd.unit or 'шт') | tojson }} } },
+    {% endfor %}
+    {% endfor %}
+];
+const _itemNormHidden = document.getElementById('itemNormDict');
+const _itemNormSS = new SearchableSelect({
+    container:   document.getElementById('itemNormDictSS'),
+    hiddenInput: _itemNormHidden,
+    options:     ITEMS_NORM_OPTIONS,
+    placeholder: '— не прив\'язано (необов\'язково) —',
+    allowClear:  true,
+    size:        'sm',
+    onChange(val, opt) {
+        if (opt && opt.meta && opt.meta.unit) {
+            const unitField = document.getElementById('itemUnit');
+            if (!unitField.value || unitField.value === 'шт') {
+                unitField.value = opt.meta.unit;
+            }
+        }
+    }
+});
+
+function resetItemForm() {
+    document.getElementById('itemId').value = '';
+    document.getElementById('itemName').value = '';
+    document.getElementById('itemUnit').value = 'шт';
+    document.getElementById('itemSeason').value = 'demi';
+    document.getElementById('itemGender').value = 'unisex';
+    document.getElementById('itemInventory').checked  = false;
+    document.getElementById('itemSerial').checked     = false;
+    document.getElementById('itemPassport').checked   = false;
+    document.getElementById('itemExploitAct').checked = false;
+    _itemNormSS.reset();
+}
+
+document.getElementById('btnNewItem').addEventListener('click', () => {
+    document.getElementById('modalItemTitle').textContent = 'Нова позиція';
+    resetItemForm();
+});
+
+document.querySelectorAll('.btn-edit-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const item = JSON.parse(btn.dataset.item);
+        document.getElementById('modalItemTitle').textContent = 'Редагувати позицію';
+        document.getElementById('itemId').value = item.id;
+        document.getElementById('itemName').value = item.name;
+        document.getElementById('itemUnit').value = item.unit_of_measure;
+        document.getElementById('itemSeason').value = item.season;
+        document.getElementById('itemGender').value = item.gender || 'unisex';
+        document.getElementById('itemInventory').checked = item.is_inventory == 1;
+        document.getElementById('itemSerial').checked   = item.has_serial_number == 1;
+        document.getElementById('itemPassport').checked = item.needs_passport == 1;
+        document.getElementById('itemExploitAct').checked = item.needs_exploitation_act == 1;
+        _itemNormSS.setValue(item.norm_dict_id ? String(item.norm_dict_id) : '');
+        itemModal.show();
+    });
+});
+
+document.getElementById('btnSaveItem').addEventListener('click', async () => {
+    const id = document.getElementById('itemId').value;
+    const fd = new FormData();
+    fd.append('name',               document.getElementById('itemName').value);
+    fd.append('unit_of_measure',    document.getElementById('itemUnit').value);
+    fd.append('season',             document.getElementById('itemSeason').value);
+    fd.append('gender',             document.getElementById('itemGender').value);
+    if (document.getElementById('itemInventory').checked) fd.append('is_inventory', '1');
+    if (document.getElementById('itemSerial').checked)    fd.append('has_serial_number', '1');
+    if (document.getElementById('itemPassport').checked)  fd.append('needs_passport', '1');
+    if (document.getElementById('itemExploitAct').checked) fd.append('needs_exploitation_act', '1');
+    const normDictId = _itemNormHidden.value;
+    if (normDictId) fd.append('norm_dict_id', normDictId);
+    const url = id ? `/settings/items/${id}/edit` : '/settings/items/add';
+    const res = await fetch(url, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.ok) {
+        itemModal.hide();
+        showToast('Збережено', 'success');
+        setTimeout(() => location.reload(), 600);
+    } else showToast(data.error, 'danger');
+});
+
+document.querySelectorAll('.btn-del-item').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        if (!confirm(`Видалити "${btn.dataset.name}"?`)) return;
+        const res = await fetch(`/settings/items/${btn.dataset.id}/delete`, { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) { btn.closest('tr').remove(); showToast('Видалено', 'success'); }
+        else showToast(data.error, 'danger');
+    });
+});
+</script>
+{% endblock %}

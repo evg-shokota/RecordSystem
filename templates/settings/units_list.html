@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Підрозділи — {{ unit_name }}{% endblock %}
+{% block page_title %}Підрозділи{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('settings.units') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-gear me-1"></i>Редагувати структуру
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Фільтр по батальйону ── #}
+{% if battalions | length > 1 %}
+<div class="mb-3 d-flex gap-2 flex-wrap">
+    <button class="btn btn-sm btn-outline-secondary filter-btn active" data-bat="all">
+        Всі
+    </button>
+    {% for b in battalions %}
+    <button class="btn btn-sm btn-outline-secondary filter-btn" data-bat="{{ b.id }}">
+        {{ b.name }}
+    </button>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if not units %}
+<div class="text-center py-5 text-muted">
+    <i class="bi bi-diagram-2" style="font-size:3rem;opacity:.3"></i>
+    <p class="mt-3">Підрозділів ще немає.<br>
+       Додай через <a href="{{ url_for('settings.units') }}">Налаштування → Підрозділи</a>.
+    </p>
+</div>
+{% else %}
+
+{# Поточний батальйон для групування #}
+{% set ns = namespace(current_bat=None) %}
+
+{% for u in units %}
+
+{# Заголовок батальйону #}
+{% if u.battalion_name != ns.current_bat %}
+{% set ns.current_bat = u.battalion_name %}
+<div class="nav-section-label mt-{{ '0' if loop.first else '3' }} mb-2 text-uppercase small text-muted fw-bold ps-1"
+     data-bat-label="{{ loop.index }}">
+    <i class="bi bi-building me-1"></i>{{ u.battalion_name }}
+</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm mb-2 unit-card" data-bat="{{ u.battalion_id }}">
+    <div class="card-body py-3 px-3">
+        <div class="d-flex align-items-start gap-3">
+
+            {# Іконка #}
+            <div class="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0"
+                 style="width:48px;height:48px;background:#e8f4fd">
+                <i class="bi bi-diagram-2-fill text-primary" style="font-size:1.4rem"></i>
+            </div>
+
+            {# Основна інформація #}
+            <div class="flex-grow-1 min-width-0">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <h6 class="mb-0 fw-semibold">{{ u.name }}</h6>
+                    <span class="badge bg-success">{{ u.active_count }} ос.</span>
+                    {% if u.total_count > u.active_count %}
+                    <span class="badge bg-secondary text-muted" style="font-weight:normal">
+                        всього {{ u.total_count }}
+                    </span>
+                    {% endif %}
+                </div>
+                <div class="text-muted small mt-1">{{ u.battalion_name }}</div>
+
+                {# Відповідальні особи #}
+                {% set resps = responsible_map.get(u.id, []) %}
+                {% if resps %}
+                <div class="mt-2 d-flex flex-wrap gap-2">
+                    {% for r in resps %}
+                    <span class="d-inline-flex align-items-center gap-1 border rounded px-2 py-1 bg-light"
+                          style="font-size:.8em">
+                        <span class="text-muted">{{ role_labels.get(r.role_name, r.role_name) }}:</span>
+                        <span>{% if r.rank %}<em class="text-muted">{{ r.rank }}</em> {% endif %}{{ r.last_name }} {{ r.first_name }}</span>
+                        {% if r.phone %}
+                        <a href="tel:{{ r.phone }}" class="text-muted text-decoration-none ms-1" onclick="event.stopPropagation()">
+                            <i class="bi bi-phone"></i> {{ r.phone }}
+                        </a>
+                        {% endif %}
+                    </span>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-muted small mt-1 fst-italic">Відповідальних не вказано</div>
+                {% endif %}
+            </div>
+
+            {# Кнопка картки #}
+            <div class="flex-shrink-0">
+                <a href="{{ url_for('settings.unit_card', uid=u.id) }}"
+                   class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-card-text me-1"></i>Картка
+                </a>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Фільтр по батальйону
+document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const bat = btn.dataset.bat;
+        document.querySelectorAll('.unit-card').forEach(card => {
+            card.style.display = (bat === 'all' || card.dataset.bat === bat) ? '' : 'none';
+        });
+    });
+});
+</script>
+{% endblock %}

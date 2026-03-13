@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}Склад — {{ unit_name }}{% endblock %}
+{% block page_title %}Склад — залишки{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('warehouse.income_new') }}" class="btn btn-sm btn-primary">
+    <i class="bi bi-plus-lg me-1"></i>Внести прихід
+</a>
+<a href="{{ url_for('warehouse.income_list') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-list-ul me-1"></i>Журнал приходів
+</a>
+<a href="{{ url_for('warehouse.inventory_new') }}" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-clipboard-check me-1"></i>Нова інвентаризація
+</a>
+<a href="{{ url_for('warehouse.inventory_list') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-journal-text me-1"></i>Інвентаризації
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# Фільтр по категорії #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <span class="text-muted small">Фільтр:</span>
+            <div class="btn-group btn-group-sm" role="group">
+                <a href="{{ url_for('warehouse.index') }}"
+                   class="btn {{ 'btn-secondary' if not request.args.get('cat') else 'btn-outline-secondary' }}">
+                    Всі
+                </a>
+                {% for cat in categories %}
+                <a href="{{ url_for('warehouse.index', cat=cat) }}"
+                   class="btn {{ 'btn-secondary' if request.args.get('cat')==cat else 'btn-outline-secondary' }}">
+                    Кат. {{ cat }}
+                </a>
+                {% endfor %}
+            </div>
+            <span class="ms-auto text-muted small">
+                Позицій: <strong>{{ stock|length }}</strong>
+                &nbsp;|&nbsp;
+                Загальна сума: <strong>{{ "%.2f"|format(total_sum) }} грн</strong>
+            </span>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        {% set cat_filter = request.args.get('cat') %}
+        {% set filtered = stock if not cat_filter else stock|selectattr('category','equalto',cat_filter)|list %}
+
+        {% if filtered %}
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:40px">№</th>
+                        <th>Найменування</th>
+                        <th style="width:80px">Кат.</th>
+                        <th style="width:100px">Ціна, грн</th>
+                        <th style="width:90px">Приход</th>
+                        <th style="width:90px">Видано</th>
+                        <th style="width:90px" class="fw-bold">Залишок</th>
+                        <th style="width:110px">Од. вим.</th>
+                        <th style="width:120px">Сума, грн</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in filtered %}
+                    <tr class="{{ 'table-warning' if r.qty_balance <= 0 else '' }}">
+                        <td class="text-muted">{{ loop.index }}</td>
+                        <td>
+                            <span class="item-incomes-link"
+                                  style="cursor:pointer;text-decoration:underline dotted"
+                                  data-item-id="{{ r.item_id }}"
+                                  data-item-name="{{ r.item_name }}"
+                                  title="Переглянути всі приходи цього майна">
+                                {{ r.item_name }}
+                            </span>
+                            {% if r.has_serial_number %}
+                            <span class="badge bg-info text-dark ms-1" title="Серійні номери">S/N</span>
+                            {% endif %}
+                        </td>
+                        <td><span class="badge bg-secondary">Кат. {{ r.category }}</span></td>
+                        <td class="text-end">{{ "%.2f"|format(r.price) }}</td>
+                        <td class="text-end">{{ r.qty_in }}</td>
+                        <td class="text-end text-danger">{{ r.qty_out if r.qty_out else '—' }}</td>
+                        <td class="text-end fw-bold {{ 'text-danger' if r.qty_balance <= 0 else 'text-success' }}">
+                            {{ r.qty_balance }}
+                        </td>
+                        <td class="text-muted">{{ r.unit_of_measure }}</td>
+                        <td class="text-end">{{ "%.2f"|format(r.total_sum) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light fw-bold">
+                    <tr>
+                        <td colspan="8" class="text-end">Разом:</td>
+                        <td class="text-end">
+                            {{ "%.2f"|format(filtered|sum(attribute='total_sum')) }} грн
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+            {% if cat_filter %}
+                Немає залишків з категорією {{ cat_filter }}
+            {% else %}
+                Склад порожній — <a href="{{ url_for('warehouse.income_new') }}">внесіть перший прихід</a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{# ── Модальне вікно: приходи по конкретному майну ── #}
+<div class="modal fade" id="itemIncomesModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title fw-semibold mb-0">
+                    <i class="bi bi-box-seam me-2"></i>
+                    <span id="itemIncomesTitle">Приходи</span>
+                </h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="itemIncomesBody">
+                    <div class="text-center text-muted py-4">
+                        <div class="spinner-border spinner-border-sm me-2"></div>Завантаження...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.item-incomes-link').forEach(el => {
+    el.addEventListener('click', function() {
+        const itemId   = this.dataset.itemId;
+        const itemName = this.dataset.itemName;
+        document.getElementById('itemIncomesTitle').textContent = itemName;
+        document.getElementById('itemIncomesBody').innerHTML =
+            '<div class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Завантаження...</div>';
+        new bootstrap.Modal(document.getElementById('itemIncomesModal')).show();
+
+        fetch(`/warehouse/api/item/${itemId}/incomes`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.rows || !data.rows.length) {
+                    document.getElementById('itemIncomesBody').innerHTML =
+                        '<div class="text-center text-muted py-4"><i class="bi bi-inbox fs-3 d-block mb-2"></i>Приходів не знайдено</div>';
+                    return;
+                }
+                let total = 0;
+                let html = `<div class="table-responsive">
+                <table class="table table-sm table-hover mb-0 align-middle">
+                <thead class="table-light"><tr>
+                    <th style="width:36px" class="text-center">№</th>
+                    <th style="width:100px">Дата</th>
+                    <th>Документ / Постачальник</th>
+                    <th style="width:60px" class="text-center">Кат.</th>
+                    <th style="width:70px" class="text-end">Кіл-ть</th>
+                    <th style="width:90px" class="text-end">Ціна</th>
+                    <th style="width:100px" class="text-end">Сума</th>
+                    <th style="width:60px"></th>
+                </tr></thead><tbody>`;
+                data.rows.forEach((r, i) => {
+                    const sum = r.quantity * r.price;
+                    total += sum;
+                    const docLabel = [r.doc_type_name, r.document_number].filter(Boolean).join(' ');
+                    html += `<tr>
+                        <td class="text-center text-muted">${i+1}</td>
+                        <td>${r.date || '—'}</td>
+                        <td>
+                            <div>${docLabel || '—'}</div>
+                            ${r.supplier ? `<div class="text-muted small">${r.supplier}</div>` : ''}
+                            ${r.notes    ? `<div class="text-muted small fst-italic">${r.notes}</div>` : ''}
+                        </td>
+                        <td class="text-center">${r.category ? `<span class="badge bg-secondary">${r.category}</span>` : '—'}</td>
+                        <td class="text-end fw-semibold">${r.quantity}</td>
+                        <td class="text-end">${parseFloat(r.price).toFixed(2)}</td>
+                        <td class="text-end fw-semibold">${sum.toFixed(2)}</td>
+                        <td class="text-center">
+                            <a href="/warehouse/income/${r.id}/view"
+                               class="btn btn-sm btn-outline-secondary py-0 px-1"
+                               title="Відкрити прихід">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                        </td>
+                    </tr>`;
+                });
+                html += `</tbody>
+                <tfoot class="fw-bold"><tr>
+                    <td colspan="6" class="text-end">Разом:</td>
+                    <td class="text-end">${total.toFixed(2)}</td>
+                    <td></td>
+                </tr></tfoot>
+                </table></div>`;
+                document.getElementById('itemIncomesBody').innerHTML = html;
+            })
+            .catch(() => {
+                document.getElementById('itemIncomesBody').innerHTML =
+                    '<div class="alert alert-danger m-3">Помилка завантаження</div>';
+            });
+    });
+});
+</script>
+{% endblock %}

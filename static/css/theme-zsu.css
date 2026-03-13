@@ -1,0 +1,174 @@
+/* ===================================================
+   ТЕМА: Військова (ЗСУ)
+   Брендбук ЗСУ: #4D4634 «Мундир», #F39200 «Золото»
+   Допоміжні: #444A38 «Олива», #1C1B17 темний фон
+   =================================================== */
+:root {
+    --theme-name: "zsu";
+
+    /* Сайдбар — колір «Мундир» */
+    --sidebar-bg:          #3d3929;
+    --sidebar-bg-dark:     #2c2a1e;
+    --sidebar-text:        rgba(255,255,255,.80);
+    --sidebar-text-active: #ffffff;
+    --sidebar-hover-bg:    rgba(243,146,0,.15);
+    --sidebar-active-bg:   rgba(243,146,0,.22);
+    --sidebar-border:      rgba(243,146,0,.2);
+    --sidebar-brand-icon:  #F39200;
+
+    /* Контент — олива + пергамент */
+    --body-bg:             #f0ede6;
+    --topbar-bg:           #ffffff;
+    --topbar-border:       #d4cfc5;
+    --card-bg:             #ffffff;
+    --card-border:         rgba(77,70,52,.12);
+
+    /* Акцент — «Золото» */
+    --app-primary:         #b87000;
+    --app-primary-dark:    #8a5200;
+    --app-primary-rgb:     184, 112, 0;
+    --link-color:          #b87000;
+
+    /* Текст */
+    --text-primary:        #1c1b17;
+    --text-muted:          #6b6452;
+    --text-heading:        #2c2a1e;
+
+    /* Логін — «Мундир» */
+    --login-bg:            #3d3929;
+    --login-card-bg:       #ffffff;
+
+    --stat-value-color:    #b87000;
+
+    --table-header-bg:     #f5f2eb;
+    --table-hover-bg:      rgba(77,70,52,.04);
+}
+
+/* Сайдбар: бренд-іконка золота */
+.sidebar-brand-icon { color: #F39200 !important; }
+
+/* Акцентна лінія зверху сайдбару */
+.app-sidebar::before {
+    content: '';
+    display: block;
+    height: 3px;
+    background: linear-gradient(90deg, #F39200, #ffc84a, #F39200);
+}
+
+/* Бренд: золота обводка назви */
+.sidebar-brand-text .title {
+    color: #F39200 !important;
+    font-weight: 700;
+    letter-spacing: .02em;
+}
+
+/* Активний пункт меню — золота ліска зліва */
+.sidebar-nav .nav-link.active {
+    background: rgba(243,146,0,.2) !important;
+    color: #F39200 !important;
+    border-left: 3px solid #F39200;
+    padding-left: 13px !important;
+}
+
+/* Hover — легкий золотий */
+.sidebar-nav .nav-link:hover {
+    background: rgba(243,146,0,.12) !important;
+    color: #ffd580 !important;
+}
+
+/* Секції сайдбару */
+.nav-section-label { color: rgba(243,146,0,.6) !important; }
+
+/* Фон сторінки — пергамент */
+body { background: var(--body-bg) !important; }
+
+/* Топбар */
+.app-topbar {
+    background: var(--topbar-bg) !important;
+    border-color: var(--topbar-border) !important;
+    border-bottom-width: 2px !important;
+}
+
+/* Заголовок сторінки */
+.app-topbar h1 {
+    color: var(--text-heading);
+    font-weight: 700;
+    letter-spacing: .01em;
+}
+
+/* Картки */
+.card {
+    background: var(--card-bg) !important;
+    border-color: var(--card-border) !important;
+}
+
+.card-header {
+    background: #f8f5ef !important;
+    border-color: var(--card-border) !important;
+}
+
+/* Таблиці */
+.table th {
+    background: var(--table-header-bg) !important;
+    color: var(--text-heading) !important;
+    font-size: 11px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    border-color: #d9d4c9 !important;
+}
+
+.table td { border-color: #e8e2d8 !important; }
+.table-light { --bs-table-bg: #f5f2eb !important; }
+
+/* Кнопки — перевизначити primary */
+.btn-primary {
+    background: var(--app-primary) !important;
+    border-color: var(--app-primary-dark) !important;
+}
+
+.btn-primary:hover {
+    background: var(--app-primary-dark) !important;
+    border-color: var(--app-primary-dark) !important;
+}
+
+.btn-outline-primary {
+    color: var(--app-primary) !important;
+    border-color: var(--app-primary) !important;
+}
+
+.btn-outline-primary:hover {
+    background: var(--app-primary) !important;
+    color: #fff !important;
+}
+
+/* Бейджі primary */
+.badge.bg-primary { background: var(--app-primary) !important; }
+.badge.bg-primary-subtle { background: rgba(184,112,0,.12) !important; color: var(--app-primary) !important; }
+.text-primary { color: var(--app-primary) !important; }
+
+/* Посилання */
+a { color: var(--link-color); }
+
+/* Stat value */
+.stat-value { color: var(--app-primary) !important; }
+
+/* Focus ring */
+.form-control:focus, .form-select:focus {
+    border-color: #F39200 !important;
+    box-shadow: 0 0 0 .2rem rgba(243,146,0,.22) !important;
+}
+
+/* Логін */
+.login-wrapper {
+    background: var(--login-bg) !important;
+    background-image: repeating-linear-gradient(
+        45deg,
+        rgba(243,146,0,.04) 0px,
+        rgba(243,146,0,.04) 1px,
+        transparent 1px,
+        transparent 12px
+    ) !important;
+}
+
+.login-card { background: var(--login-card-bg) !important; }
+.login-logo { color: #F39200 !important; }

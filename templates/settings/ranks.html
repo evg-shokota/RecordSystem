@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+{% block title %}Звання — {{ unit_name }}{% endblock %}
+{% block page_title %}Звання{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addRankModal">
+    <i class="bi bi-plus-lg me-1"></i>Додати звання
+</button>
+{% endblock %}
+
+{% block content %}
+
+{# ── Режим ── #}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body py-3 px-4">
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <span class="fw-semibold text-muted small text-uppercase">Активний режим:</span>
+            <div class="btn-group" role="group">
+                {% for mode_key, mode_label in mode_labels.items() %}
+                <button type="button"
+                        class="btn btn-sm {{ 'btn-primary' if active_mode == mode_key else 'btn-outline-secondary' }} mode-btn"
+                        data-mode="{{ mode_key }}">
+                    {{ mode_label }}
+                </button>
+                {% endfor %}
+            </div>
+            <span class="text-muted small ms-2">
+                <i class="bi bi-info-circle me-1"></i>
+                Обраний режим застосовується у формах особового складу
+            </span>
+        </div>
+    </div>
+</div>
+
+{# ── Таби по режимах ── #}
+<ul class="nav nav-tabs mb-3" id="rankTabs">
+    {% for mode_key, mode_label in mode_labels.items() %}
+    <li class="nav-item">
+        <a class="nav-link {{ 'active' if loop.first }}" href="#tab-{{ mode_key }}" data-bs-toggle="tab">
+            {{ mode_label }}
+            <span class="badge bg-secondary ms-1 badge-count-{{ mode_key }}">
+                {{ ranks | selectattr('mode', 'equalto', mode_key) | list | length }}
+            </span>
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+
+<div class="tab-content">
+{% for mode_key, mode_label in mode_labels.items() %}
+<div class="tab-pane fade {{ 'show active' if loop.first }}" id="tab-{{ mode_key }}">
+
+    {% set mode_ranks = ranks | selectattr('mode', 'equalto', mode_key) | list %}
+    {% if not mode_ranks %}
+    <div class="text-center py-5 text-muted">
+        <i class="bi bi-award" style="font-size:3rem;opacity:.3"></i>
+        <p class="mt-3">Звань у цьому режимі немає.</p>
+    </div>
+    {% else %}
+
+    {# Групування по категоріях #}
+    {% for cat_key, cat_label in category_labels.items() %}
+    {% set cat_ranks = mode_ranks | selectattr('category', 'equalto', cat_key) | list %}
+    {% if cat_ranks %}
+    <div class="mb-4">
+        <div class="nav-section-label mb-2 text-uppercase small text-muted fw-bold ps-1">
+            <i class="bi bi-people me-1"></i>{{ cat_label }}
+        </div>
+
+        {# Групування по підкатегоріях #}
+        {% set subcats_seen = namespace(list=[]) %}
+        {% for r in cat_ranks %}
+            {% if r.subcategory not in subcats_seen.list %}
+                {% set subcats_seen.list = subcats_seen.list + [r.subcategory] %}
+            {% endif %}
+        {% endfor %}
+
+        {% for subcat in subcats_seen.list %}
+        {% set subcat_label = subcategory_labels.get(subcat, subcat) %}
+        {% if subcat_label %}
+        <div class="text-muted small fst-italic ps-2 mb-1 mt-2">{{ subcat_label }}</div>
+        {% endif %}
+        {% set subcat_ranks = cat_ranks | selectattr('subcategory', 'equalto', subcat) | list %}
+        <div class="list-group list-group-flush mb-2 sortable-ranks" data-mode="{{ mode_key }}" data-category="{{ cat_key }}" data-subcategory="{{ subcat }}">
+        {% for r in subcat_ranks %}
+        <div class="list-group-item px-3 py-2 d-flex align-items-center gap-3 rank-row {{ 'opacity-50' if not r.is_active }}"
+             data-id="{{ r.id }}" data-sort="{{ r.sort_order }}">
+
+            {# Перетягування #}
+            <span class="text-muted drag-handle" style="cursor:grab;font-size:1.1rem" title="Перетягнути">
+                <i class="bi bi-grip-vertical"></i>
+            </span>
+
+            {# Погони / Insignia #}
+            <span class="rank-insignia fs-5" style="min-width:2rem;text-align:center"
+                  title="{{ r.name }}">{{ r.insignia or '—' }}</span>
+
+            {# Назва #}
+            <span class="flex-grow-1 fw-medium">{{ r.name }}</span>
+
+            {# Скорочення #}
+            {% if r.short_name %}
+            <span class="badge bg-light text-muted border">{{ r.short_name }}</span>
+            {% endif %}
+
+            {# Кастомна мітка #}
+            {% if r.is_custom %}
+            <span class="badge bg-info text-white">власне</span>
+            {% endif %}
+
+            {# Дії #}
+            <div class="d-flex gap-1">
+                <button class="btn btn-sm btn-outline-secondary btn-edit-rank"
+                        data-id="{{ r.id }}"
+                        data-name="{{ r.name }}"
+                        data-short="{{ r.short_name }}"
+                        data-category="{{ r.category }}"
+                        data-subcategory="{{ r.subcategory }}"
+                        data-mode="{{ r.mode }}"
+                        data-insignia="{{ r.insignia }}"
+                        title="Редагувати">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm {{ 'btn-outline-warning' if r.is_active else 'btn-outline-success' }} btn-toggle-rank"
+                        data-id="{{ r.id }}" data-active="{{ r.is_active }}"
+                        title="{{ 'Вимкнути' if r.is_active else 'Увімкнути' }}">
+                    <i class="bi {{ 'bi-eye-slash' if r.is_active else 'bi-eye' }}"></i>
+                </button>
+                {% if r.is_custom %}
+                <button class="btn btn-sm btn-outline-danger btn-delete-rank"
+                        data-id="{{ r.id }}" data-name="{{ r.name }}"
+                        title="Видалити">
+                    <i class="bi bi-trash"></i>
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endfor %}
+    {% endif %}
+
+</div>
+{% endfor %}
+</div>
+
+
+{# ── Модал: Додати звання ── #}
+<div class="modal fade" id="addRankModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-award me-2"></i>Додати звання</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Режим <span class="text-danger">*</span></label>
+                    <select class="form-select" id="addMode">
+                        {% for mode_key, mode_label in mode_labels.items() %}
+                        <option value="{{ mode_key }}" {{ 'selected' if active_mode == mode_key }}>{{ mode_label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Категорія <span class="text-danger">*</span></label>
+                    <select class="form-select" id="addCategory">
+                        {% for cat_key, cat_label in category_labels.items() %}
+                        <option value="{{ cat_key }}">{{ cat_label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3" id="addSubcatGroup">
+                    <label class="form-label fw-semibold">Підкатегорія</label>
+                    <select class="form-select" id="addSubcategory">
+                        <option value="">— без підкатегорії —</option>
+                        <option value="junior">Молодший</option>
+                        <option value="senior">Старший</option>
+                        <option value="higher">Вищий</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Повна назва <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="addName" placeholder="напр. Лейтенант">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Скорочення</label>
+                    <input type="text" class="form-control" id="addShort" placeholder="напр. лейт.">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Позначення (погони/символ)</label>
+                    <input type="text" class="form-control" id="addInsignia" placeholder="напр. ★★ або OR-3">
+                    <div class="form-text">Можна використовувати emoji, зірочки, літери</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-primary" id="btnAddRank">
+                    <i class="bi bi-plus-lg me-1"></i>Додати
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+{# ── Модал: Редагувати звання ── #}
+<div class="modal fade" id="editRankModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Редагувати звання</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Категорія</label>
+                    <select class="form-select" id="editCategory">
+                        {% for cat_key, cat_label in category_labels.items() %}
+                        <option value="{{ cat_key }}">{{ cat_label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Підкатегорія</label>
+                    <select class="form-select" id="editSubcategory">
+                        <option value="">— без підкатегорії —</option>
+                        <option value="junior">Молодший</option>
+                        <option value="senior">Старший</option>
+                        <option value="higher">Вищий</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Повна назва <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="editName">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Скорочення</label>
+                    <input type="text" class="form-control" id="editShort">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Позначення (погони/символ)</label>
+                    <input type="text" class="form-control" id="editInsignia">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-primary" id="btnEditRank">
+                    <i class="bi bi-check-lg me-1"></i>Зберегти
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Перемикання режиму ──────────────────────────────────────────
+document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const mode = btn.dataset.mode;
+        fetch('/settings/ranks/set-mode', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'mode=' + mode
+        }).then(r => r.json()).then(d => {
+            if (d.ok) {
+                document.querySelectorAll('.mode-btn').forEach(b => {
+                    b.classList.toggle('btn-primary', b.dataset.mode === mode);
+                    b.classList.toggle('btn-outline-secondary', b.dataset.mode !== mode);
+                });
+            }
+        });
+    });
+});
+
+// ── Додати звання ──────────────────────────────────────────────
+document.getElementById('btnAddRank').addEventListener('click', () => {
+    const name = document.getElementById('addName').value.trim();
+    if (!name) { alert('Введіть назву звання'); return; }
+    const fd = new FormData();
+    fd.append('name',       name);
+    fd.append('short_name', document.getElementById('addShort').value.trim());
+    fd.append('category',   document.getElementById('addCategory').value);
+    fd.append('subcategory',document.getElementById('addSubcategory').value);
+    fd.append('mode',       document.getElementById('addMode').value);
+    fd.append('insignia',   document.getElementById('addInsignia').value.trim());
+    fetch('/settings/ranks/add', { method: 'POST', body: fd })
+        .then(r => r.json()).then(d => {
+            if (d.ok) location.reload();
+            else alert(d.error || 'Помилка');
+        });
+});
+
+// ── Редагування ────────────────────────────────────────────────
+document.querySelectorAll('.btn-edit-rank').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.getElementById('editId').value         = btn.dataset.id;
+        document.getElementById('editName').value       = btn.dataset.name;
+        document.getElementById('editShort').value      = btn.dataset.short;
+        document.getElementById('editCategory').value   = btn.dataset.category;
+        document.getElementById('editSubcategory').value= btn.dataset.subcategory;
+        document.getElementById('editInsignia').value   = btn.dataset.insignia;
+        new bootstrap.Modal(document.getElementById('editRankModal')).show();
+    });
+});
+
+document.getElementById('btnEditRank').addEventListener('click', () => {
+    const id = document.getElementById('editId').value;
+    const name = document.getElementById('editName').value.trim();
+    if (!name) { alert('Введіть назву звання'); return; }
+    const fd = new FormData();
+    fd.append('name',       name);
+    fd.append('short_name', document.getElementById('editShort').value.trim());
+    fd.append('category',   document.getElementById('editCategory').value);
+    fd.append('subcategory',document.getElementById('editSubcategory').value);
+    fd.append('insignia',   document.getElementById('editInsignia').value.trim());
+    fetch(`/settings/ranks/${id}/edit`, { method: 'POST', body: fd })
+        .then(r => r.json()).then(d => {
+            if (d.ok) location.reload();
+            else alert(d.error || 'Помилка');
+        });
+});
+
+// ── Toggle ─────────────────────────────────────────────────────
+document.querySelectorAll('.btn-toggle-rank').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        fetch(`/settings/ranks/${id}/toggle`, { method: 'POST' })
+            .then(r => r.json()).then(d => {
+                if (d.ok) {
+                    const row = btn.closest('.rank-row');
+                    if (d.is_active) {
+                        row.classList.remove('opacity-50');
+                        btn.classList.replace('btn-outline-success', 'btn-outline-warning');
+                        btn.title = 'Вимкнути';
+                        btn.querySelector('i').className = 'bi bi-eye-slash';
+                    } else {
+                        row.classList.add('opacity-50');
+                        btn.classList.replace('btn-outline-warning', 'btn-outline-success');
+                        btn.title = 'Увімкнути';
+                        btn.querySelector('i').className = 'bi bi-eye';
+                    }
+                    btn.dataset.active = d.is_active;
+                }
+            });
+    });
+});
+
+// ── Delete ─────────────────────────────────────────────────────
+document.querySelectorAll('.btn-delete-rank').forEach(btn => {
+    btn.addEventListener('click', () => {
+        if (!confirm(`Видалити звання "${btn.dataset.name}"?`)) return;
+        fetch(`/settings/ranks/${btn.dataset.id}/delete`, { method: 'POST' })
+            .then(r => r.json()).then(d => {
+                if (d.ok) btn.closest('.rank-row').remove();
+                else alert(d.error || 'Помилка');
+            });
+    });
+});
+</script>
+{% endblock %}

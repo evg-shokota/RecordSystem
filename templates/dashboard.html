@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}Дашборд — {{ unit_name }}{% endblock %}
+{% block page_title %}Дашборд{% endblock %}
+
+{% block content %}
+
+<!-- Нагадування про бекап -->
+{% if backup_reminder %}
+<div class="alert alert-warning alert-dismissible fade show d-flex align-items-center gap-2" role="alert">
+    <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+    <div>
+        Рекомендується зробити резервну копію бази даних.
+        <a href="{{ url_for('settings.index') }}" class="alert-link ms-1">Зробити зараз</a>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<!-- Прострочені накладні -->
+{% if overdue_invoices %}
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+    <div class="d-flex align-items-center gap-2 mb-1">
+        <i class="bi bi-alarm-fill fs-5"></i>
+        <strong>Прострочені накладні: {{ overdue_invoices|length }}</strong>
+    </div>
+    {% for inv in overdue_invoices %}
+    <div class="overdue-item">
+        <i class="bi bi-arrow-right-short"></i>
+        <a href="/invoices/{{ inv.id }}" class="alert-link">{{ inv.number }}</a>
+        <span class="text-muted">— дійсна до {{ inv.valid_until }}</span>
+    </div>
+    {% endfor %}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<!-- Документи без скану -->
+{% set total_no_scan = (invoices_no_scan|length) + (rv_no_scan|length) %}
+{% if total_no_scan > 0 %}
+<div class="alert alert-warning alert-dismissible fade show" role="alert">
+    <div class="d-flex align-items-center gap-2 mb-2">
+        <i class="bi bi-file-earmark-x-fill fs-5"></i>
+        <strong>Документи без скану: {{ total_no_scan }}</strong>
+    </div>
+    {% if invoices_no_scan %}
+    <div class="mb-1 fw-medium text-warning-emphasis">
+        <i class="bi bi-receipt me-1"></i>Накладні ({{ invoices_no_scan|length }}):
+    </div>
+    {% for inv in invoices_no_scan %}
+    <div class="ms-3">
+        <i class="bi bi-arrow-right-short"></i>
+        <a href="/invoices/{{ inv.id }}" class="alert-link">{{ inv.number or ('Накладна #' ~ inv.id) }}</a>
+        {% if inv.created_at %}
+        <span class="text-muted">— {{ inv.created_at[:10] }}</span>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% if rv_no_scan %}
+    <div class="mb-1 fw-medium text-warning-emphasis {% if invoices_no_scan %}mt-2{% endif %}">
+        <i class="bi bi-card-list me-1"></i>Роздавальні відомості ({{ rv_no_scan|length }}):
+    </div>
+    {% for rv in rv_no_scan %}
+    <div class="ms-3">
+        <i class="bi bi-arrow-right-short"></i>
+        <a href="/rv/{{ rv.id }}" class="alert-link">{{ rv.number or ('РВ #' ~ rv.id) }}</a>
+        {% if rv.created_at %}
+        <span class="text-muted">— {{ rv.created_at[:10] }}</span>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<!-- Статистика -->
+<div class="row g-3 mb-4">
+    <div class="col-sm-6 col-xl-3">
+        <div class="card stat-card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="bg-primary bg-opacity-10 rounded-3 p-3">
+                        <i class="bi bi-people-fill text-primary fs-4"></i>
+                    </div>
+                    <div>
+                        <div class="stat-value">{{ personnel_count }}</div>
+                        <div class="stat-label">Особовий склад</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="card stat-card h-100 border-0 shadow-sm {% if pending_invoices > 0 %}border-start border-warning border-3{% endif %}">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="bg-warning bg-opacity-10 rounded-3 p-3">
+                        <i class="bi bi-receipt text-warning fs-4"></i>
+                    </div>
+                    <div>
+                        <div class="stat-value {% if pending_invoices > 0 %}text-warning{% endif %}">
+                            {{ pending_invoices }}
+                        </div>
+                        <div class="stat-label">Непроведені накладні</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <a href="{{ url_for('reports.stock') }}" class="text-decoration-none">
+        <div class="card stat-card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="bg-success bg-opacity-10 rounded-3 p-3">
+                        <i class="bi bi-box-seam text-success fs-4"></i>
+                    </div>
+                    <div>
+                        <div class="stat-value text-success">{{ "{:,.0f}".format(stock_total) }} грн</div>
+                        <div class="stat-label">Залишки на складі</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </a>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <a href="{{ url_for('planning.index', only_needs=1) }}" class="text-decoration-none">
+        <div class="card stat-card h-100 border-0 shadow-sm {% if needs_count > 0 %}border-start border-info border-3{% endif %}">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="bg-info bg-opacity-10 rounded-3 p-3">
+                        <i class="bi bi-calendar-check text-info fs-4"></i>
+                    </div>
+                    <div>
+                        <div class="stat-value {% if needs_count > 0 %}text-info{% endif %}">{{ needs_count }}</div>
+                        <div class="stat-label">Позицій до видачі</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </a>
+    </div>
+</div>
+
+{{ slot('dashboard.widgets') | safe }}
+
+<!-- Номенклатурне майно в архіві -->
+{% if nomenclature_archive %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-danger bg-opacity-10 border-0 d-flex align-items-center gap-2">
+        <i class="bi bi-exclamation-diamond-fill text-danger"></i>
+        <strong>Номенклатурне майно на СЗЧ / Загиблих / Безвісті зниклих</strong>
+        <span class="badge bg-danger ms-auto">{{ nomenclature_archive|length }}</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>ПІБ</th>
+                        <th>Група</th>
+                        <th>Майно</th>
+                        <th class="text-center">К-сть</th>
+                        <th class="text-end">Ціна</th>
+                        <th class="text-center">Кат.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in nomenclature_archive %}
+                    <tr>
+                        <td class="fw-medium">
+                            {{ item.last_name }} {{ item.first_name }}
+                            {% if item.middle_name %} {{ item.middle_name }}{% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">{{ item.group_name }}</span>
+                        </td>
+                        <td>{{ item.item_name }}</td>
+                        <td class="text-center">{{ item.quantity }}</td>
+                        <td class="text-end">{{ item.price }}</td>
+                        <td class="text-center">
+                            <span class="badge bg-light text-dark border">{{ item.category }}</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Непроведені накладні -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white border-0 d-flex align-items-center gap-2 pt-3">
+        <i class="bi bi-receipt text-warning"></i>
+        <strong>Непроведені накладні</strong>
+        {% if pending_invoices > 0 %}
+        <span class="badge bg-warning text-dark ms-1">{{ pending_invoices }}</span>
+        {% endif %}
+        <a href="{{ url_for('invoices.index', status='created') }}" class="btn btn-sm btn-outline-secondary ms-auto">
+            <i class="bi bi-arrow-right me-1"></i>Переглянути всі
+        </a>
+    </div>
+    <div class="card-body">
+        {% if pending_invoices == 0 %}
+        <p class="text-muted mb-0 text-center py-2">
+            <i class="bi bi-check-circle text-success me-1"></i>Всі накладні проведені
+        </p>
+        {% else %}
+        <p class="text-muted mb-0">Є непроведені накладні. Перейдіть до розділу для обробки.</p>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}

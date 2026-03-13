@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Звіти — {{ unit_name }}{% endblock %}
+{% block page_title %}Звіти{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-start gap-3">
+                <div class="bg-success bg-opacity-10 rounded-3 p-3 flex-shrink-0">
+                    <i class="bi bi-box-seam text-success fs-3"></i>
+                </div>
+                <div>
+                    <h5 class="card-title mb-1">Залишки на складі</h5>
+                    <p class="card-text text-muted small">Поточні залишки майна по позиціях і категоріях з фільтром</p>
+                    <a href="{{ url_for('reports.stock') }}" class="btn btn-success btn-sm">
+                        <i class="bi bi-arrow-right me-1"></i>Переглянути
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-start gap-3">
+                <div class="bg-primary bg-opacity-10 rounded-3 p-3 flex-shrink-0">
+                    <i class="bi bi-arrow-left-right text-primary fs-3"></i>
+                </div>
+                <div>
+                    <h5 class="card-title mb-1">Оборот майна за період</h5>
+                    <p class="card-text text-muted small">Прихід і витрата за вибраний діапазон дат</p>
+                    <a href="{{ url_for('reports.turnover') }}" class="btn btn-primary btn-sm">
+                        <i class="bi bi-arrow-right me-1"></i>Переглянути
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-start gap-3">
+                <div class="bg-warning bg-opacity-10 rounded-3 p-3 flex-shrink-0">
+                    <i class="bi bi-calendar-check text-warning fs-3"></i>
+                </div>
+                <div>
+                    <h5 class="card-title mb-1">Потреба по нормі</h5>
+                    <p class="card-text text-muted small">Хто та що ще має отримати відповідно до норм видачі</p>
+                    <a href="{{ url_for('reports.needs') }}" class="btn btn-warning btn-sm">
+                        <i class="bi bi-arrow-right me-1"></i>Переглянути
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-start gap-3">
+                <div class="bg-info bg-opacity-10 rounded-3 p-3 flex-shrink-0">
+                    <i class="bi bi-table text-info fs-3"></i>
+                </div>
+                <div>
+                    <h5 class="card-title mb-1">Зведена відомість</h5>
+                    <p class="card-text text-muted small">Список о/с з переліком закріпленого майна по підрозділах</p>
+                    <a href="{{ url_for('reports.summary') }}" class="btn btn-info btn-sm text-white">
+                        <i class="bi bi-arrow-right me-1"></i>Переглянути
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

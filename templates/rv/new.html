@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}Нова РВ — {{ unit_name }}{% endblock %}
+{% block page_title %}Нова роздавальна відомість{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ request.args.get('back') or url_for('rv.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endblock %}
+
+{% block content %}
+<form method="POST" action="{{ url_for('rv.new') }}">
+<input type="hidden" name="back" value="{{ request.args.get('back', '') }}">
+<div class="row g-3">
+
+    {# Основні реквізити #}
+    <div class="col-md-8">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header fw-semibold py-2">
+                <i class="bi bi-file-earmark-text me-2 text-primary"></i>Реквізити
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-8">
+                        <label class="form-label form-label-sm">
+                            Підрозділ
+                            <span class="text-muted fw-normal">(необов'язково)</span>
+                        </label>
+                        <div class="position-relative">
+                            <input type="text" name="unit_text" id="unitText" class="form-control form-control-sm"
+                                   placeholder="напр. 1 рота, 2 взвод, батальйон..."
+                                   autocomplete="off">
+                            <input type="hidden" name="unit_id" id="unitId">
+                            <div id="unitDropdown" class="dropdown-menu w-100 shadow-sm"
+                                 style="display:none;position:absolute;z-index:9999;top:100%;left:0;max-height:200px;overflow-y:auto"></div>
+                        </div>
+                        <div class="form-text">Введіть вільний текст або оберіть зі списку</div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label form-label-sm">Дата документа</label>
+                        <input type="date" name="doc_date" class="form-control form-control-sm"
+                               value="{{ today }}">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label form-label-sm">
+                            Підстава
+                            <span class="text-muted fw-normal">(необов'язково)</span>
+                        </label>
+                        <input type="text" name="base_document" class="form-control form-control-sm"
+                               placeholder="планова видача" value="">
+                        <div class="form-text">Якщо не вказано — буде "планова видача"</div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label form-label-sm">Примітка</label>
+                        <textarea name="notes" class="form-control form-control-sm" rows="3"
+                                  placeholder="Додаткові відомості..."></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Підписанти #}
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header fw-semibold py-2">
+                <i class="bi bi-pen me-2 text-primary"></i>Підписанти
+                <span class="text-muted fw-normal small">(з налаштувань)</span>
+            </div>
+            <div class="card-body">
+
+                {# Видав (начальник складу) #}
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label form-label-sm mb-0 fw-medium">Видав (нач. складу)</label>
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input" type="checkbox" id="givenTvo" name="given_is_tvo">
+                            <label class="form-check-label small" for="givenTvo">ТВО</label>
+                        </div>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-4">
+                            <input type="text" name="given_by_rank" id="givenRank"
+                                   class="form-control form-control-sm"
+                                   value="{{ s.get('warehouse_chief_rank','') }}"
+                                   placeholder="Звання">
+                        </div>
+                        <div class="col-8">
+                            <input type="text" name="given_by_name" id="givenName"
+                                   class="form-control form-control-sm"
+                                   value="{{ s.get('warehouse_chief_name','') }}"
+                                   placeholder="Прізвище І.Б.">
+                        </div>
+                    </div>
+                </div>
+
+                {# Начальник служби #}
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label form-label-sm mb-0 fw-medium">Начальник служби</label>
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input" type="checkbox" id="chiefTvo" name="chief_is_tvo"
+                                   {% if s.get('chief_is_tvo') %}checked{% endif %}>
+                            <label class="form-check-label small" for="chiefTvo">ТВО</label>
+                        </div>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-4">
+                            <input type="text" name="chief_rank" id="chiefRank"
+                                   class="form-control form-control-sm"
+                                   value="{{ s.get('chief_rank','') }}"
+                                   placeholder="Звання">
+                        </div>
+                        <div class="col-8">
+                            <input type="text" name="chief_name" id="chiefName"
+                                   class="form-control form-control-sm"
+                                   value="{{ s.get('chief_name','') }}"
+                                   placeholder="Прізвище І.Б.">
+                        </div>
+                    </div>
+                </div>
+
+                {# Діловод #}
+                <div class="mb-0">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label form-label-sm mb-0 fw-medium">Діловод</label>
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input" type="checkbox" id="clerkTvo" name="clerk_is_tvo">
+                            <label class="form-check-label small" for="clerkTvo">ТВО</label>
+                        </div>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-4">
+                            <input type="text" name="clerk_rank" id="clerkRank"
+                                   class="form-control form-control-sm"
+                                   value="{{ s.get('clerk_rank','') }}"
+                                   placeholder="Звання">
+                        </div>
+                        <div class="col-8">
+                            <input type="text" name="clerk_name" id="clerkName"
+                                   class="form-control form-control-sm"
+                                   value="{{ s.get('clerk_name','') }}"
+                                   placeholder="Прізвище І.Б.">
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div class="d-flex gap-2">
+    <button type="submit" class="btn btn-primary">
+        <i class="bi bi-arrow-right me-1"></i>Далі — заповнити матрицю
+    </button>
+    <a href="{{ request.args.get('back') or url_for('rv.index') }}" class="btn btn-outline-secondary">Скасувати</a>
+</div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Підрозділ: autocomplete з можливістю довільного тексту ──
+const UNITS = [
+    {% for u in units %}
+    { id: {{ u.id }}, name: {{ (u.bat_name + ' / ' + u.name) | tojson }} },
+    {% endfor %}
+];
+
+const unitText = document.getElementById('unitText');
+const unitId   = document.getElementById('unitId');
+const unitDrop = document.getElementById('unitDropdown');
+
+function showUnitDrop(items) {
+    if (!items.length) { unitDrop.style.display = 'none'; return; }
+    unitDrop.innerHTML = items.slice(0, 20).map((u, i) =>
+        `<button type="button" class="dropdown-item px-3 py-1 small" data-id="${u.id}" data-name="${u.name}">${u.name}</button>`
+    ).join('');
+    unitDrop.style.display = 'block';
+}
+
+unitText.addEventListener('input', () => {
+    unitId.value = '';  // якщо користувач пише вручну — скидаємо id
+    const q = unitText.value.trim().toLowerCase();
+    if (!q) { unitDrop.style.display = 'none'; return; }
+    showUnitDrop(UNITS.filter(u => u.name.toLowerCase().includes(q)));
+});
+
+unitDrop.addEventListener('mousedown', e => {
+    const btn = e.target.closest('.dropdown-item');
+    if (!btn) return;
+    e.preventDefault();
+    unitText.value = btn.dataset.name;
+    unitId.value   = btn.dataset.id;
+    unitDrop.style.display = 'none';
+});
+
+document.addEventListener('click', e => {
+    if (!unitText.contains(e.target) && !unitDrop.contains(e.target))
+        unitDrop.style.display = 'none';
+});
+
+// ── ТВО: додати "ТВО" в поле звання ──
+function setupTvoCheckbox(cbId, rankInputId) {
+    const cb   = document.getElementById(cbId);
+    const rank = document.getElementById(rankInputId);
+    if (!cb || !rank) return;
+    cb.addEventListener('change', () => {
+        if (cb.checked) {
+            if (!rank.value.startsWith('ТВО ') && !rank.value.startsWith('тво ')) {
+                rank.value = 'ТВО ' + rank.value;
+            }
+        } else {
+            rank.value = rank.value.replace(/^ТВО\s*/i, '');
+        }
+    });
+}
+setupTvoCheckbox('givenTvo', 'givenRank');
+setupTvoCheckbox('chiefTvo', 'chiefRank');
+setupTvoCheckbox('clerkTvo', 'clerkRank');
+</script>
+{% endblock %}

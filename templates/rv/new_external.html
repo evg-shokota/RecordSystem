@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+{% block title %}Зовнішня РВ — {{ unit_name }}{% endblock %}
+{% block page_title %}Реєстрація зовнішньої роздавальної відомості{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('rv.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endblock %}
+
+{% block content %}
+
+<div class="alert alert-info d-flex gap-2 align-items-center mb-3">
+    <i class="bi bi-info-circle-fill fs-5"></i>
+    <div>
+        <strong>Зовнішня (вже надрукована) РВ.</strong>
+        Введіть реквізити документа. Статус після збереження — <span class="badge bg-primary">Активна</span>.
+        Матрицю можна заповнити пізніше через редагування.
+    </div>
+</div>
+
+{% if errors %}
+<div class="alert alert-danger">
+    <ul class="mb-0">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="POST" enctype="multipart/form-data" novalidate>
+<input type="hidden" name="is_external" value="1">
+
+<div class="row g-3">
+
+    {# ── Реквізити ── #}
+    <div class="col-md-8">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header fw-semibold py-2">
+                <i class="bi bi-file-earmark-text me-2 text-primary"></i>Реквізити
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-5">
+                        <label class="form-label form-label-sm">
+                            Номер документа <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" name="external_number" class="form-control form-control-sm"
+                               value="{{ form.get('external_number', '') }}"
+                               placeholder="напр. 2025/12/РВ"
+                               required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label form-label-sm">Дата документа</label>
+                        <input type="date" name="doc_date" class="form-control form-control-sm"
+                               value="{{ form.get('doc_date', '') or today }}">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label form-label-sm">Підрозділ</label>
+                        <div class="position-relative">
+                            <input type="text" name="unit_text" id="unitText" class="form-control form-control-sm"
+                                   value="{{ form.get('unit_text', '') }}"
+                                   placeholder="напр. 1 рота, 2 взвод..."
+                                   autocomplete="off">
+                            <input type="hidden" name="unit_id" id="unitId"
+                                   value="{{ form.get('unit_id', '') }}">
+                            <div id="unitDropdown" class="dropdown-menu w-100 shadow-sm"
+                                 style="display:none;position:absolute;z-index:9999;top:100%;left:0;max-height:200px;overflow-y:auto"></div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label form-label-sm">Примітка</label>
+                        <input type="text" name="notes" class="form-control form-control-sm"
+                               value="{{ form.get('notes', '') }}"
+                               placeholder="Додаткові відомості">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# ── Особовий склад ── #}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header fw-semibold py-2">
+                <i class="bi bi-people me-2 text-primary"></i>Особовий склад
+                <span class="text-muted fw-normal small">(необов'язково — можна заповнити пізніше)</span>
+            </div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <input type="text" id="personnelSearch" class="form-control form-control-sm"
+                           placeholder="Пошук по прізвищу...">
+                </div>
+                <div style="max-height:200px; overflow-y:auto; border:1px solid #dee2e6; border-radius:4px; padding:4px">
+                    {% for p in all_personnel %}
+                    <div class="form-check personnel-item" data-name="{{ (p.last_name ~ ' ' ~ p.first_name ~ ' ' ~ (p.middle_name or '')) | lower }}">
+                        <input class="form-check-input" type="checkbox" name="personnel_ids[]"
+                               value="{{ p.id }}" id="pers_{{ p.id }}">
+                        <label class="form-check-label small" for="pers_{{ p.id }}">
+                            <span class="text-muted">{{ p.rank or '' }}</span>
+                            {{ p.last_name }} {{ p.first_name }}
+                            {% if p.middle_name %} {{ p.middle_name }}{% endif %}
+                            {% if p.unit_name %}
+                            <span class="text-muted">({{ p.unit_name }})</span>
+                            {% endif %}
+                        </label>
+                    </div>
+                    {% else %}
+                    <div class="text-muted small p-2">Особовий склад не знайдений</div>
+                    {% endfor %}
+                </div>
+                <div class="form-text mt-1">
+                    <span id="selectedCount">0</span> обрано
+                </div>
+            </div>
+        </div>
+
+        {# ── Перелік майна ── #}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header fw-semibold py-2 d-flex align-items-center">
+                <span><i class="bi bi-list-ul me-2 text-primary"></i>Перелік майна</span>
+                <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="btnAddRow">
+                    <i class="bi bi-plus-lg me-1"></i>Додати позицію
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0 align-middle" id="itemsTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:30px" class="text-center">#</th>
+                                <th>Найменування <span class="text-danger">*</span></th>
+                                <th style="width:80px">Кат.</th>
+                                <th style="width:110px">К-сть <span class="text-danger">*</span></th>
+                                <th style="width:110px">Ціна, грн</th>
+                                <th style="width:35px"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="itemRows">
+                            <tr id="rowTemplate" style="display:none">
+                                <td class="text-muted text-center row-num small"></td>
+                                <td>
+                                    <input type="hidden" name="item_id[]" class="item-sel" required>
+                                    <div class="item-ss-wrap"></div>
+                                </td>
+                                <td>
+                                    <select name="category[]" class="form-select form-select-sm">
+                                        <option value="I">I</option>
+                                        <option value="II">II</option>
+                                        <option value="III">III</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" name="planned_qty[]"
+                                               class="form-control form-control-sm qty-input"
+                                               min="1" step="1" required>
+                                        <span class="input-group-text unit-label px-1" style="min-width:30px">шт</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <input type="text" inputmode="decimal" name="price[]"
+                                           class="form-control form-control-sm num-comma"
+                                           value="0">
+                                </td>
+                                <td>
+                                    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 btn-del">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Права колонка ── #}
+    <div class="col-md-4">
+        {# Скан #}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header fw-semibold py-2">
+                <i class="bi bi-paperclip me-2 text-primary"></i>Скан документа
+                <span class="text-muted fw-normal small">(необов'язково)</span>
+            </div>
+            <div class="card-body">
+                <input type="file" name="scan" class="form-control form-control-sm"
+                       accept=".pdf,.jpg,.jpeg,.png">
+                <div class="form-text">PDF, JPG, PNG. Можна завантажити пізніше.</div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div class="d-flex gap-2 mb-4">
+    <button type="submit" class="btn btn-success">
+        <i class="bi bi-check-lg me-1"></i>Зареєструвати як активну
+    </button>
+    <a href="{{ url_for('rv.index') }}" class="btn btn-outline-secondary">Скасувати</a>
+</div>
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Autocomplete підрозділу ────────────────────────────────────
+const UNITS = [
+    {% for u in units %}
+    { id: {{ u.id }}, name: {{ (u.bat_name + ' / ' + u.name) | tojson }} },
+    {% endfor %}
+];
+const unitText = document.getElementById('unitText');
+const unitId   = document.getElementById('unitId');
+const unitDrop = document.getElementById('unitDropdown');
+
+unitText.addEventListener('input', () => {
+    unitId.value = '';
+    const q = unitText.value.trim().toLowerCase();
+    if (!q) { unitDrop.style.display = 'none'; return; }
+    const matches = UNITS.filter(u => u.name.toLowerCase().includes(q)).slice(0, 20);
+    if (!matches.length) { unitDrop.style.display = 'none'; return; }
+    unitDrop.innerHTML = matches.map(u =>
+        `<button type="button" class="dropdown-item px-3 py-1 small" data-id="${u.id}" data-name="${u.name}">${u.name}</button>`
+    ).join('');
+    unitDrop.style.display = 'block';
+});
+unitDrop.addEventListener('mousedown', e => {
+    const btn = e.target.closest('.dropdown-item');
+    if (!btn) return;
+    e.preventDefault();
+    unitText.value = btn.dataset.name;
+    unitId.value   = btn.dataset.id;
+    unitDrop.style.display = 'none';
+});
+document.addEventListener('click', e => {
+    if (!unitText.contains(e.target) && !unitDrop.contains(e.target))
+        unitDrop.style.display = 'none';
+});
+
+// ── Пошук о/с ──────────────────────────────────────────────────
+document.getElementById('personnelSearch').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('.personnel-item').forEach(div => {
+        div.style.display = (!q || div.dataset.name.includes(q)) ? '' : 'none';
+    });
+});
+
+// Лічильник обраних
+document.querySelectorAll('input[name="personnel_ids[]"]').forEach(cb => {
+    cb.addEventListener('change', updateCount);
+});
+function updateCount() {
+    const n = document.querySelectorAll('input[name="personnel_ids[]"]:checked').length;
+    document.getElementById('selectedCount').textContent = n;
+}
+
+// ── Дані товарів для SearchableSelect ─────────────────────────
+const EXT_ITEMS = [
+    {% for item in all_items %}
+    { value: "{{ item.id }}", label: {{ item.name | tojson }}, meta: { unit: {{ (item.unit_of_measure or 'шт') | tojson }} } },
+    {% endfor %}
+];
+
+// ── Конструктор позицій ────────────────────────────────────────
+let rowCount = 0;
+
+function addRow() {
+    const tpl   = document.getElementById('rowTemplate');
+    const clone = tpl.cloneNode(true);
+    clone.id    = 'extrow_' + (++rowCount);
+    clone.style.display = '';
+
+    clone.querySelectorAll('input[type=number]').forEach(i => {
+        i.value = '';
+    });
+    const priceInp = clone.querySelector('input[name="price[]"]');
+    if (priceInp) priceInp.value = '0';
+
+    const hiddenInp = clone.querySelector('.item-sel');
+    const ssWrap    = clone.querySelector('.item-ss-wrap');
+    const unitSpan  = clone.querySelector('.unit-label');
+
+    if (hiddenInp && ssWrap) {
+        new SearchableSelect({
+            container:   ssWrap,
+            hiddenInput: hiddenInp,
+            options:     EXT_ITEMS,
+            placeholder: '— оберіть майно —',
+            allowClear:  false,
+            size:        'sm',
+            onChange: (val) => {
+                const opt = EXT_ITEMS.find(o => o.value === val);
+                if (unitSpan && opt) unitSpan.textContent = opt.meta?.unit || 'шт';
+            },
+        });
+    }
+
+    clone.querySelector('.btn-del').addEventListener('click', () => {
+        clone.remove();
+        renum();
+    });
+
+    document.getElementById('itemRows').appendChild(clone);
+    renum();
+}
+
+function renum() {
+    document.querySelectorAll('#itemRows tr:not(#rowTemplate)').forEach((tr, i) => {
+        const n = tr.querySelector('.row-num');
+        if (n) n.textContent = i + 1;
+    });
+}
+
+document.getElementById('btnAddRow').addEventListener('click', addRow);
+addRow(); // початковий рядок
+</script>
+{% endblock %}

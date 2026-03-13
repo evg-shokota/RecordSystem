@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Журнал приходів — {{ unit_name }}{% endblock %}
+{% block page_title %}Журнал приходів на склад{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('warehouse.income_new') }}" class="btn btn-sm btn-primary">
+    <i class="bi bi-plus-lg me-1"></i>Внести прихід
+</a>
+<a href="{{ url_for('warehouse.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Залишки
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        {% if rows %}
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:40px">№</th>
+                        <th style="width:110px">Дата</th>
+                        <th>Документ / Постачальник</th>
+                        <th style="width:80px" class="text-center">Позицій</th>
+                        <th style="width:120px" class="text-end">Сума, грн</th>
+                        <th style="width:90px">Статус</th>
+                        <th style="width:110px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rows %}
+                    {% set is_draft = r.status == 'draft' %}
+                    <tr class="{{ 'table-warning' if is_draft }}">
+                        <td class="text-muted">{{ loop.index }}</td>
+                        <td>{{ r.date or '—' }}</td>
+                        <td>
+                            <div>
+                                {% if r.doc_type_name %}
+                                <span class="badge bg-light text-dark border me-1">{{ r.doc_type_name }}</span>
+                                {% endif %}
+                                {% if r.document_number %}
+                                <span class="fw-medium">{{ r.document_number }}</span>
+                                {% endif %}
+                            </div>
+                            {% if r.supplier %}
+                            <div class="text-muted small">{{ r.supplier }}</div>
+                            {% endif %}
+                            {% if r.notes %}
+                            <div class="text-muted small fst-italic">{{ r.notes }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">{{ r.items_count }}</td>
+                        <td class="text-end">{{ "%.2f"|format(r.total_sum) }}</td>
+                        <td>
+                            {% if is_draft %}
+                            <a href="{{ url_for('warehouse.income_draft_edit', doc_id=r.doc_id) }}"
+                               class="badge bg-warning text-dark text-decoration-none">
+                                <i class="bi bi-pencil me-1"></i>Чернетка
+                            </a>
+                            {% else %}
+                            <span class="badge bg-success">
+                                <i class="bi bi-check-circle me-1"></i>Проведено
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                {% if is_draft %}
+                                {# Редагування чернетки #}
+                                <a href="{{ url_for('warehouse.income_draft_edit', doc_id=r.doc_id) }}"
+                                   class="btn btn-sm btn-outline-primary py-0 px-2"
+                                   title="Редагувати чернетку">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                {# Видалення чернетки #}
+                                <form method="POST"
+                                      action="{{ url_for('warehouse.income_draft_delete', doc_id=r.doc_id) }}"
+                                      onsubmit="return confirm('Видалити чернетку?')">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1"
+                                            title="Видалити чернетку">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                                {% else %}
+                                {# Перегляд підтвердженого #}
+                                <a href="{{ url_for('warehouse.income_view', income_id=r.id) }}"
+                                   class="btn btn-sm btn-outline-secondary py-0 px-2"
+                                   title="Переглянути">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                {# Редагування підтвердженого #}
+                                <a href="{{ url_for('warehouse.income_edit', income_id=r.id) }}"
+                                   class="btn btn-sm btn-outline-primary py-0 px-2"
+                                   title="Редагувати">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                {# Скан #}
+                                {% if r.scan_path %}
+                                <a href="{{ url_for('warehouse.income_scan', income_id=r.id) }}"
+                                   target="_blank" class="btn btn-sm btn-outline-info py-0 px-1"
+                                   title="{{ r.scan_original_name or 'Скан' }}">
+                                    <i class="bi bi-file-earmark-image"></i>
+                                </a>
+                                {% endif %}
+                                {# Видалення #}
+                                <form method="POST"
+                                      action="{{ url_for('warehouse.income_delete', income_id=r.id) }}"
+                                      onsubmit="return confirm('Видалити запис приходу? Майно буде знято зі складу.')">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1"
+                                            title="Видалити">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+            Журнал порожній — <a href="{{ url_for('warehouse.income_new') }}">внесіть перший прихід</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,474 @@
+/* =====================================================
+   Система обліку речового майна А5027
+   Кастомні стилі поверх Bootstrap 5.3
+   ===================================================== */
+
+:root {
+    --app-sidebar-width: 240px;
+    --app-primary: #1a56a0;
+    --app-primary-dark: #134080;
+}
+
+/* =====================================================
+   LAYOUT — sidebar + content
+   ===================================================== */
+
+body { background: var(--body-bg, #f4f6f9); }
+
+.app-wrapper {
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* =====================================================
+   SIDEBAR
+   ===================================================== */
+
+.app-sidebar {
+    width: var(--app-sidebar-width);
+    min-width: var(--app-sidebar-width);
+    background: var(--app-primary);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    flex-shrink: 0;
+}
+
+.sidebar-brand {
+    padding: 18px 16px 14px;
+    border-bottom: 1px solid rgba(255,255,255,.15);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: #fff;
+}
+
+.sidebar-brand:hover { color: #fff; text-decoration: none; }
+
+.sidebar-brand-icon { font-size: 26px; }
+
+.sidebar-brand-text .title {
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.sidebar-brand-text .subtitle {
+    font-size: 11px;
+    opacity: .7;
+}
+
+.sidebar-nav { flex: 1; padding: 8px 0; }
+
+.nav-section-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    opacity: .5;
+    padding: 12px 16px 3px;
+}
+
+/* Collapsible sidebar sections */
+.nav-section-toggle {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    color: rgba(255,255,255,.5);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    padding: 6px 12px 4px;
+    margin: 2px 4px 0;
+    width: calc(100% - 8px);
+    cursor: pointer;
+    gap: 6px;
+    transition: background .15s, color .15s, padding .2s;
+    position: relative;
+}
+.nav-section-toggle:hover {
+    color: rgba(255,255,255,.85);
+    background: rgba(255,255,255,.07);
+}
+.nav-section-toggle span { flex: 1; text-align: left; }
+
+/* Іконка секції — прихована коли розгорнуто */
+.nav-section-icon {
+    font-size: 13px;
+    flex-shrink: 0;
+    opacity: 0;
+    width: 0;
+    overflow: hidden;
+    transition: opacity .2s, width .2s;
+}
+.nav-section-chevron {
+    font-size: 9px;
+    transition: transform .2s, opacity .15s;
+    flex-shrink: 0;
+    opacity: 1;
+}
+
+/* Стан: ЗГОРНУТО — більший, яскравіший, з іконкою */
+.nav-section-toggle.collapsed {
+    font-size: 12px;
+    letter-spacing: .04em;
+    color: rgba(255,255,255,.75);
+    background: rgba(255,255,255,.08);
+    padding: 8px 12px;
+    margin: 3px 4px;
+}
+.nav-section-toggle.collapsed:hover {
+    background: rgba(255,255,255,.14);
+    color: #fff;
+}
+.nav-section-toggle.collapsed .nav-section-icon {
+    opacity: .7;
+    width: 16px;
+}
+.nav-section-toggle.collapsed .nav-section-chevron {
+    transform: rotate(-90deg);
+    opacity: .6;
+}
+
+/* Тіло секції */
+.nav-section-body {
+    overflow: hidden;
+    transition: max-height .28s cubic-bezier(.4,0,.2,1),
+                opacity .22s ease;
+    opacity: 1;
+}
+.nav-section-body.collapsed {
+    max-height: 0 !important;
+    opacity: 0;
+}
+.nav-section-body ul { margin: 0; padding: 0; list-style: none; }
+
+.sidebar-nav .nav-link {
+    color: rgba(255,255,255,.8);
+    padding: 8px 16px;
+    border-radius: 0;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 14px;
+    transition: background .15s;
+}
+
+.sidebar-nav .nav-link:hover,
+.sidebar-nav .nav-link.active {
+    background: rgba(255,255,255,.15);
+    color: #fff;
+}
+
+.sidebar-nav .nav-link i { font-size: 15px; opacity: .85; }
+
+.sidebar-footer {
+    padding: 12px 16px;
+    border-top: 1px solid rgba(255,255,255,.15);
+}
+
+.sidebar-user-name {
+    font-size: 12px;
+    opacity: .75;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 6px;
+}
+
+/* =====================================================
+   MAIN CONTENT
+   ===================================================== */
+
+.app-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.app-topbar {
+    background: var(--topbar-bg, #fff);
+    border-bottom: 1px solid var(--topbar-border, #dee2e6);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.app-topbar h1 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.app-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+}
+
+/* =====================================================
+   STATS CARDS
+   ===================================================== */
+
+.stat-card .card-body {
+    text-align: center;
+    padding: 20px 16px;
+}
+
+.stat-value {
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--app-primary);
+    line-height: 1;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: var(--text-muted, #6c757d);
+    margin-top: 6px;
+}
+
+/* =====================================================
+   DATA TABLE
+   ===================================================== */
+
+.table-card { border-radius: 8px; overflow: hidden; }
+
+.table th {
+    background: var(--table-header-bg, #f8f9fa);
+    color: var(--text-muted, #6c757d);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.table td { vertical-align: middle; font-size: 13px; }
+
+/* =====================================================
+   OVERDUE ALERTS
+   ===================================================== */
+
+.overdue-item { margin-top: 4px; font-size: 13px; }
+
+/* =====================================================
+   LOGIN PAGE
+   ===================================================== */
+
+.login-wrapper {
+    min-height: 100vh;
+    background: var(--app-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.login-card {
+    width: 380px;
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.25);
+}
+
+.login-logo { font-size: 40px; color: var(--app-primary); }
+
+/* =====================================================
+   TOAST
+   ===================================================== */
+
+.toast-container-fixed {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 9999;
+}
+
+/* =====================================================
+   SETTINGS CARDS HOVER
+   ===================================================== */
+
+.card-hover { transition: transform .15s, box-shadow .15s; cursor: pointer; }
+.card-hover:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.12) !important; }
+
+/* =====================================================
+   TOAST
+   ===================================================== */
+
+.toast-item {
+    padding: 10px 16px;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 13px;
+    margin-top: 6px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all .25s;
+    min-width: 220px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.2);
+}
+.toast-item.show { opacity: 1; transform: translateY(0); }
+.toast-success { background: #198754; }
+.toast-danger  { background: #dc3545; }
+.toast-warning { background: #e09800; }
+.toast-info    { background: #0d6efd; }
+
+/* =====================================================
+   SEARCHABLE SELECT
+   ===================================================== */
+
+.ss-wrapper {
+    position: relative;
+    user-select: none;
+}
+
+.ss-display {
+    display: flex;
+    align-items: center;
+    background: var(--input-bg, #fff);
+    border: 1px solid var(--input-border, #dee2e6);
+    border-radius: .375rem;
+    padding: 0 .5rem;
+    min-height: 31px;   /* form-control-sm height */
+    cursor: pointer;
+    transition: border-color .15s, box-shadow .15s;
+    font-size: .875rem;
+    color: var(--text-primary, #212529);
+}
+.ss-display:hover { border-color: var(--app-primary, #86b7fe); }
+.ss-display.ss-open,
+.ss-display:focus-within {
+    border-color: var(--app-primary, #86b7fe);
+    box-shadow: 0 0 0 .2rem rgba(var(--app-primary-rgb, 13,110,253),.2);
+}
+
+.ss-display .ss-label {
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: var(--text-primary, #212529);
+}
+.ss-display .ss-placeholder { color: var(--text-muted, #6c757d); }
+
+.ss-display .ss-arrow {
+    color: var(--text-muted, #6c757d);
+    font-size: .7rem;
+    margin-left: .3rem;
+    transition: transform .15s;
+    flex-shrink: 0;
+}
+.ss-display.ss-open .ss-arrow { transform: rotate(180deg); }
+
+.ss-display .ss-clear {
+    background: none;
+    border: none;
+    padding: 0 .1rem;
+    color: var(--text-muted, #6c757d);
+    cursor: pointer;
+    font-size: .8rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.ss-display .ss-clear:hover { color: #dc3545; }
+
+.ss-dropdown {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    right: 0;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--card-border, #dee2e6);
+    border-radius: .375rem;
+    box-shadow: 0 4px 16px rgba(0,0,0,.15);
+    z-index: 1090;
+    max-height: 260px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Варіант для таблиць — рендерується в body, position fixed */
+.ss-dropdown.ss-dropdown-fixed {
+    position: absolute; /* абсолютна відносно body (бо body не transform) */
+    z-index: 9999;
+    max-height: 280px;
+}
+
+.ss-search-wrap {
+    padding: .4rem .5rem;
+    border-bottom: 1px solid var(--card-border, #f0f0f0);
+    flex-shrink: 0;
+}
+.ss-search-wrap input {
+    width: 100%;
+    background: var(--input-bg, #fff);
+    border: 1px solid var(--input-border, #dee2e6);
+    border-radius: .25rem;
+    padding: .25rem .5rem;
+    font-size: .8rem;
+    outline: none;
+    color: var(--text-primary, #212529);
+}
+.ss-search-wrap input:focus { border-color: var(--app-primary, #86b7fe); }
+
+.ss-options {
+    overflow-y: auto;
+    flex: 1;
+}
+
+.ss-group-label {
+    padding: .3rem .6rem .1rem;
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--text-muted, #6c757d);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    background: var(--table-header-bg, #f8f9fa);
+    position: sticky;
+    top: 0;
+}
+
+.ss-option {
+    padding: .35rem .75rem;
+    font-size: .875rem;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-primary, #212529);
+}
+.ss-option:hover,
+.ss-option.ss-focused {
+    background: rgba(var(--app-primary-rgb, 13,110,253),.1);
+    color: var(--app-primary, #1a56a0);
+}
+.ss-option.ss-selected {
+    background: rgba(var(--app-primary-rgb, 13,110,253),.12);
+    font-weight: 500;
+    color: var(--app-primary, #1a56a0);
+}
+
+.ss-no-results {
+    padding: .5rem .75rem;
+    font-size: .8rem;
+    color: var(--text-muted, #6c757d);
+    font-style: italic;
+}
+
+/* =====================================================
+   UTILITIES
+   ===================================================== */
+
+.cursor-pointer { cursor: pointer; }
+.text-truncate-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}

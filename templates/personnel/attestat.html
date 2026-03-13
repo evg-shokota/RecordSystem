@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block title %}Атестат — {{ person.last_name }} {{ person.first_name }}{% endblock %}
+{% block page_title %}Речовий атестат{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('personnel.card', person_id=person.id) }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>До картки
+</a>
+<button class="btn btn-sm btn-outline-primary" onclick="window.print()">
+    <i class="bi bi-printer me-1"></i>Друк
+</button>
+{% endblock %}
+
+{% block content %}
+
+{% if not groups and not has_norm %}
+<div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle me-2"></i>
+    На цій особі не призначено норму забезпечення та немає виданого майна.
+    Призначте норму у <a href="{{ url_for('personnel.view', person_id=person.id) }}">картці особи</a>.
+</div>
+{% else %}
+
+{# ── Атестат (A4) ── #}
+<div class="attestat-page" id="attestatDoc">
+
+    {# Шапка #}
+    <div class="d-flex justify-content-between mb-2 att-header">
+        <div>
+            <strong>ПОГОДЖЕНО</strong><br>
+            {% if settings.chief_is_tvo == '1' %}
+            ТВО {{ settings.chief_rank }}<br>
+            ________________ {{ settings.chief_tvo_name }}
+            {% else %}
+            {{ settings.chief_rank }}<br>
+            ________________ {{ settings.chief_name }}
+            {% endif %}
+            <br>"____" ____________ {{ today[-4:] }} р.
+        </div>
+        <div class="text-center">
+            <div style="font-size:1rem; font-weight:bold; text-transform:uppercase;">
+                РЕЧОВИЙ АТЕСТАТ
+            </div>
+            <div class="text-muted" style="font-size:0.75rem;">
+                (наказ МОУ №232, Норма №1)
+            </div>
+        </div>
+        <div class="text-end">
+            <strong>ЗАТВЕРДЖУЮ</strong><br>
+            {% if settings.chief_is_tvo == '1' %}
+            ТВО {{ settings.chief_tvo_rank }}<br>
+            ________________ {{ settings.chief_tvo_name }}
+            {% else %}
+            {{ settings.chief_rank }}<br>
+            ________________ {{ settings.chief_name }}
+            {% endif %}
+            <br>"____" ____________ {{ today[-4:] }} р.
+        </div>
+    </div>
+
+    {# Дані особи #}
+    <table class="table table-borderless table-sm mb-2" style="font-size:0.82rem;">
+        <tr>
+            <td style="width:50%">
+                <strong>Звання:</strong> {{ person.rank or '—' }}<br>
+                <strong>ПІБ:</strong> {{ person.last_name }} {{ person.first_name }} {{ person.middle_name or '' }}<br>
+                <strong>Посада:</strong> {{ person.position or '—' }}
+            </td>
+            <td>
+                <strong>Підрозділ:</strong>
+                {{ person.battalion_name or '' }}
+                {% if person.unit_name %} / {{ person.unit_name }}{% endif %}
+                {% if person.platoon_name %} / {{ person.platoon_name }}{% endif %}<br>
+                <strong>Дата зарахування:</strong> {{ person.enlist_date or '—' }}<br>
+                <strong>Наказ:</strong> {{ person.enlist_order or '—' }}
+            </td>
+        </tr>
+    </table>
+
+    {# Таблиця майна — рядки=позиції норми, колонки=видачі #}
+    <div class="table-responsive">
+    <table class="table table-bordered table-sm mb-2" style="font-size:0.76rem;" id="attestatTable">
+        <thead class="table-light">
+            <tr>
+                <th class="text-center" style="width:28px">№</th>
+                <th>Найменування предметів речового майна</th>
+                <th class="text-center" style="width:36px">Од.</th>
+                {% if has_norm %}
+                <th class="text-center" style="width:44px">Норма</th>
+                {% endif %}
+                {% for i in range(max_issuances) %}
+                <th class="text-center" colspan="3" style="min-width:120px">
+                    Видача {{ i+1 }}
+                </th>
+                {% endfor %}
+                <th class="text-center" style="width:56px">Всього к-сть</th>
+                <th class="text-center" style="width:72px">Сума, грн</th>
+            </tr>
+            <tr class="att-subhead">
+                <th></th>
+                <th></th>
+                <th></th>
+                {% if has_norm %}<th></th>{% endif %}
+                {% for i in range(max_issuances) %}
+                <th class="text-center" style="width:52px">Дата</th>
+                <th class="text-center" style="width:36px">К-сть</th>
+                <th class="text-center" style="width:34px">Кат.</th>
+                {% endfor %}
+                <th></th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for group_name, positions in groups.items() %}
+            <tr class="table-secondary">
+                <td colspan="{{ 3 + (1 if has_norm else 0) + max_issuances * 3 + 2 }}" class="fw-bold py-1" style="font-size:0.73rem;">{{ group_name }}</td>
+            </tr>
+            {% for pos in positions %}
+            <tr>
+                <td class="text-center text-muted">{{ pos.seq }}</td>
+                <td>{{ pos.name }}</td>
+                <td class="text-center">{{ pos.unit }}</td>
+                {% if has_norm %}
+                <td class="text-center text-muted small">{{ pos.norm_qty|int if pos.norm_qty else '—' }}</td>
+                {% endif %}
+                {% for iss in pos.issuances %}
+                <td class="text-center text-nowrap">{{ iss.date or '—' }}</td>
+                <td class="text-center fw-semibold">{{ iss.qty|int if iss.qty == iss.qty|int else iss.qty }}</td>
+                <td class="text-center">{{ iss.category or '—' }}</td>
+                {% endfor %}
+                {# Заповнюємо порожні колонки якщо видач менше max #}
+                {% for i in range(max_issuances - pos.issuances|length) %}
+                <td></td><td></td><td></td>
+                {% endfor %}
+                <td class="text-center fw-semibold">
+                    {{ pos.total_qty|int if pos.total_qty == pos.total_qty|int else pos.total_qty }}
+                </td>
+                <td class="text-end">
+                    {% if pos.total_sum %}{{ "%.2f"|format(pos.total_sum) }}{% else %}—{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="table-light fw-bold">
+                <td colspan="{{ 2 + (1 if has_norm else 0) + max_issuances * 3 + 2 }}" class="text-end">Загальна сума:</td>
+                <td class="text-end">{{ "%.2f"|format(total_sum) }}</td>
+            </tr>
+        </tfoot>
+    </table>
+    </div>
+
+    {# Підписи #}
+    <div class="d-flex justify-content-between mt-3" style="font-size:0.8rem;">
+        <div>
+            Начальник речової служби<br>
+            {{ settings.clerk_rank }} ________________ {{ settings.clerk_name }}<br>
+            "____" ____________ {{ today[-4:] }} р.
+        </div>
+        <div class="text-end">
+            Майно отримав<br>
+            {{ person.rank or '' }} ________________
+            {{ person.last_name }} {{ person.first_name[0] if person.first_name else '' }}.{{ person.middle_name[0] if person.middle_name else '' }}.<br>
+            "____" ____________ {{ today[-4:] }} р.
+        </div>
+    </div>
+
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+.attestat-page {
+    background: white;
+    padding: 20px 24px;
+    max-width: 1100px;
+    margin: 0 auto;
+    box-shadow: 0 0 8px rgba(0,0,0,0.1);
+    border-radius: 4px;
+}
+.att-header { font-size: 0.8rem; }
+.att-subhead th { font-weight: normal; font-size: 0.7rem; color: #555; }
+
+@media print {
+    .app-sidebar, .app-topbar, .btn, .alert { display: none !important; }
+    .app-main { margin: 0 !important; padding: 0 !important; }
+    .app-content { padding: 0 !important; }
+    .attestat-page {
+        box-shadow: none;
+        padding: 6mm 8mm;
+        max-width: 100%;
+        margin: 0;
+    }
+    .table { font-size: 8pt !important; }
+    .table thead { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; }
+    .table-secondary { background: #e8e8e8 !important; -webkit-print-color-adjust: exact; }
+    @page { size: A4 landscape; margin: 8mm 8mm 8mm 12mm; }
+}
+</style>
+{% endblock %}

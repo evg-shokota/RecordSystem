@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block title %}Прийом з атестату — {{ person.last_name }} {{ person.first_name }}{% endblock %}
+{% block page_title %}Прийом майна з атестату{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('personnel.card', person_id=person.id) }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>До картки
+</a>
+<button class="btn btn-sm btn-primary" id="btnSaveAll" disabled>
+    <i class="bi bi-floppy me-1"></i>Зберегти нові рядки
+</button>
+{% endblock %}
+
+{% block content %}
+
+<div class="alert alert-info border-0 py-2 mb-3 small">
+    <i class="bi bi-info-circle me-1"></i>
+    <strong>{{ person.rank or '' }} {{ person.last_name }} {{ person.first_name }} {{ person.middle_name or '' }}</strong> —
+    внесення майна що надійшло з атестатом (без списання зі складу).
+    Майно буде записано як <code>attestat_import</code> і відображатиметься в картці та атестаті.
+</div>
+
+{# ── Вже внесені записи ── #}
+{% if existing %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-transparent d-flex align-items-center justify-content-between">
+        <span class="fw-medium">Вже внесене майно з атестату</span>
+        <span class="badge bg-secondary">{{ existing|length }} позицій</span>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:30px" class="text-center text-muted">#</th>
+                    <th>Найменування майна</th>
+                    <th class="text-center" style="width:40px">Од.</th>
+                    <th class="text-center" style="width:70px">К-сть</th>
+                    <th class="text-center" style="width:90px">Ціна, грн</th>
+                    <th class="text-center" style="width:50px">Кат.</th>
+                    <th class="text-center" style="width:110px">Дата</th>
+                    <th>Примітка</th>
+                    <th style="width:36px"></th>
+                </tr>
+            </thead>
+            <tbody id="existingBody">
+                {% for r in existing %}
+                <tr id="ex-row-{{ r.id }}">
+                    <td class="text-center text-muted small">{{ loop.index }}</td>
+                    <td>{{ r.item_name }}</td>
+                    <td class="text-center text-muted small">{{ r.unit_of_measure or 'шт' }}</td>
+                    <td class="text-center">{{ r.quantity }}</td>
+                    <td class="text-end">{{ "%.2f"|format(r.price) if r.price else '—' }}</td>
+                    <td class="text-center">{{ r.category or '—' }}</td>
+                    <td class="text-center">{{ r.issue_date or '—' }}</td>
+                    <td class="text-muted small">{{ r.notes or '' }}</td>
+                    <td class="text-center">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-danger py-0 px-1 btn-del-existing"
+                                data-id="{{ r.id }}"
+                                title="Видалити">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{# ── Нові рядки ── #}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent d-flex align-items-center justify-content-between">
+        <span class="fw-medium">Додати нове майно з атестату</span>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="btnAddRow">
+            <i class="bi bi-plus-lg me-1"></i>Додати рядок
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive" id="tableWrap" style="display:none">
+            <table class="table table-sm align-middle mb-0" id="importTable">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:30px" class="text-center text-muted">#</th>
+                        <th>Найменування майна</th>
+                        <th style="width:45px" class="text-center">Од.</th>
+                        <th style="width:70px" class="text-center">К-сть</th>
+                        <th style="width:90px" class="text-center">Ціна, грн</th>
+                        <th style="width:60px" class="text-center">Кат.</th>
+                        <th style="width:115px" class="text-center">Дата видачі</th>
+                        <th>Примітка</th>
+                        <th style="width:36px"></th>
+                    </tr>
+                </thead>
+                <tbody id="importBody"></tbody>
+            </table>
+        </div>
+        <div id="emptyHint" class="text-center text-muted py-4 small">
+            <i class="bi bi-arrow-up me-1"></i>Натисніть «Додати рядок» щоб почати
+        </div>
+    </div>
+</div>
+
+<div id="saveResult" class="mt-3 d-none"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PERSON_ID = {{ person.id }};
+const TODAY = '{{ today }}';
+
+const ITEM_DICT = [
+    {% for d in item_dict %}
+    {id: {{ d.id }}, name: {{ d.name|tojson }}, unit: {{ (d.unit_of_measure or 'шт')|tojson }}},
+    {% endfor %}
+];
+
+let rowCount = 0;
+
+function buildItemOptions() {
+    let html = '<option value="">— оберіть майно —</option>';
+    ITEM_DICT.forEach(d => {
+        html += `<option value="${d.id}" data-unit="${escH(d.unit)}">${escH(d.name)}</option>`;
+    });
+    return html;
+}
+
+function addRow() {
+    rowCount++;
+    const tbody = document.getElementById('importBody');
+    document.getElementById('emptyHint').style.display = 'none';
+    document.getElementById('tableWrap').style.display = '';
+
+    const tr = document.createElement('tr');
+    tr.dataset.row = rowCount;
+    tr.innerHTML = `
+        <td class="text-center text-muted small row-num">${rowCount}</td>
+        <td style="min-width:220px">
+            <select class="form-select form-select-sm fld-item">
+                ${buildItemOptions()}
+            </select>
+        </td>
+        <td class="text-center text-muted small fld-unit-label" style="min-width:35px">шт</td>
+        <td>
+            <input type="number" class="form-control form-control-sm text-center fld-qty"
+                   value="1" min="0.01" step="0.01" style="width:62px;margin:auto">
+        </td>
+        <td>
+            <input type="text" inputmode="decimal" class="form-control form-control-sm text-end fld-price num-comma"
+                   value="0" style="width:82px;margin:auto">
+        </td>
+        <td>
+            <select class="form-select form-select-sm fld-cat" style="width:60px;margin:auto">
+                <option value="I">I</option>
+                <option value="II">II</option>
+                <option value="III">III</option>
+            </select>
+        </td>
+        <td>
+            <input type="date" class="form-control form-control-sm fld-date"
+                   value="${TODAY}">
+        </td>
+        <td>
+            <input type="text" class="form-control form-control-sm fld-notes" placeholder="—">
+        </td>
+        <td class="text-center">
+            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 btn-del-row" title="Видалити">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(tr);
+
+    tr.querySelector('.fld-item').addEventListener('change', function() {
+        const opt = this.options[this.selectedIndex];
+        tr.querySelector('.fld-unit-label').textContent = opt.dataset.unit || 'шт';
+    });
+    tr.querySelector('.btn-del-row').addEventListener('click', function() {
+        tr.remove();
+        renum();
+        updateSaveBtn();
+        if (!document.querySelector('#importBody tr')) {
+            document.getElementById('tableWrap').style.display = 'none';
+            document.getElementById('emptyHint').style.display = '';
+        }
+    });
+
+    renum();
+    updateSaveBtn();
+    tr.querySelector('.fld-item').focus();
+}
+
+function renum() {
+    document.querySelectorAll('#importBody tr').forEach((tr, i) => {
+        const n = tr.querySelector('.row-num');
+        if (n) n.textContent = i + 1;
+    });
+}
+
+function updateSaveBtn() {
+    document.getElementById('btnSaveAll').disabled =
+        document.querySelectorAll('#importBody tr').length === 0;
+}
+
+document.getElementById('btnAddRow').addEventListener('click', addRow);
+
+document.getElementById('btnSaveAll').addEventListener('click', async () => {
+    const rows = [];
+    let hasError = false;
+
+    document.querySelectorAll('#importBody tr').forEach(tr => {
+        const itemId = parseInt(tr.querySelector('.fld-item').value);
+        if (!itemId) {
+            tr.querySelector('.fld-item').classList.add('is-invalid');
+            hasError = true;
+            return;
+        }
+        tr.querySelector('.fld-item').classList.remove('is-invalid');
+        rows.push({
+            item_id:    itemId,
+            quantity:   parseFloat(tr.querySelector('.fld-qty').value) || 1,
+            price:      parseFloat(tr.querySelector('.fld-price').value) || 0,
+            category:   tr.querySelector('.fld-cat').value,
+            issue_date: tr.querySelector('.fld-date').value || TODAY,
+            notes:      tr.querySelector('.fld-notes').value.trim(),
+        });
+    });
+
+    if (hasError) { showToast('Оберіть найменування для всіх рядків', 'warning'); return; }
+
+    const btn = document.getElementById('btnSaveAll');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Збереження...';
+
+    const resp = await fetch(`/personnel/${PERSON_ID}/attestat-import`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(rows)
+    });
+    const d = await resp.json();
+
+    if (d.ok) {
+        const res = document.getElementById('saveResult');
+        res.className = 'mt-3 alert alert-success';
+        let msg = `<i class="bi bi-check-circle me-1"></i>Збережено ${d.saved} позицій.`;
+        if (d.errors && d.errors.length)
+            msg += `<br><strong>Помилки:</strong> ${d.errors.join('; ')}`;
+        msg += ` <a href="/personnel/${PERSON_ID}/attestat-import" class="alert-link ms-2">Оновити сторінку →</a>`;
+        res.innerHTML = msg;
+        res.classList.remove('d-none');
+        document.getElementById('importBody').innerHTML = '';
+        document.getElementById('tableWrap').style.display = 'none';
+        document.getElementById('emptyHint').style.display = '';
+        updateSaveBtn();
+    } else {
+        showToast(d.error || 'Помилка збереження', 'danger');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-floppy me-1"></i>Зберегти нові рядки';
+    }
+});
+
+// Видалення існуючих записів
+document.querySelectorAll('.btn-del-existing').forEach(btn => {
+    btn.addEventListener('click', async function() {
+        const id = this.dataset.id;
+        if (!confirm('Видалити цей запис?')) return;
+        const resp = await fetch(`/personnel/${PERSON_ID}/attestat-import/${id}/delete`, {method:'POST'});
+        const d = await resp.json();
+        if (d.ok) {
+            document.getElementById(`ex-row-${id}`).remove();
+            showToast('Запис видалено', 'success');
+        } else {
+            showToast(d.error || 'Помилка видалення', 'danger');
+        }
+    });
+});
+
+function escH(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+{% endblock %}

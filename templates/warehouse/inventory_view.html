@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Інвентаризація {{ inv.date }} — {{ unit_name }}{% endblock %}
+{% block page_title %}Інвентаризація від {{ inv.date }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('warehouse.inventory_print', inv_id=inv.id) }}"
+   class="btn btn-sm btn-outline-secondary" target="_blank">
+    <i class="bi bi-printer me-1"></i>Друк
+</a>
+<a href="{{ url_for('warehouse.inventory_export_xlsx', inv_id=inv.id) }}"
+   class="btn btn-sm btn-outline-success">
+    <i class="bi bi-file-earmark-excel me-1"></i>Excel
+</a>
+<a href="{{ url_for('warehouse.inventory_list') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endblock %}
+
+{% block content %}
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-md-2">
+                <span class="text-muted small">Дата:</span><br>
+                <strong>{{ inv.date }}</strong>
+            </div>
+            <div class="col-md-5">
+                <span class="text-muted small">Члени комісії:</span><br>
+                {{ inv.commission_members or '—' }}
+            </div>
+            <div class="col-md-5">
+                <span class="text-muted small">Примітка:</span><br>
+                {{ inv.notes or '—' }}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:40px">№</th>
+                        <th>Найменування</th>
+                        <th style="width:80px">Кат.</th>
+                        <th style="width:80px">Од.</th>
+                        <th style="width:110px">Ціна, грн</th>
+                        <th style="width:110px">По обліку</th>
+                        <th style="width:110px">Фактично</th>
+                        <th style="width:110px">Різниця</th>
+                        <th style="width:120px">Сума факт., грн</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in items %}
+                    {% set diff = r.qty_actual - r.qty_expected %}
+                    <tr class="{{ 'table-danger' if diff < 0 else ('table-success' if diff > 0 else '') }}">
+                        <td class="text-muted">{{ loop.index }}</td>
+                        <td>{{ r.item_name_snapshot }}</td>
+                        <td><span class="badge bg-secondary">Кат. {{ r.category }}</span></td>
+                        <td class="text-muted">{{ r.unit_of_measure }}</td>
+                        <td class="text-end">{{ "%.2f"|format(r.price) }}</td>
+                        <td class="text-end">{{ r.qty_expected }}</td>
+                        <td class="text-end fw-bold">{{ r.qty_actual }}</td>
+                        <td class="text-end fw-bold
+                            {{ 'text-danger' if diff < 0 else ('text-success' if diff > 0 else 'text-muted') }}">
+                            {% if diff == 0 %}—
+                            {% elif diff > 0 %}+{{ diff }}
+                            {% else %}{{ diff }}
+                            {% endif %}
+                        </td>
+                        <td class="text-end">{{ "%.2f"|format(r.qty_actual * r.price) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light fw-bold">
+                    <tr>
+                        <td colspan="5" class="text-end">Разом:</td>
+                        <td class="text-end">{{ "%.2f"|format(total_expected) }} грн</td>
+                        <td class="text-end">{{ "%.2f"|format(total_actual) }} грн</td>
+                        <td class="text-end
+                            {{ 'text-danger' if total_actual < total_expected else ('text-success' if total_actual > total_expected else '') }}">
+                            {% set total_diff = total_actual - total_expected %}
+                            {% if total_diff == 0 %}—
+                            {% elif total_diff > 0 %}+{{ "%.2f"|format(total_diff) }}
+                            {% else %}{{ "%.2f"|format(total_diff) }}
+                            {% endif %}
+                        </td>
+                        <td class="text-end">{{ "%.2f"|format(total_actual) }} грн</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

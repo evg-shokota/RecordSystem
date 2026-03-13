@@ -1,0 +1,679 @@
+{% extends "base.html" %}
+{% block title %}{% if editing_confirmed %}Редагувати прихід{% elif editing_draft %}Редагувати чернетку{% else %}Прихід на склад{% endif %} — {{ unit_name }}{% endblock %}
+{% block page_title %}{% if editing_confirmed %}Редагувати прихід{% elif editing_draft %}Редагувати чернетку приходу{% else %}Внести прихід на склад{% endif %}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('warehouse.income_list') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endblock %}
+
+{% block content %}
+
+{% if errors %}
+<div class="alert alert-danger">
+    <ul class="mb-0">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+{% if editing_draft %}
+<div class="alert alert-warning border-0 py-2 mb-3 small">
+    <i class="bi bi-pencil-square me-1"></i>
+    Ви редагуєте <strong>чернетку</strong>. Натисніть «Підтвердити прихід» щоб провести майно на склад.
+</div>
+{% elif editing_confirmed %}
+<div class="alert alert-info border-0 py-2 mb-3 small">
+    <i class="bi bi-pencil-square me-1"></i>
+    Ви редагуєте <strong>проведений прихід</strong>. Зміни одразу оновлять залишки складу.
+    <a href="{{ url_for('warehouse.income_view', income_id=income_id) }}" class="ms-2">← Назад до перегляду</a>
+</div>
+{% endif %}
+
+<form method="POST"
+      id="incomeForm"
+      enctype="multipart/form-data"
+      {% if editing_draft %}action="{{ url_for('warehouse.income_draft_edit', doc_id=doc_id) }}"
+      {% elif editing_confirmed %}action="{{ url_for('warehouse.income_edit', income_id=income_id) }}"{% endif %}>
+
+    {# ── Шапка документа ── #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent fw-medium">Реквізити документа</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-2">
+                    <label class="form-label">Дата <span class="text-danger">*</span></label>
+                    <input type="date" name="date" class="form-control"
+                           value="{{ form.date or '' }}" required>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Тип документа</label>
+                    <select name="doc_type_id" class="form-select">
+                        <option value="">— не вказано —</option>
+                        {% for dt in doc_types %}
+                        <option value="{{ dt.id }}"
+                            {{ 'selected' if (form.doc_type_id or form.document_type_id)|string == dt.id|string }}>
+                            {{ dt.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Номер документа</label>
+                    <input type="text" name="doc_number" class="form-control"
+                           value="{{ form.doc_number or form.document_number or '' }}" placeholder="напр. 123/РС">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Тип надходження</label>
+                    <select name="source_type" class="form-select">
+                        {% set st = form.source_type or 'income_doc' %}
+                        <option value="income_doc" {{ 'selected' if st=='income_doc' }}>Прихідна накладна</option>
+                        <option value="narad"      {{ 'selected' if st=='narad' }}>Наряд</option>
+                        <option value="attestat"   {{ 'selected' if st=='attestat' }}>Атестат</option>
+                        <option value="manual"     {{ 'selected' if st=='manual' }}>Початкове внесення (журнал)</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Постачальник / звідки</label>
+                    <input type="text" name="supplier" class="form-control"
+                           value="{{ form.supplier or '' }}" placeholder="напр. 40 ОТБ">
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Примітка</label>
+                    <input type="text" name="notes" class="form-control"
+                           value="{{ form.notes or '' }}">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Рядки позицій ── #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent d-flex align-items-center">
+            <span class="fw-medium">Позиції майна</span>
+            <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="btnAddRow">
+                <i class="bi bi-plus-lg me-1"></i>Додати позицію
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle" id="incomeTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:35px"></th>
+                            <th>Найменування <span class="text-danger">*</span></th>
+                            <th style="width:80px">Кат.</th>
+                            <th style="width:90px">К-сть <span class="text-danger">*</span></th>
+                            <th style="width:80px">Од.</th>
+                            <th style="width:110px">Ціна, грн</th>
+                            <th style="width:120px">Код номенклатури</th>
+                            <th>Серійні №<small class="text-muted"> (через кому)</small></th>
+                            <th style="width:40px"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="incomeRows">
+                        {# Порожній рядок-шаблон — клонується JS-ом. item-select — hidden, SS ініціалізується в addRow() #}
+                        <tr class="income-row" id="rowTemplate" style="display:none">
+                            <td class="text-muted row-num text-center"></td>
+                            <td style="min-width:240px">
+                                <div class="d-flex gap-1 align-items-center">
+                                    <input type="hidden" name="item_id[]" class="item-select">
+                                    <div class="item-ss-wrap flex-grow-1"></div>
+                                    <button type="button" class="btn btn-sm btn-outline-success flex-shrink-0 btn-new-dict-item"
+                                            title="Додати нову позицію до словника майна">
+                                        <i class="bi bi-plus-lg"></i>
+                                    </button>
+                                </div>
+                            </td>
+                            <td>
+                                <select name="category[]" class="form-select form-select-sm">
+                                    {% for cat in categories %}
+                                    <option value="{{ cat }}">{{ cat }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td>
+                                <input type="text" inputmode="decimal" name="quantity[]"
+                                       class="form-control form-control-sm qty-input num-input"
+                                       placeholder="0">
+                            </td>
+                            <td class="unit-label text-muted small">шт</td>
+                            <td>
+                                <input type="text" inputmode="decimal" name="price[]"
+                                       class="form-control form-control-sm num-input"
+                                       value="0">
+                            </td>
+                            <td>
+                                <input type="text" name="nom_code[]"
+                                       class="form-control form-control-sm"
+                                       placeholder="опціонально">
+                            </td>
+                            <td>
+                                <input type="text" name="serial_numbers[]"
+                                       class="form-control form-control-sm serial-field"
+                                       placeholder="не потрібно" disabled>
+                            </td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 btn-del-row">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </td>
+                        </tr>
+
+                        {# При редагуванні чернетки або підтвердженого — pre-filled рядки (SS ініціалізується в JS нижче) #}
+                        {% if (editing_draft or editing_confirmed) and doc_items %}
+                        {% for di in doc_items %}
+                        <tr class="income-row income-row-active" data-prefilled="1" data-item-id="{{ di.item_id }}">
+                            <td class="text-muted row-num text-center">{{ loop.index }}</td>
+                            <td style="min-width:240px">
+                                <div class="d-flex gap-1 align-items-center">
+                                    <input type="hidden" name="item_id[]" class="item-select" value="{{ di.item_id }}">
+                                    <div class="item-ss-wrap flex-grow-1"></div>
+                                    <button type="button" class="btn btn-sm btn-outline-success flex-shrink-0 btn-new-dict-item"
+                                            title="Додати нову позицію до словника майна">
+                                        <i class="bi bi-plus-lg"></i>
+                                    </button>
+                                </div>
+                            </td>
+                            <td>
+                                <select name="category[]" class="form-select form-select-sm">
+                                    {% for cat in categories %}
+                                    <option value="{{ cat }}" {{ 'selected' if cat == di.category }}>{{ cat }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td>
+                                <input type="text" inputmode="decimal" name="quantity[]"
+                                       class="form-control form-control-sm qty-input num-input"
+                                       value="{{ di.quantity }}">
+                            </td>
+                            <td class="unit-label text-muted small">{{ di.unit_of_measure or 'шт' }}</td>
+                            <td>
+                                <input type="text" inputmode="decimal" name="price[]"
+                                       class="form-control form-control-sm num-input"
+                                       value="{{ di.price or 0 }}">
+                            </td>
+                            <td>
+                                <input type="text" name="nom_code[]"
+                                       class="form-control form-control-sm"
+                                       value="{{ di.nom_code or '' }}" placeholder="опціонально">
+                            </td>
+                            <td>
+                                {% set has_sn = di.has_serial_number %}
+                                <input type="text" name="serial_numbers[]"
+                                       class="form-control form-control-sm serial-field {% if has_sn %}border-warning{% endif %}"
+                                       value="{{ di.serial_numbers or '' }}"
+                                       placeholder="{{ 'обов\'язково через кому' if has_sn else 'не потрібно' }}"
+                                       {% if not has_sn %}disabled{% endif %}>
+                            </td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 btn-del-row">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="p-3 border-top d-flex justify-content-end">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnAddRow2">
+                    <i class="bi bi-plus-lg me-1"></i>Додати позицію
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {# ── Скан документа (опційно) ── #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent fw-medium">Скан документа <span class="text-muted fw-normal small">(опційно)</span></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    {% if editing_draft and doc and doc.scan_original_name %}
+                    <div class="mb-2 small text-muted">
+                        <i class="bi bi-paperclip me-1"></i>Поточний файл: <strong>{{ doc.scan_original_name }}</strong>
+                        <span class="ms-2 text-info">(завантажте новий — щоб замінити)</span>
+                    </div>
+                    {% endif %}
+                    <label class="form-label">Файл (PDF, JPG, PNG)</label>
+                    <input type="file" name="scan_file" class="form-control"
+                           accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif">
+                    <div class="form-text">Скан накладної або іншого документа підстави</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <input type="hidden" name="save_as_draft" id="saveAsDraft" value="0">
+    <input type="hidden" name="confirm_now"   id="confirmNow"  value="0">
+
+    <div class="d-flex gap-2 justify-content-end">
+        <a href="{{ url_for('warehouse.income_list') }}" class="btn btn-outline-secondary">Скасувати</a>
+        {% if editing_confirmed %}
+        <button type="submit" class="btn btn-primary" id="btnSubmit">
+            <i class="bi bi-floppy me-1"></i>Зберегти зміни
+        </button>
+        {% else %}
+        <button type="button" class="btn btn-outline-warning" id="btnSaveDraft">
+            <i class="bi bi-floppy me-1"></i>{% if editing_draft %}Зберегти чернетку{% else %}Зберегти як чернетку{% endif %}
+        </button>
+        {% if editing_draft %}
+        <button type="button" class="btn btn-success" id="btnConfirmDraft">
+            <i class="bi bi-check2-circle me-1"></i>Підтвердити прихід
+        </button>
+        {% else %}
+        <button type="submit" class="btn btn-primary" id="btnSubmit">
+            <i class="bi bi-check-lg me-1"></i>Зберегти прихід
+        </button>
+        {% endif %}
+        {% endif %}
+    </div>
+
+</form>
+
+{# ── Модальне: Нова позиція словника майна ── #}
+<div class="modal fade" id="modalNewDictItem" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Нова позиція словника майна</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pb-2">
+                <div id="newDictItemError" class="alert alert-danger py-2 small" style="display:none"></div>
+
+                <div class="row g-2 mb-2">
+                    <div class="col-md-5">
+                        <label class="form-label form-label-sm mb-1">Назва <span class="text-danger">*</span></label>
+                        <input type="text" id="ndName" class="form-control form-control-sm" placeholder="Назва майна">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label form-label-sm mb-1">Од. виміру</label>
+                        {# SearchableSelect з можливістю вводу свого варіанту #}
+                        <input type="hidden" id="ndUnit" value="шт">
+                        <div id="ndUnitSS"></div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label form-label-sm mb-1">Сезон</label>
+                        <select id="ndSeason" class="form-select form-select-sm">
+                            <option value="demi">Демісезон</option>
+                            <option value="winter">Зима</option>
+                            <option value="summer">Літо</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label form-label-sm mb-1">Стать</label>
+                        <select id="ndGender" class="form-select form-select-sm">
+                            <option value="unisex">Унісекс</option>
+                            <option value="male">Чол.</option>
+                            <option value="female">Жін.</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="border rounded px-3 py-2 mb-2 bg-light">
+                    <div class="row g-0">
+                        <div class="col-6 col-md-3 py-1">
+                            <div class="form-check form-switch mb-0">
+                                <input type="checkbox" id="ndInventory" class="form-check-input" role="switch">
+                                <label class="form-check-label small" for="ndInventory">Інвентарне</label>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3 py-1">
+                            <div class="form-check form-switch mb-0">
+                                <input type="checkbox" id="ndSerial" class="form-check-input" role="switch">
+                                <label class="form-check-label small" for="ndSerial">Серійний №</label>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3 py-1">
+                            <div class="form-check form-switch mb-0">
+                                <input type="checkbox" id="ndPassport" class="form-check-input" role="switch">
+                                <label class="form-check-label small" for="ndPassport">Паспорт</label>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3 py-1">
+                            <div class="form-check form-switch mb-0">
+                                <input type="checkbox" id="ndExploitAct" class="form-check-input" role="switch">
+                                <label class="form-check-label small" for="ndExploitAct">Акт вв. експл.</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-2">
+                    <div class="col-12">
+                        <label class="form-label form-label-sm mb-1">
+                            Відповідність у словнику норм
+                            <span class="text-muted fw-normal">(не обов'язково)</span>
+                        </label>
+                        <input type="hidden" id="ndNormDict" value="">
+                        <div id="ndNormDictSS"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-success btn-sm" id="btnSaveNewDictItem">
+                    <i class="bi bi-check-lg me-1"></i>Зберегти та обрати
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Масив всіх позицій майна для SearchableSelect
+const ITEMS_DATA = [
+    {% for it in items %}
+    { value: '{{ it.id }}', label: {{ it.name|tojson }}, meta: { unit: {{ (it.unit_of_measure or 'шт')|tojson }}, serial: {{ it.has_serial_number }} } },
+    {% endfor %}
+];
+
+let rowCount = 0;
+
+/** Ініціалізувати SearchableSelect для вибору майна в рядку таблиці */
+function initItemSS(tr, initialValue) {
+    const hiddenInput = tr.querySelector('.item-select');
+    const ssWrap      = tr.querySelector('.item-ss-wrap');
+
+    const ss = new SearchableSelect({
+        container:   ssWrap,
+        hiddenInput: hiddenInput,
+        options:     ITEMS_DATA,
+        placeholder: '— оберіть майно —',
+        allowClear:  false,
+        size:        'sm',
+        onChange(val, opt) {
+            if (!opt) return;
+            const unit      = opt.meta.unit || 'шт';
+            const hasSerial = opt.meta.serial;
+            tr.querySelector('.unit-label').textContent = unit;
+            const sf = tr.querySelector('.serial-field');
+            if (hasSerial) {
+                sf.disabled = false;
+                sf.placeholder = 'обов\'язково через кому';
+                sf.classList.add('border-warning');
+            } else {
+                sf.disabled = true;
+                sf.value = '';
+                sf.placeholder = 'не потрібно';
+                sf.classList.remove('border-warning');
+            }
+        }
+    });
+
+    if (initialValue) ss.setValue(String(initialValue));
+    return ss;
+}
+
+function addRow() {
+    const template = document.getElementById('rowTemplate');
+    const clone = template.cloneNode(true);
+    clone.id = 'row_' + (++rowCount);
+    clone.style.display = '';
+    clone.classList.add('income-row-active');
+
+    // Очистити текстові inputs
+    clone.querySelectorAll('input:not([type=hidden])').forEach(inp => {
+        inp.value = inp.classList.contains('num-input') && inp.name.includes('price') ? '0' : '';
+    });
+
+    // Ініціалізувати SS
+    initItemSS(clone, null);
+
+    // Кнопка видалення рядка
+    clone.querySelector('.btn-del-row').addEventListener('click', function() {
+        this.closest('tr').remove();
+        updateRowNums();
+    });
+
+    document.getElementById('incomeRows').appendChild(clone);
+    updateRowNums();
+    // Відкрити SS одразу
+    clone.querySelector('.ss-display')?.click();
+}
+
+// Ініціалізувати SS для pre-filled рядків (при редагуванні чернетки)
+document.querySelectorAll('.income-row-active[data-prefilled]').forEach(tr => {
+    const itemId = tr.dataset.itemId;
+    initItemSS(tr, itemId);
+    tr.querySelector('.btn-del-row').addEventListener('click', function() {
+        this.closest('tr').remove();
+        updateRowNums();
+    });
+});
+
+function updateRowNums() {
+    document.querySelectorAll('.income-row-active').forEach((tr, i) => {
+        const n = tr.querySelector('.row-num');
+        if (n) n.textContent = i + 1;
+    });
+}
+
+document.getElementById('btnAddRow').addEventListener('click', () => addRow(false));
+document.getElementById('btnAddRow2').addEventListener('click', () => addRow(false));
+
+// Якщо немає pre-filled рядків — додати перший автоматично
+if (document.querySelectorAll('.income-row-active').length === 0) {
+    addRow(false);
+}
+
+// Валідація серійних перед відправкою
+document.getElementById('incomeForm').addEventListener('submit', function(e) {
+    // Пропускаємо валідацію для чернетки
+    if (document.getElementById('saveAsDraft').value === '1') return;
+    const rows = document.querySelectorAll('.income-row-active');
+    if (rows.length === 0) {
+        e.preventDefault();
+        alert('Додайте хоча б одну позицію');
+        return;
+    }
+    let ok = true;
+    rows.forEach((tr, i) => {
+        const sf = tr.querySelector('.serial-field');
+        if (!sf.disabled && sf.required) {
+            const qty = parseFloat(tr.querySelector('.qty-input').value) || 0;
+            const serials = sf.value.split(',').map(s => s.trim()).filter(Boolean);
+            if (serials.length !== Math.floor(qty)) {
+                alert(`Рядок ${i+1}: кількість серійних номерів (${serials.length}) не відповідає кількості (${qty})`);
+                ok = false;
+            }
+        }
+    });
+    if (!ok) e.preventDefault();
+});
+
+// Кнопка "Зберегти як чернетку"
+document.getElementById('btnSaveDraft').addEventListener('click', function() {
+    document.getElementById('saveAsDraft').value = '1';
+    document.getElementById('confirmNow').value  = '0';
+    // Тимчасово знімаємо required щоб форма пройшла
+    document.querySelectorAll('[required]').forEach(el => el.removeAttribute('required'));
+    document.getElementById('incomeForm').submit();
+});
+
+// Кнопка "Підтвердити прихід" (тільки при editing_draft)
+const btnConfirm = document.getElementById('btnConfirmDraft');
+if (btnConfirm) {
+    btnConfirm.addEventListener('click', function() {
+        document.getElementById('saveAsDraft').value = '0';
+        document.getElementById('confirmNow').value  = '1';
+        document.getElementById('incomeForm').submit();
+    });
+}
+
+// ── Захист від незбережених змін ──
+UnsavedGuard.enable(function saveDraftAndGo(targetHref) {
+    document.getElementById('saveAsDraft').value = '1';
+    document.getElementById('confirmNow').value  = '0';
+    document.querySelectorAll('[required]').forEach(el => el.removeAttribute('required'));
+    // Додамо hidden input щоб після збереження редиректнути назад
+    // (поки просто зберігаємо чернетку і ідемо в журнал)
+    document.getElementById('incomeForm').submit();
+});
+
+document.getElementById('incomeForm').addEventListener('input', () => UnsavedGuard.markDirty());
+document.getElementById('incomeForm').addEventListener('change', () => UnsavedGuard.markDirty());
+
+// При submit — знімаємо dirty щоб не показувало діалог
+document.getElementById('incomeForm').addEventListener('submit', () => UnsavedGuard.markClean());
+document.getElementById('btnSaveDraft').addEventListener('click', () => UnsavedGuard.markClean(), true);
+
+// ═══════════════════════════════════════════════════════════════
+//  Модальне: Нова позиція словника майна
+// ═══════════════════════════════════════════════════════════════
+let _targetSelect = null;
+const newDictModal = new bootstrap.Modal(document.getElementById('modalNewDictItem'));
+
+// ── SearchableSelect для "Одиниця виміру" (з можливістю вводу свого) ──
+const UNIT_OPTIONS = [
+    { value: 'шт',    label: 'шт — штука' },
+    { value: 'к-кт',  label: 'к-кт — комплект' },
+    { value: 'пара',  label: 'пара' },
+    { value: 'од',    label: 'од — одиниця' },
+    { value: 'м',     label: 'м — метр' },
+    { value: 'кг',    label: 'кг — кілограм' },
+    { value: 'л',     label: 'л — літр' },
+];
+
+// Для одиниці виміру — SearchableSelect з можливістю вводу довільного значення
+// (allowCustom = true: якщо не знайдено в списку — зберігає те що введено)
+const _unitHidden = document.getElementById('ndUnit');
+const _unitSS = new SearchableSelect({
+    container:   document.getElementById('ndUnitSS'),
+    hiddenInput: _unitHidden,
+    options:     UNIT_OPTIONS,
+    placeholder: 'шт',
+    allowClear:  false,
+    size:        'sm',
+    onChange(val, opt) {
+        // якщо обрано — значення вже в hidden; якщо скинуто — 'шт'
+        if (!val) _unitHidden.value = 'шт';
+    }
+});
+_unitSS.setValue('шт');
+
+// Перевизначимо _openDropdown щоб дозволити введення довільного значення:
+// коли SearchableSelect закривається без вибору — беремо текст з поля пошуку як значення
+const _origClose = _unitSS._close.bind(_unitSS);
+_unitSS._close = function() {
+    const typed = this._searchInput.value.trim();
+    if (typed && !this.options.find(o => o.value === typed)) {
+        // Нестандартне значення — додаємо тимчасово і обираємо
+        this.options.push({ value: typed, label: typed });
+        this._select({ value: typed, label: typed });
+    }
+    _origClose();
+};
+
+// ── SearchableSelect для "Відповідність у словнику норм" ──
+const NORM_OPTIONS = [
+    {% for group in norm_groups %}
+    {% for nd in group.norms %}
+    { value: '{{ nd.id }}', label: {{ nd.name|tojson }}, group: {{ group.name|tojson }}, meta: { unit: {{ (nd.unit or 'шт')|tojson }} } },
+    {% endfor %}
+    {% endfor %}
+];
+
+const _normHidden = document.getElementById('ndNormDict');
+const _normSS = new SearchableSelect({
+    container:   document.getElementById('ndNormDictSS'),
+    hiddenInput: _normHidden,
+    options:     NORM_OPTIONS,
+    placeholder: '— не прив\'язано (необов\'язково) —',
+    allowClear:  true,
+    size:        'sm',
+    onChange(val, opt) {
+        if (opt && opt.meta && opt.meta.unit) {
+            // Автопідставити одиницю якщо ще не змінювали
+            const curUnit = _unitHidden.value;
+            if (!curUnit || curUnit === 'шт') {
+                _unitSS.setValue(opt.meta.unit);
+                if (!_unitSS.getValue()) {
+                    // нестандартна одиниця — вставляємо напряму
+                    _unitHidden.value = opt.meta.unit;
+                    _unitSS.options.push({ value: opt.meta.unit, label: opt.meta.unit });
+                    _unitSS._select({ value: opt.meta.unit, label: opt.meta.unit });
+                }
+            }
+        }
+    }
+});
+
+document.getElementById('incomeRows').addEventListener('click', function(e) {
+    const btn = e.target.closest('.btn-new-dict-item');
+    if (!btn) return;
+    _targetSelect = btn.closest('td').querySelector('.item-select');
+    document.getElementById('ndName').value = '';
+    _unitSS.setValue('шт');
+    document.getElementById('ndSeason').value = 'demi';
+    document.getElementById('ndGender').value = 'unisex';
+    document.getElementById('ndInventory').checked  = false;
+    document.getElementById('ndSerial').checked     = false;
+    document.getElementById('ndPassport').checked   = false;
+    document.getElementById('ndExploitAct').checked = false;
+    _normSS.reset();
+    document.getElementById('newDictItemError').style.display = 'none';
+    newDictModal.show();
+    setTimeout(() => document.getElementById('ndName').focus(), 300);
+});
+
+document.getElementById('btnSaveNewDictItem').addEventListener('click', function() {
+    const name = document.getElementById('ndName').value.trim();
+    if (!name) {
+        const err = document.getElementById('newDictItemError');
+        err.textContent = "Введіть назву позиції";
+        err.style.display = '';
+        return;
+    }
+    const unitVal = _unitHidden.value.trim() || 'шт';
+    const fd = new FormData();
+    fd.append('name',               name);
+    fd.append('unit_of_measure',    unitVal);
+    fd.append('season',             document.getElementById('ndSeason').value);
+    fd.append('gender',             document.getElementById('ndGender').value);
+    if (document.getElementById('ndInventory').checked)  fd.append('is_inventory', '1');
+    if (document.getElementById('ndSerial').checked)     fd.append('has_serial_number', '1');
+    if (document.getElementById('ndPassport').checked)   fd.append('needs_passport', '1');
+    if (document.getElementById('ndExploitAct').checked) fd.append('needs_exploitation_act', '1');
+    const normDictId = _normHidden.value;
+    if (normDictId) fd.append('norm_dict_id', normDictId);
+
+    fetch('/settings/items/add', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.ok) {
+                const err = document.getElementById('newDictItemError');
+                err.textContent = data.error || 'Помилка збереження';
+                err.style.display = '';
+                return;
+            }
+            const hasSerial = document.getElementById('ndSerial').checked;
+            // Додати нову позицію в глобальний масив
+            const newOpt = { value: String(data.id), label: name, meta: { unit: unitVal, serial: hasSerial ? 1 : 0 } };
+            ITEMS_DATA.push(newOpt);
+            // Оновити всі існуючі SearchableSelect у рядках таблиці
+            document.querySelectorAll('#incomeRows .item-ss-wrap').forEach(wrap => {
+                const ssInst = wrap._ssInstance;
+                if (ssInst) ssInst.addOption(newOpt);
+            });
+            // Обрати нову позицію в цільовому рядку
+            if (_targetSelect) {
+                const targetWrap = _targetSelect.closest('td').querySelector('.item-ss-wrap');
+                if (targetWrap && targetWrap._ssInstance) {
+                    targetWrap._ssInstance.setValue(String(data.id));
+                }
+            }
+            newDictModal.hide();
+        })
+        .catch(() => {
+            const err = document.getElementById('newDictItemError');
+            err.textContent = 'Помилка мережі';
+            err.style.display = '';
+        });
+});
+</script>
+{% endblock %}

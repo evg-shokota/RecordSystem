@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}Групи доступу — Налаштування{% endblock %}
+{% block page_title %}Групи доступу (ролі){% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('settings.users') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Користувачі
+</a>
+<button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#modalAddRole">
+    <i class="bi bi-shield-plus me-1"></i>Додати роль
+</button>
+{% endblock %}
+
+{% block content %}
+
+{# ── Макрос таблиці прав (визначається до першого виклику) ── #}
+{% macro _perm_table(prefix) %}
+<div class="mb-2">
+    <div class="form-check form-switch mb-2">
+        <input class="form-check-input" type="checkbox" name="perm_all" id="{{ prefix }}_perm_all"
+               onchange="toggleAllPerms('{{ prefix }}', this.checked)">
+        <label class="form-check-label fw-bold" for="{{ prefix }}_perm_all">
+            <i class="bi bi-shield-fill-check text-success me-1"></i>Повний доступ до всього
+        </label>
+    </div>
+    <div id="{{ prefix }}_perm_rows">
+        {% for key, label, icon in permissions_list %}
+        <div class="d-flex align-items-center gap-3 py-2 border-bottom border-light">
+            <i class="bi {{ icon }} text-muted" style="width:18px"></i>
+            <span class="small flex-grow-1">{{ label }}</span>
+            <div class="btn-group btn-group-sm" role="group">
+                <input type="radio" class="btn-check" name="perm_{{ key }}" id="{{ prefix }}_{{ key }}_no" value="" checked>
+                <label class="btn btn-outline-secondary" for="{{ prefix }}_{{ key }}_no">Немає</label>
+
+                <input type="radio" class="btn-check" name="perm_{{ key }}" id="{{ prefix }}_{{ key }}_read" value="read">
+                <label class="btn btn-outline-primary" for="{{ prefix }}_{{ key }}_read">Читання</label>
+
+                <input type="radio" class="btn-check" name="perm_{{ key }}" id="{{ prefix }}_{{ key }}_write" value="write">
+                <label class="btn btn-outline-success" for="{{ prefix }}_{{ key }}_write">Читання + запис</label>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endmacro %}
+
+<div class="row g-3">
+{% for role in roles %}
+<div class="col-md-6 col-xl-4" id="rcard-{{ role.id }}">
+    <div class="card border-0 shadow-sm h-100">
+        <div class="card-header bg-transparent d-flex align-items-center justify-content-between py-2">
+            <span class="fw-bold">{{ role.name }}</span>
+            <div class="d-flex gap-1">
+                <span class="badge bg-secondary-subtle text-secondary small">
+                    {{ role.user_count }} кор.
+                </span>
+                <button class="btn btn-sm btn-outline-secondary py-0 px-2"
+                        title="Редагувати"
+                        data-role="{{ role | tojson | e }}"
+                        onclick="openEditRole(JSON.parse(this.dataset.role))">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                {% if role.user_count == 0 %}
+                <button class="btn btn-sm btn-outline-danger py-0 px-2"
+                        title="Видалити"
+                        onclick="deleteRole({{ role.id }}, '{{ role.name | e }}')">
+                    <i class="bi bi-trash"></i>
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-body py-2 px-3">
+            {% if role.perms_parsed.get('all') %}
+            <div class="d-flex align-items-center gap-2 py-1">
+                <i class="bi bi-shield-fill-check text-success"></i>
+                <span class="small fw-medium text-success">Повний доступ до всього</span>
+            </div>
+            {% else %}
+            {% for key, label, icon in permissions_list %}
+            {% set pval = role.perms_parsed.get(key) %}
+            <div class="d-flex align-items-center gap-2 py-1 border-bottom border-light">
+                <i class="bi {{ icon }} text-muted" style="width:18px"></i>
+                <span class="small flex-grow-1">{{ label }}</span>
+                {% if pval == true or pval == 'true' %}
+                <span class="badge bg-success-subtle text-success small">Читання + запис</span>
+                {% elif pval == 'read' %}
+                <span class="badge bg-primary-subtle text-primary small">Тільки читання</span>
+                {% else %}
+                <span class="badge bg-light text-muted small">Немає</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+            {% endif %}
+        </div>
+        <div class="card-footer bg-transparent text-muted small py-1">
+            Створено: {{ role.created_at[:10] if role.created_at else '—' }}
+        </div>
+    </div>
+</div>
+{% endfor %}
+</div>
+
+{# ── Модаль: Додати роль ── #}
+<div class="modal fade" id="modalAddRole" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <form method="post" action="{{ url_for('settings.role_add') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-shield-plus me-2"></i>Нова роль</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">Назва ролі <span class="text-danger">*</span></label>
+                        <input type="text" name="name" class="form-control" required placeholder="Наприклад: Комірник">
+                    </div>
+                    {{ _perm_table('add') }}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-check-lg me-1"></i>Створити
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{# ── Модаль: Редагувати роль ── #}
+<div class="modal fade" id="modalEditRole" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Редагувати роль</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-medium">Назва ролі <span class="text-danger">*</span></label>
+                    <input type="text" id="editRoleName" class="form-control" required>
+                </div>
+                {{ _perm_table('edit') }}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-primary" onclick="saveEditRole()">
+                    <i class="bi bi-check-lg me-1"></i>Зберегти
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const _permsKeys = {{ permissions_list | map(attribute=0) | list | tojson }};
+let _editRoleId = null;
+const _editRoleModal = new bootstrap.Modal(document.getElementById('modalEditRole'));
+
+function toggleAllPerms(prefix, checked) {
+    document.getElementById(`${prefix}_perm_rows`).style.opacity = checked ? '0.4' : '1';
+    document.getElementById(`${prefix}_perm_rows`).style.pointerEvents = checked ? 'none' : '';
+}
+
+function openEditRole(role) {
+    _editRoleId = role.id;
+    document.getElementById('editRoleName').value = role.name;
+
+    // Скинути all
+    const allChk = document.getElementById('edit_perm_all');
+    const perms = role.perms_parsed || {};
+    allChk.checked = !!perms.all;
+    toggleAllPerms('edit', allChk.checked);
+
+    // Встановити радіокнопки
+    for (const key of _permsKeys) {
+        const val = perms[key];
+        const sel = val === true  ? 'write' :
+                    val === 'read' ? 'read'  : '';
+        const el = document.getElementById(`edit_${key}_${sel || 'no'}`);
+        if (el) el.checked = true;
+    }
+    _editRoleModal.show();
+}
+
+async function saveEditRole() {
+    const fd = new FormData();
+    fd.append('name', document.getElementById('editRoleName').value);
+    const allChk = document.getElementById('edit_perm_all');
+    if (allChk.checked) fd.append('perm_all', '1');
+    for (const key of _permsKeys) {
+        const checked = document.querySelector(`input[name="perm_${key}"]:checked`);
+        if (checked) fd.append(`perm_${key}`, checked.value);
+    }
+    const r = await fetch(`/settings/roles/${_editRoleId}/edit`, { method: 'POST', body: fd });
+    const d = await r.json();
+    if (d.ok) { _editRoleModal.hide(); location.reload(); }
+    else showToast(d.error || 'Помилка', 'danger');
+}
+
+async function deleteRole(rid, name) {
+    if (!confirm(`Видалити роль «${name}»?`)) return;
+    const r = await fetch(`/settings/roles/${rid}/delete`, { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) document.getElementById(`rcard-${rid}`)?.remove();
+    else showToast(d.error || 'Помилка', 'danger');
+}
+</script>
+{% endblock %}

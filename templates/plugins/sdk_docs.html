@@ -1,0 +1,640 @@
+{% extends "base.html" %}
+{% block title %}Plugin SDK — Документація{% endblock %}
+{% block page_title %}Plugin SDK — Документація{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('plugins.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Модулі
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# Навігація по розділах #}
+<div class="row g-3">
+<div class="col-lg-3 d-none d-lg-block">
+    <div class="card border-0 shadow-sm sticky-top" style="top:1rem">
+        <div class="card-body p-2">
+            <div class="fw-bold small text-muted px-2 py-1">Зміст</div>
+            <nav class="nav flex-column sdk-toc">
+                <a class="nav-link py-1 small" href="#start">Швидкий старт</a>
+                <a class="nav-link py-1 small" href="#structure">Структура плагіна</a>
+                <a class="nav-link py-1 small" href="#plugin-py">plugin.py</a>
+                <a class="nav-link py-1 small" href="#api">SystemAPI</a>
+                <div class="ps-3">
+                    <a class="nav-link py-1 small" href="#api-personnel">api.personnel</a>
+                    <a class="nav-link py-1 small" href="#api-warehouse">api.warehouse</a>
+                    <a class="nav-link py-1 small" href="#api-invoices">api.invoices</a>
+                    <a class="nav-link py-1 small" href="#api-items">api.items</a>
+                    <a class="nav-link py-1 small" href="#api-settings">api.settings</a>
+                    <a class="nav-link py-1 small" href="#api-db">api.db</a>
+                    <a class="nav-link py-1 small" href="#api-files">api.files</a>
+                    <a class="nav-link py-1 small" href="#api-audit">api.audit</a>
+                </div>
+                <a class="nav-link py-1 small" href="#hooks">Хуки подій</a>
+                <div class="ps-3">
+                    <a class="nav-link py-1 small" href="#hooks-data">Data hooks (on_*)</a>
+                    <a class="nav-link py-1 small" href="#hooks-filter">Filter hooks (filter_*)</a>
+                    <a class="nav-link py-1 small" href="#hooks-ui">UI hooks (ui_*)</a>
+                </div>
+                <a class="nav-link py-1 small" href="#settings-schema">Схема налаштувань</a>
+                <a class="nav-link py-1 small" href="#menu">Меню</a>
+                <a class="nav-link py-1 small" href="#routes">Blueprint / Routes</a>
+                <a class="nav-link py-1 small" href="#templates">Шаблони</a>
+                <a class="nav-link py-1 small" href="#full-example">Повний приклад</a>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<div class="col-lg-9">
+
+{# ── Швидкий старт ── #}
+<div class="card border-0 shadow-sm mb-3" id="start">
+    <div class="card-header bg-primary text-white py-2">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-lightning-fill me-2"></i>Швидкий старт</h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small mb-3">Мінімальний плагін за 5 кроків:</p>
+        <div class="row g-2 mb-3">
+            {% for step, text in [
+                ('1','Створіть папку <code>plugins/my_module/</code>'),
+                ('2','Додайте <code>plugin.py</code> з класом Plugin'),
+                ('3','Додайте <code>__init__.py</code> (порожній)'),
+                ('4','Перейдіть у <a href="/plugins/">Модулі розширення</a>'),
+                ('5','Натисніть <strong>Встановити</strong>')
+            ] %}
+            <div class="col-md-4 col-sm-6">
+                <div class="d-flex gap-2 align-items-start p-2 rounded border">
+                    <span class="badge bg-primary rounded-pill flex-shrink-0 mt-1">{{ step }}</span>
+                    <span class="small">{{ text | safe }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <pre class="sdk-code"><code># plugins/my_module/plugin.py
+from core.plugin_base import BasePlugin
+
+class Plugin(BasePlugin):
+    name        = "Мій модуль"
+    slug        = "my_module"
+    version     = "1.0.0"
+    description = "Короткий опис того що робить модуль"
+    author      = "Ваше ім'я"
+    icon        = "bi-puzzle"
+
+    def register(self, app, api, hooks=None):
+        self.api = api
+        from .routes import bp
+        bp.api = api
+        app.register_blueprint(bp)</code></pre>
+    </div>
+</div>
+
+{# ── Структура ── #}
+<div class="card border-0 shadow-sm mb-3" id="structure">
+    <div class="card-header bg-transparent py-2 fw-bold">
+        <i class="bi bi-folder2-open me-2 text-warning"></i>Структура плагіна
+    </div>
+    <div class="card-body">
+        <pre class="sdk-code"><code>plugins/
+└── my_module/
+    ├── __init__.py       # порожній, обов'язковий
+    ├── plugin.py         # головний клас Plugin : BasePlugin
+    ├── routes.py         # Flask Blueprint (необов'язково)
+    └── templates/
+        └── my_module/
+            └── index.html</code></pre>
+        <div class="alert alert-info border-0 py-2 small mt-2 mb-0">
+            <i class="bi bi-info-circle me-1"></i>
+            Шаблони плагіна кладіть в <code>plugins/my_module/templates/my_module/</code> —
+            Flask знайде їх автоматично якщо Blueprint зареєстровано з <code>template_folder='templates'</code>.
+            Або в загальну папку <code>templates/my_module/</code>.
+        </div>
+    </div>
+</div>
+
+{# ── plugin.py ── #}
+<div class="card border-0 shadow-sm mb-3" id="plugin-py">
+    <div class="card-header bg-transparent py-2 fw-bold">
+        <i class="bi bi-file-code me-2 text-primary"></i>plugin.py — клас Plugin
+    </div>
+    <div class="card-body">
+        <p class="small text-muted mb-2">Обов'язкові атрибути:</p>
+        <table class="table table-sm small mb-3">
+            <thead class="table-light"><tr><th>Атрибут</th><th>Тип</th><th>Опис</th></tr></thead>
+            <tbody>
+                <tr><td><code>name</code></td><td>str</td><td>Відображувана назва</td></tr>
+                <tr><td><code>slug</code></td><td>str</td><td>Унікальний ідентифікатор (латинські, підкреслення)</td></tr>
+                <tr><td><code>version</code></td><td>str</td><td>Версія у форматі <code>1.0.0</code></td></tr>
+                <tr><td><code>description</code></td><td>str</td><td>Опис для сторінки модулів</td></tr>
+                <tr><td><code>author</code></td><td>str</td><td>Автор</td></tr>
+                <tr><td><code>icon</code></td><td>str</td><td>Bootstrap Icons клас, напр. <code>bi-puzzle</code></td></tr>
+            </tbody>
+        </table>
+        <p class="small text-muted mb-2">Lifecycle методи:</p>
+        <pre class="sdk-code"><code>def on_install(self, conn):
+    """Перший запуск — створити власні таблиці."""
+    conn.execute("CREATE TABLE IF NOT EXISTS my_table (...)")
+    conn.commit()
+
+def on_uninstall(self, conn):
+    """Видалення — за замовчуванням дані НЕ видаляються."""
+    pass  # conn.execute("DROP TABLE IF EXISTS my_table")
+
+def on_enable(self):
+    """Викликається при увімкненні."""
+    pass
+
+def on_disable(self):
+    """Викликається при вимкненні."""
+    pass</code></pre>
+    </div>
+</div>
+
+{# ── SystemAPI ── #}
+<div class="card border-0 shadow-sm mb-3" id="api">
+    <div class="card-header bg-transparent py-2 fw-bold">
+        <i class="bi bi-cpu me-2 text-success"></i>SystemAPI — доступ до даних системи
+    </div>
+    <div class="card-body pb-1">
+        <p class="small text-muted">Об'єкт <code>api</code> передається в <code>register(app, api)</code>. Зберігайте його як <code>self.api</code> або передавайте в Blueprint через <code>bp.api = api</code>.</p>
+
+        {# personnel #}
+        <h6 class="fw-bold mt-3 mb-2" id="api-personnel"><i class="bi bi-people text-primary me-2"></i>api.personnel</h6>
+        <table class="table table-sm small mb-1">
+            <thead class="table-light"><tr><th style="width:45%">Метод</th><th>Опис</th></tr></thead>
+            <tbody>
+                <tr><td><code>get_list(unit_id, group_id, search, is_active, limit)</code></td><td>Список о/с з фільтрами. Повертає <code>list[dict]</code></td></tr>
+                <tr><td><code>get(personnel_id)</code></td><td>Одна картка. Повертає <code>dict | None</code></td></tr>
+                <tr><td><code>get_items(personnel_id, status)</code></td><td>Майно на картці о/с (<code>status='active'</code>)</td></tr>
+                <tr><td><code>get_units()</code></td><td>Всі підрозділи</td></tr>
+                <tr><td><code>get_groups()</code></td><td>Всі групи</td></tr>
+                <tr><td><code>update_field(personnel_id, field, value)</code></td><td>Оновити поле (<code>phone</code>, <code>photo_path</code>, <code>card_number</code>)</td></tr>
+                <tr><td><code>add_note(entity_type, entity_id, text, source)</code></td><td>Додати нотатку до картки</td></tr>
+                <tr><td><code>get_notes(entity_type, entity_id)</code></td><td>Нотатки картки</td></tr>
+                <tr><td><code>attach_file(entity_type, entity_id, file_path, original_name, description)</code></td><td>Прикріпити файл</td></tr>
+                <tr><td><code>get_attachments(entity_type, entity_id)</code></td><td>Список прикріплених файлів</td></tr>
+            </tbody>
+        </table>
+        <pre class="sdk-code mb-3"><code>people = api.personnel.get_list(unit_id=5, is_active=True)
+person = api.personnel.get(42)
+items  = api.personnel.get_items(42, status='active')
+api.personnel.add_note('personnel', 42, 'Отримав нагороду', source='my_module')</code></pre>
+
+        {# warehouse #}
+        <h6 class="fw-bold mt-2 mb-2" id="api-warehouse"><i class="bi bi-box-seam text-warning me-2"></i>api.warehouse</h6>
+        <table class="table table-sm small mb-1">
+            <thead class="table-light"><tr><th style="width:45%">Метод</th><th>Опис</th></tr></thead>
+            <tbody>
+                <tr><td><code>get_stock(item_id, category)</code></td><td>Залишки: <code>{item_id, item_name, qty_balance, price, ...}</code></td></tr>
+                <tr><td><code>get_income(item_id, date_from, date_to)</code></td><td>Прихідні записи</td></tr>
+            </tbody>
+        </table>
+        <pre class="sdk-code mb-3"><code>stock = api.warehouse.get_stock()
+low   = [s for s in stock if s['qty_balance'] < 5]  # залишок менше 5</code></pre>
+
+        {# invoices #}
+        <h6 class="fw-bold mt-2 mb-2" id="api-invoices"><i class="bi bi-receipt text-info me-2"></i>api.invoices</h6>
+        <table class="table table-sm small mb-1">
+            <thead class="table-light"><tr><th style="width:45%">Метод</th><th>Опис</th></tr></thead>
+            <tbody>
+                <tr><td><code>get_list(status, direction, date_from, date_to, limit)</code></td><td>Список накладних</td></tr>
+                <tr><td><code>get(invoice_id)</code></td><td>Накладна з позиціями (<code>result['items']</code>)</td></tr>
+            </tbody>
+        </table>
+        <pre class="sdk-code mb-3"><code>invoices = api.invoices.get_list(status='active', limit=10)
+inv      = api.invoices.get(15)
+for item in inv['items']:
+    print(item['item_name'], item['planned_qty'])</code></pre>
+
+        {# items #}
+        <h6 class="fw-bold mt-2 mb-2" id="api-items"><i class="bi bi-tags text-secondary me-2"></i>api.items</h6>
+        <table class="table table-sm small mb-1">
+            <thead class="table-light"><tr><th style="width:45%">Метод</th><th>Опис</th></tr></thead>
+            <tbody>
+                <tr><td><code>get_list(search, is_inventory)</code></td><td>Словник майна</td></tr>
+                <tr><td><code>get(item_id)</code></td><td>Одна позиція</td></tr>
+            </tbody>
+        </table>
+
+        {# settings #}
+        <h6 class="fw-bold mt-2 mb-2" id="api-settings"><i class="bi bi-gear text-secondary me-2"></i>api.settings</h6>
+        <pre class="sdk-code mb-3"><code>unit  = api.settings.get('company_name', 'А5027')
+all_s = api.settings.get_all()   # dict всіх налаштувань
+api.settings.set('my_key', 'my_value')</code></pre>
+
+        {# db #}
+        <h6 class="fw-bold mt-2 mb-2" id="api-db"><i class="bi bi-database text-danger me-2"></i>api.db</h6>
+        <div class="alert alert-warning border-0 py-2 small mb-2">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            <strong>api.db.write()</strong> використовуйте <strong>тільки для власних таблиць плагіна</strong>. Зміни в основних таблицях через db.write() не генерують хуки і можуть порушити цілісність даних.
+        </div>
+        <table class="table table-sm small mb-1">
+            <thead class="table-light"><tr><th style="width:45%">Метод</th><th>Опис</th></tr></thead>
+            <tbody>
+                <tr><td><code>execute(sql, params)</code></td><td>SELECT → <code>list[dict]</code></td></tr>
+                <tr><td><code>write(sql, params)</code></td><td>INSERT/UPDATE/DELETE → <code>lastrowid</code></td></tr>
+                <tr><td><code>get_connection()</code></td><td>Пряме з'єднання SQLite (закривати вручну)</td></tr>
+            </tbody>
+        </table>
+        <pre class="sdk-code mb-3"><code># Читання
+rows = api.db.execute("SELECT * FROM my_plugin_log ORDER BY id DESC LIMIT 20")
+
+# Запис у власну таблицю
+new_id = api.db.write(
+    "INSERT INTO my_plugin_log (message) VALUES (?)",
+    ("Подія зафіксована",)
+)
+
+# Пряме з'єднання для транзакцій
+conn = api.db.get_connection()
+try:
+    conn.execute("INSERT INTO ...")
+    conn.execute("UPDATE ...")
+    conn.commit()
+finally:
+    conn.close()</code></pre>
+
+        {# files #}
+        <h6 class="fw-bold mt-2 mb-2" id="api-files"><i class="bi bi-folder2 text-success me-2"></i>api.files</h6>
+        <table class="table table-sm small mb-1">
+            <thead class="table-light"><tr><th style="width:45%">Метод</th><th>Опис</th></tr></thead>
+            <tbody>
+                <tr><td><code>get_plugin_dir(slug)</code></td><td>Папка плагіна для файлів</td></tr>
+                <tr><td><code>get_entity_dir(slug, entity_type, entity_id)</code></td><td>Папка для конкретного запису</td></tr>
+                <tr><td><code>save_bytes(slug, entity_type, entity_id, filename, data)</code></td><td>Зберегти байти, повертає шлях</td></tr>
+                <tr><td><code>list_files(slug, entity_type, entity_id)</code></td><td>Список файлів запису</td></tr>
+            </tbody>
+        </table>
+        <pre class="sdk-code mb-3"><code># Зберегти PDF і прикріпити до картки
+path = api.files.save_bytes('my_module', 'personnel', person_id, 'doc.pdf', pdf_bytes)
+api.personnel.attach_file('personnel', person_id, path, 'doc.pdf', 'Документ з хмари')</code></pre>
+
+        {# audit #}
+        <h6 class="fw-bold mt-2 mb-2" id="api-audit"><i class="bi bi-journal-text text-secondary me-2"></i>api.audit</h6>
+        <pre class="sdk-code mb-1"><code>api.audit.log(
+    action    = 'create',
+    table_name= 'my_plugin_log',
+    record_id = new_id,
+    new_data  = {'message': 'Подія'}
+)</code></pre>
+    </div>
+</div>
+
+{# ── Хуки ── #}
+<div class="card border-0 shadow-sm mb-3" id="hooks">
+    <div class="card-header bg-transparent py-2 fw-bold">
+        <i class="bi bi-arrow-repeat me-2 text-primary"></i>Хуки подій
+    </div>
+    <div class="card-body">
+        <p class="small text-muted mb-3">
+            Хуки дозволяють плагіну реагувати на події системи або розширювати UI без зміни основного коду.
+            Декларативна реєстрація: методи з префіксом <code>on_</code>, <code>filter_</code>, <code>ui_</code>
+            реєструються <strong>автоматично</strong>. Подвійне підкреслення <code>__</code> → крапка в назві події.
+        </p>
+
+        {# Data hooks #}
+        <h6 class="fw-bold mb-2" id="hooks-data">Data hooks — <code>on_*</code></h6>
+        <p class="small text-muted">Реакція на подію. Повертане значення ігнорується.</p>
+        <table class="table table-sm small mb-2">
+            <thead class="table-light"><tr><th>Метод</th><th>Подія</th><th>Аргументи</th></tr></thead>
+            <tbody>
+                <tr><td><code>on_personnel__created</code></td><td><code>personnel.created</code></td><td><code>person_id, data</code></td></tr>
+                <tr><td><code>on_personnel__updated</code></td><td><code>personnel.updated</code></td><td><code>person_id, data</code></td></tr>
+                <tr><td><code>on_personnel__archived</code></td><td><code>personnel.archived</code></td><td><code>person_id, reason</code></td></tr>
+                <tr><td><code>on_personnel__restored</code></td><td><code>personnel.restored</code></td><td><code>person_id</code></td></tr>
+                <tr><td><code>on_personnel__moved</code></td><td><code>personnel.moved</code></td><td><code>person_id, unit_id</code></td></tr>
+                <tr><td><code>on_invoice__created</code></td><td><code>invoice.created</code></td><td><code>invoice_id</code></td></tr>
+                <tr><td><code>on_invoice__processed</code></td><td><code>invoice.processed</code></td><td><code>invoice_id</code></td></tr>
+                <tr><td><code>on_invoice__cancelled</code></td><td><code>invoice.cancelled</code></td><td><code>invoice_id</code></td></tr>
+                <tr><td><code>on_item__issued</code></td><td><code>item.issued</code></td><td><code>personnel_id, item_id, qty</code></td></tr>
+                <tr><td><code>on_item__returned</code></td><td><code>item.returned</code></td><td><code>personnel_id, item_id, qty</code></td></tr>
+                <tr><td><code>on_item__written_off</code></td><td><code>item.written_off</code></td><td><code>item_id, qty</code></td></tr>
+                <tr><td><code>on_warehouse__income</code></td><td><code>warehouse.income</code></td><td><code>item_id, qty, date</code></td></tr>
+                <tr><td><code>on_attestat__created</code></td><td><code>attestat.created</code></td><td><code>attestat_id</code></td></tr>
+                <tr><td><code>on_attestat__signed</code></td><td><code>attestat.signed</code></td><td><code>attestat_id</code></td></tr>
+            </tbody>
+        </table>
+        <pre class="sdk-code mb-3"><code>def on_personnel__archived(self, person_id, reason, **kwargs):
+    """Надіслати сповіщення при архівуванні."""
+    api.db.write(
+        "INSERT INTO my_notifications (text) VALUES (?)",
+        (f"О/с #{person_id} переведено в архів: {reason}",)
+    )</code></pre>
+
+        {# Filter hooks #}
+        <h6 class="fw-bold mb-2" id="hooks-filter">Filter hooks — <code>filter_*</code></h6>
+        <p class="small text-muted">Змінити дані до відображення. Отримує значення, повертає змінене.</p>
+        <table class="table table-sm small mb-2">
+            <thead class="table-light"><tr><th>Метод</th><th>Що фільтрується</th><th>Тип значення</th></tr></thead>
+            <tbody>
+                <tr><td><code>filter_personnel__display_name</code></td><td>Відображуване ім'я о/с</td><td><code>str</code></td></tr>
+                <tr><td><code>filter_invoice__can_delete</code></td><td>Чи можна видалити накладну</td><td><code>bool</code></td></tr>
+                <tr><td><code>filter_sidebar__menu</code></td><td>Список пунктів бічного меню</td><td><code>list[dict]</code></td></tr>
+                <tr><td><code>filter_dashboard__stats</code></td><td>Статистика дашборду</td><td><code>dict</code></td></tr>
+            </tbody>
+        </table>
+        <pre class="sdk-code mb-3"><code>def filter_personnel__display_name(self, value, person=None, **kwargs):
+    """Змінити відображуване ім'я о/с."""
+    # value — поточний рядок, напр. "Іваненко І.І."
+    if person and person.get('rank') == 'генерал':
+        return f"★ {value}"
+    return value
+
+def filter_invoice__can_delete(self, value, invoice=None, **kwargs):
+    """Заборонити видалення затверджених накладних."""
+    if invoice and invoice.get('status') == 'approved':
+        return False
+    return value</code></pre>
+
+        {# UI hooks #}
+        <h6 class="fw-bold mb-2" id="hooks-ui">UI hooks — <code>ui_*</code></h6>
+        <p class="small text-muted">Розширити інтерфейс — додати вкладки, кнопки, віджети, секції.</p>
+        <table class="table table-sm small mb-2">
+            <thead class="table-light"><tr><th>Метод</th><th>Де з'являється</th><th>Повертає</th></tr></thead>
+            <tbody>
+                <tr><td><code>ui_dashboard__widgets</code></td><td>Дашборд</td><td>HTML-рядок</td></tr>
+                <tr><td><code>ui_personnel__card__tabs</code></td><td>Картка о/с — вкладки</td><td><code>dict {id, label, icon}</code></td></tr>
+                <tr><td><code>ui_personnel__card__tab_content</code></td><td>Картка о/с — вміст вкладки</td><td>HTML-рядок</td></tr>
+                <tr><td><code>ui_personnel__card__actions</code></td><td>Картка о/с — кнопки topbar</td><td><code>dict {label, url, icon, class}</code></td></tr>
+                <tr><td><code>ui_personnel__card__header</code></td><td>Картка о/с — під шапкою</td><td>HTML-рядок</td></tr>
+                <tr><td><code>ui_personnel__list__columns</code></td><td>Список о/с — колонки</td><td><code>dict {key, label, html_fn}</code></td></tr>
+                <tr><td><code>ui_personnel__list__row_actions</code></td><td>Список о/с — кнопки рядка</td><td><code>dict {label, url, icon, class}</code></td></tr>
+                <tr><td><code>ui_invoice__view__tabs</code></td><td>Перегляд накладної — вкладки</td><td><code>dict {id, label, icon}</code></td></tr>
+                <tr><td><code>ui_invoice__view__tab_content</code></td><td>Перегляд накладної — вміст</td><td>HTML-рядок</td></tr>
+                <tr><td><code>ui_invoice__view__actions</code></td><td>Перегляд накладної — кнопки</td><td><code>dict {label, url, icon, class}</code></td></tr>
+                <tr><td><code>ui_settings__sections</code></td><td>Сторінка налаштувань</td><td><code>dict {title, url, icon, description}</code></td></tr>
+                <tr><td><code>ui_sidebar__items</code></td><td>Sidebar — розділ "Розширення"</td><td><code>dict {label, url, icon}</code></td></tr>
+            </tbody>
+        </table>
+        <pre class="sdk-code"><code># Додати вкладку на картку о/с
+def ui_personnel__card__tabs(self, person=None, **kwargs):
+    return {"id": "my_tab", "label": "Мій розділ", "icon": "bi-star"}
+
+def ui_personnel__card__tab_content(self, tab_id=None, person=None, **kwargs):
+    if tab_id != "my_tab":
+        return None
+    from flask import render_template
+    data = self.api.db.execute(
+        "SELECT * FROM my_table WHERE person_id=?", (person['id'],)
+    )
+    return render_template("my_module/tab.html", person=person, data=data)
+
+# Кнопка в topbar
+def ui_personnel__card__actions(self, person=None, **kwargs):
+    return {
+        "label": "Моя дія",
+        "url":   f"/my-module/person/{person['id']}",
+        "icon":  "bi-star",
+        "class": "btn-outline-primary",
+    }
+
+# Віджет на дашборді
+def ui_dashboard__widgets(self, **kwargs):
+    count = api.db.execute("SELECT COUNT(*) as c FROM my_table")[0]['c']
+    return f'''
+    &lt;div class="col-md-3"&gt;
+        &lt;div class="card border-0 shadow-sm text-center py-3"&gt;
+            &lt;div class="fs-2 fw-bold text-primary"&gt;{count}&lt;/div&gt;
+            &lt;div class="text-muted small"&gt;Мої записи&lt;/div&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;'''</code></pre>
+    </div>
+</div>
+
+{# ── Settings Schema ── #}
+<div class="card border-0 shadow-sm mb-3" id="settings-schema">
+    <div class="card-header bg-transparent py-2 fw-bold">
+        <i class="bi bi-sliders me-2 text-secondary"></i>Схема налаштувань
+    </div>
+    <div class="card-body">
+        <p class="small text-muted mb-2">Оголошуйте <code>settings_schema</code> в класі — система автоматично генерує форму.</p>
+        <pre class="sdk-code"><code>settings_schema = [
+    {
+        "key":     "enabled",
+        "label":   "Модуль активний",
+        "type":    "switch",
+        "default": "1",
+    },
+    {
+        "key":     "api_url",
+        "label":   "URL зовнішнього сервісу",
+        "type":    "text",
+        "default": "https://api.example.com",
+        "help":    "Адреса API для синхронізації",
+    },
+    {
+        "key":     "mode",
+        "label":   "Режим роботи",
+        "type":    "select",
+        "default": "auto",
+        "options": [
+            {"value": "auto",   "label": "Автоматичний"},
+            {"value": "manual", "label": "Ручний"},
+        ],
+    },
+    {
+        "key":     "notes",
+        "label":   "Нотатки",
+        "type":    "textarea",
+        "default": "",
+    },
+]
+# type: text | number | switch | select | textarea</code></pre>
+        <p class="small text-muted mt-2 mb-1">Читання налаштувань у routes.py:</p>
+        <pre class="sdk-code"><code>from core import plugin_manager
+settings = plugin_manager.get_plugin_settings('my_module')
+enabled = settings.get('enabled', '1') == '1'
+api_url = settings.get('api_url', '')</code></pre>
+    </div>
+</div>
+
+{# ── Menu ── #}
+<div class="card border-0 shadow-sm mb-3" id="menu">
+    <div class="card-header bg-transparent py-2 fw-bold">
+        <i class="bi bi-layout-sidebar me-2 text-secondary"></i>Пункти меню
+    </div>
+    <div class="card-body">
+        <p class="small text-muted mb-2">
+            <code>menu_items</code> — додає пункт у розділ <strong>"Модулі"</strong> sidebar.<br>
+            <code>ui_sidebar__items()</code> — додає пункт у розділ <strong>"Розширення"</strong>.<br>
+            Використовуйте <strong>один</strong> з варіантів, щоб не дублювати.
+        </p>
+        <pre class="sdk-code"><code># Варіант 1 — через атрибут (розділ "Модулі")
+menu_items = [
+    {"label": "Мій модуль", "url": "/my-module/", "icon": "bi-star"},
+]
+
+# Варіант 2 — через хук (розділ "Розширення")
+def ui_sidebar__items(self, **kwargs):
+    return {"label": "Мій модуль", "url": "/my-module/", "icon": "bi-star"}
+
+# З бейджем
+menu_items = [
+    {
+        "label": "Алерти",
+        "url":   "/my-module/",
+        "icon":  "bi-bell",
+        "badge": {"class": "bg-danger", "text": "3"},
+    },
+]</code></pre>
+    </div>
+</div>
+
+{# ── Routes ── #}
+<div class="card border-0 shadow-sm mb-3" id="routes">
+    <div class="card-header bg-transparent py-2 fw-bold">
+        <i class="bi bi-signpost-2 me-2 text-info"></i>Blueprint / Routes
+    </div>
+    <div class="card-body">
+        <pre class="sdk-code"><code># plugins/my_module/routes.py
+from flask import Blueprint, render_template, request, jsonify
+from core.auth import login_required
+
+bp = Blueprint("my_module", __name__, url_prefix="/my-module",
+               template_folder="templates")
+bp.api = None  # встановлюється в plugin.register()
+
+
+@bp.route("/")
+@login_required
+def index():
+    people = bp.api.personnel.get_list(is_active=True)
+    return render_template("my_module/index.html", people=people)
+
+
+@bp.route("/api/data")
+@login_required
+def api_data():
+    rows = bp.api.db.execute("SELECT * FROM my_table LIMIT 100")
+    return jsonify({"ok": True, "data": rows})
+
+
+@bp.route("/action", methods=["POST"])
+@login_required
+def action():
+    data = request.get_json()
+    new_id = bp.api.db.write(
+        "INSERT INTO my_table (value) VALUES (?)", (data['value'],)
+    )
+    bp.api.audit.log('create', 'my_table', new_id, new_data=data)
+    return jsonify({"ok": True, "id": new_id})</code></pre>
+    </div>
+</div>
+
+{# ── Templates ── #}
+<div class="card border-0 shadow-sm mb-3" id="templates">
+    <div class="card-header bg-transparent py-2 fw-bold">
+        <i class="bi bi-file-earmark-code me-2 text-warning"></i>Шаблони Jinja2
+    </div>
+    <div class="card-body">
+        <p class="small text-muted mb-2">Плагін використовує <code>base.html</code> і всі глобальні компоненти системи.</p>
+        <pre class="sdk-code"><code>{% raw %}{# templates/my_module/index.html #}
+{% extends "base.html" %}
+{% block title %}Мій модуль{% endblock %}
+{% block page_title %}Мій модуль{% endblock %}
+
+{% block topbar_actions %}
+&lt;button class="btn btn-sm btn-primary" id="btnAdd"&gt;
+    &lt;i class="bi bi-plus-lg me-1"&gt;&lt;/i&gt;Додати
+&lt;/button&gt;
+{% endblock %}
+
+{% block content %}
+&lt;div class="card border-0 shadow-sm"&gt;
+    &lt;div class="card-body"&gt;
+        {% for person in people %}
+        &lt;div&gt;{{ person.last_name }} {{ person.first_name }}&lt;/div&gt;
+        {% endfor %}
+    &lt;/div&gt;
+&lt;/div&gt;
+{% endblock %}
+
+{% block scripts %}
+&lt;script&gt;
+// Тут доступні: showToast(), SearchableSelect, UnsavedGuard
+document.getElementById('btnAdd').addEventListener('click', async () => {
+    const res  = await fetch('/my-module/action', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({value: 'test'})
+    });
+    const data = await res.json();
+    if (data.ok) showToast('Збережено', 'success');
+    else showToast(data.error, 'danger');
+});
+&lt;/script&gt;
+{% endblock %}{% endraw %}</code></pre>
+        <div class="alert alert-info border-0 py-2 small mt-2 mb-0">
+            <i class="bi bi-info-circle me-1"></i>
+            Глобальні JS-утиліти доступні на всіх сторінках:
+            <code>showToast(msg, type)</code>,
+            <code>SearchableSelect</code>,
+            <code>UnsavedGuard.enable()</code>
+        </div>
+    </div>
+</div>
+
+{# ── Повний приклад ── #}
+<div class="card border-0 shadow-sm mb-3" id="full-example">
+    <div class="card-header bg-success text-white py-2">
+        <h6 class="mb-0 fw-bold"><i class="bi bi-code-square me-2"></i>Повний приклад — дивіться <code>plugins/example_plugin/</code></h6>
+    </div>
+    <div class="card-body">
+        <p class="small text-muted mb-2">Вбудований приклад демонструє всі можливості SDK:</p>
+        <div class="row g-2">
+            {% for feature in [
+                ('bi-people','api.personnel — список, картка, майно'),
+                ('bi-box-seam','api.warehouse — залишки складу'),
+                ('bi-receipt','api.invoices — останні накладні'),
+                ('bi-database','api.db — власна таблиця логів'),
+                ('bi-gear','api.settings — читання налаштувань'),
+                ('bi-sliders','settings_schema — форма налаштувань'),
+                ('bi-arrow-repeat','on_personnel__archived — data hook'),
+                ('bi-funnel','filter_dashboard__stats — filter hook'),
+                ('bi-layout-sidebar','ui_sidebar__items — пункт меню'),
+                ('bi-window-stack','ui_personnel__card__tabs — вкладка'),
+                ('bi-cursor','ui_personnel__card__actions — кнопка topbar'),
+                ('bi-speedometer2','ui_dashboard__widgets — віджет дашборду'),
+            ] %}
+            <div class="col-sm-6">
+                <div class="d-flex align-items-center gap-2 small p-1">
+                    <i class="bi {{ feature[0] }} text-success"></i>
+                    <span>{{ feature[1] }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="mt-3">
+            <span class="btn btn-sm btn-outline-secondary disabled" title="Плагін-приклад не встановлено">
+                <i class="bi bi-play-circle me-1"></i>Відкрити приклад
+            </span>
+            <span class="text-muted small ms-2">Скопіюйте <code>plugins/example_plugin/</code> у свій проект щоб активувати</span>
+        </div>
+    </div>
+</div>
+
+</div>{# /col-lg-9 #}
+</div>{# /row #}
+
+<style>
+.sdk-code {
+    background: #1e2330;
+    color: #abb2bf;
+    border-radius: .5rem;
+    padding: 1rem 1.25rem;
+    font-size: .8rem;
+    line-height: 1.6;
+    overflow-x: auto;
+    margin-bottom: .75rem;
+}
+.sdk-toc .nav-link {
+    color: #495057;
+    padding: .2rem .5rem;
+    border-radius: .25rem;
+    font-size: .82rem;
+}
+.sdk-toc .nav-link:hover { background: #f0f0f0; color: var(--app-primary); }
+</style>
+{% endblock %}

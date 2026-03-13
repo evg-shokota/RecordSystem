@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}РВ {{ sheet.number }} — {{ unit_name }}{% endblock %}
+{% block page_title %}РВ {{ sheet.number }}{% endblock %}
+
+{% block topbar_actions %}
+{% if sheet.status == 'draft' %}
+<form method="POST" action="{{ url_for('rv.assign_number', sid=sheet.id) }}" class="d-inline"
+      onsubmit="return confirm('Присвоїти номер РВ?')">
+    <button type="submit" class="btn btn-sm btn-success">
+        <i class="bi bi-hash me-1"></i>Присвоїти номер
+    </button>
+</form>
+{% endif %}
+{% if sheet.status == 'active' %}
+<form method="POST" action="{{ url_for('rv.close', sid=sheet.id) }}" class="d-inline"
+      onsubmit="return confirm('Закрити РВ?')">
+    <button type="submit" class="btn btn-sm btn-success">
+        <i class="bi bi-check2-all me-1"></i>Закрити
+    </button>
+</form>
+{% endif %}
+{% if sheet.status in ('draft', 'active') %}
+<a href="{{ url_for('rv.edit_matrix', sid=sheet.id) }}" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-pencil me-1"></i>Редагувати
+</a>
+{% endif %}
+<a href="{{ url_for('rv.render_rv', sid=sheet.id) }}" class="btn btn-sm btn-outline-secondary" target="_blank">
+    <i class="bi bi-printer me-1"></i>Друк
+</a>
+{% if sheet.status in ('draft', 'active') %}
+<form method="POST" action="{{ url_for('rv.cancel', sid=sheet.id) }}" class="d-inline"
+      onsubmit="return confirm('Скасувати РВ?')">
+    <button type="submit" class="btn btn-sm btn-outline-danger">
+        <i class="bi bi-x-lg me-1"></i>Скасувати
+    </button>
+</form>
+{% endif %}
+{% if sheet.status in ('draft', 'cancelled') %}
+<form method="POST" action="{{ url_for('rv.delete', sid=sheet.id) }}" class="d-inline"
+      onsubmit="return confirm('Видалити РВ назавжди?')">
+    <button type="submit" class="btn btn-sm btn-outline-danger">
+        <i class="bi bi-trash me-1"></i>Видалити
+    </button>
+</form>
+{% endif %}
+<a href="{{ request.args.get('back') or url_for('rv.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# Статус-стрічка #}
+<div class="alert alert-{{ status_colors.get(sheet.status, 'secondary') }} py-2 mb-3">
+    <strong>{{ status_labels.get(sheet.status) }}</strong>
+    {% if sheet.unit_name %} — {{ sheet.unit_name }}
+    {% elif sheet.unit_text %} — {{ sheet.unit_text }}{% endif %}
+    {% if sheet.doc_date %} | Дата: {{ sheet.doc_date }}{% endif %}
+    {% if sheet.total_sum %} | Сума: <strong>{{ "%.2f"|format(sheet.total_sum) }}</strong> грн{% endif %}
+</div>
+
+{# Реквізити #}
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent fw-medium">Реквізити</div>
+            <div class="card-body">
+                <table class="table table-sm table-borderless mb-0">
+                    <tr>
+                        <td class="text-muted" style="width:130px">Номер:</td>
+                        <td><strong>{{ sheet.number }}</strong></td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Підрозділ:</td>
+                        <td>{{ sheet.unit_name or sheet.unit_text or '—' }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Дата:</td>
+                        <td>{{ sheet.doc_date or '—' }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Підстава:</td>
+                        <td>{{ sheet.base_document or '—' }}</td>
+                    </tr>
+                    {% if sheet.notes %}
+                    <tr>
+                        <td class="text-muted">Примітка:</td>
+                        <td>{{ sheet.notes }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <td class="text-muted">Загальна сума:</td>
+                        <td><strong>{{ "%.2f"|format(sheet.total_sum) }} грн</strong></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent fw-medium">Підписанти</div>
+            <div class="card-body">
+                <table class="table table-sm table-borderless mb-0">
+                    {% if sheet.given_by_name %}
+                    <tr>
+                        <td class="text-muted" style="width:130px">Видав:</td>
+                        <td>{{ sheet.given_by_rank or '' }} {{ sheet.given_by_name }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if sheet.chief_name %}
+                    <tr>
+                        <td class="text-muted">Начальник:</td>
+                        <td>{% if sheet.chief_is_tvo %}В.о. {% endif %}{{ sheet.chief_rank or '' }} {{ sheet.chief_name }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if sheet.clerk_name %}
+                    <tr>
+                        <td class="text-muted">Діловод:</td>
+                        <td>{{ sheet.clerk_rank or '' }} {{ sheet.clerk_name }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Матриця (тільки перегляд) #}
+{% if matrix.rows and matrix.cols %}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent fw-medium">Матриця видачі</div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="min-width:200px">П.І.Б. / Звання</th>
+                        {% for item in matrix.cols %}
+                        <th class="text-center" style="min-width:80px">
+                            <div class="small">{{ item.item_name }}</div>
+                            <div class="text-muted" style="font-size:.7em">{{ item.unit_of_measure }}</div>
+                        </th>
+                        {% endfor %}
+                        <th class="text-end">Сума</th>
+                        <th class="text-center" style="width:100px">Отримав</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in matrix.rows %}
+                    {% set row_sum = namespace(val=0) %}
+                    <tr>
+                        <td>
+                            <div class="fw-medium">{{ row.last_name }} {{ row.first_name[0] }}.{% if row.middle_name %} {{ row.middle_name[0] }}.{% endif %}</div>
+                            <div class="text-muted small">{{ row.rank or '' }}</div>
+                        </td>
+                        {% for item in matrix.cols %}
+                        {% set cell = matrix.qty.get((row.id, item.item_id), {}) %}
+                        {% set qty = cell.get('quantity', 0) or 0 %}
+                        {% set _ = row_sum.__setattr__('val', row_sum.val + qty * item.price) %}
+                        <td class="text-center">{{ qty if qty else '—' }}</td>
+                        {% endfor %}
+                        <td class="text-end">{{ "%.2f"|format(row_sum.val) }}</td>
+                        <td class="text-center">
+                            <span class="badge bg-{{ 'success' if row.received else 'secondary' }}">
+                                {{ row.received_date if row.received_date else ('✓' if row.received else '—') }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light fw-semibold">
+                    <tr>
+                        <td>Разом</td>
+                        {% for item in matrix.cols %}
+                        {% set col_total = namespace(val=0) %}
+                        {% for row in matrix.rows %}
+                            {% set cell = matrix.qty.get((row.id, item.item_id), {}) %}
+                            {% set _ = col_total.__setattr__('val', col_total.val + (cell.get('quantity', 0) or 0)) %}
+                        {% endfor %}
+                        <td class="text-center">{{ col_total.val if col_total.val else '—' }}</td>
+                        {% endfor %}
+                        <td class="text-end" colspan="2">{{ "%.2f"|format(sheet.total_sum) }} грн</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center text-muted py-4">
+        <i class="bi bi-table me-1"></i>Матриця порожня
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Облік речового майна — {{ unit_name }}{% endblock %}</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme-' ~ (session.get('theme') or 'default') ~ '.css') }}">
+    {{ slot('page.head_extra') | safe }}
+    {# Перехоплення JS-помилок — максимально рано, до будь-яких скриптів #}
+    <script>
+    (function() {
+        var _fbLogs = [];
+        var MAX = 50;
+        function _add(type, msg, src, line, col, stack) {
+            var ts = new Date().toISOString().slice(11,19);
+            var entry = '[' + ts + '] [' + type + '] ' + msg;
+            if (src)   entry += '\n  at ' + src + (line ? ':' + line : '') + (col ? ':' + col : '');
+            if (stack) entry += '\n' + stack;
+            _fbLogs.push(entry);
+            if (_fbLogs.length > MAX) _fbLogs.shift();
+        }
+        window.onerror = function(msg, src, line, col, err) {
+            _add('JS ERROR', msg, src, line, col, err && err.stack || '');
+            return false;
+        };
+        window.addEventListener('unhandledrejection', function(e) {
+            var msg = (e.reason && e.reason.message) ? e.reason.message : String(e.reason);
+            _add('PROMISE REJECTION', msg, '', '', '', (e.reason && e.reason.stack) || '');
+        });
+        // console.error / console.warn
+        var _ce = console.error, _cw = console.warn;
+        console.error = function() {
+            var args = Array.prototype.slice.call(arguments);
+            _add('CONSOLE.ERROR', args.map(function(a){ return typeof a==='object'?JSON.stringify(a):String(a); }).join(' '), '', '', '', '');
+            return _ce.apply(console, args);
+        };
+        console.warn = function() {
+            var args = Array.prototype.slice.call(arguments);
+            _add('CONSOLE.WARN', args.map(function(a){ return typeof a==='object'?JSON.stringify(a):String(a); }).join(' '), '', '', '', '');
+            return _cw.apply(console, args);
+        };
+        window._fbGetErrorLog = function() { return _fbLogs.slice(); };
+        window._fbClearLog    = function() { _fbLogs = []; };
+    })();
+    </script>
+</head>
+<body>
+<div class="app-wrapper">
+
+    <!-- ===== SIDEBAR ===== -->
+    <nav class="app-sidebar">
+        <a class="sidebar-brand" href="{{ url_for('dashboard') }}">
+            <i class="bi bi-shield-fill sidebar-brand-icon"></i>
+            <div class="sidebar-brand-text">
+                <div class="title">{{ unit_name }}</div>
+                <div class="subtitle">Речова служба</div>
+            </div>
+        </a>
+
+        {# Визначаємо активні секції для авторозгортання #}
+        {%- set _in_docs = request.blueprint in ('invoices','rv','doc_templates','planning','reports') %}
+        {%- set _in_plugins = plugin_menu_items and request.path and plugin_menu_items | selectattr('url') | list | length > 0 %}
+        {%- set _sidebar_extra = slot('sidebar.items') %}
+        {%- set _in_extra = _sidebar_extra and _sidebar_extra | length > 0 %}
+        {%- set _in_system = request.blueprint in ('import_export','plugins','settings','audit') or request.path.startswith('/settings/') or request.path.startswith('/audit/') %}
+
+        <ul class="nav flex-column sidebar-nav">
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}"
+                   href="{{ url_for('dashboard') }}">
+                    <i class="bi bi-speedometer2"></i> Дашборд
+                </a>
+            </li>
+
+            {# ── Особовий склад (завжди розгорнута) ── #}
+            <li>
+                <button class="nav-section-toggle" data-section="os">
+                    <i class="bi bi-people-fill nav-section-icon"></i>
+                    <span>Особовий склад</span>
+                    <i class="bi bi-chevron-down nav-section-chevron"></i>
+                </button>
+            </li>
+            <li class="nav-section-body" data-section-body="os">
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.blueprint == 'personnel' %}active{% endif %}"
+                           href="/personnel/">
+                            <i class="bi bi-people-fill"></i> Картотека
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path == '/units/' or request.path.startswith('/units/') %}active{% endif %}"
+                           href="/units/">
+                            <i class="bi bi-diagram-2-fill"></i> Підрозділи
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.blueprint == 'supply_norms' %}active{% endif %}"
+                           href="/supply-norms/">
+                            <i class="bi bi-list-check"></i> Норми видачі
+                        </a>
+                    </li>
+                </ul>
+            </li>
+
+            {# ── Склад та видача (завжди розгорнута) ── #}
+            <li>
+                <button class="nav-section-toggle" data-section="sklad">
+                    <i class="bi bi-box-seam-fill nav-section-icon"></i>
+                    <span>Склад та видача</span>
+                    <i class="bi bi-chevron-down nav-section-chevron"></i>
+                </button>
+            </li>
+            <li class="nav-section-body" data-section-body="sklad">
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.blueprint == 'warehouse' %}active{% endif %}"
+                           href="/warehouse/">
+                            <i class="bi bi-box-seam-fill"></i> Склад
+                        </a>
+                    </li>
+                </ul>
+            </li>
+
+            {# ── Документи (collapsible) ── #}
+            <li>
+                <button class="nav-section-toggle" data-section="docs"
+                        {% if _in_docs %}data-default-open="1"{% endif %}>
+                    <i class="bi bi-file-earmark-text nav-section-icon"></i>
+                    <span>Документи</span>
+                    <i class="bi bi-chevron-down nav-section-chevron"></i>
+                </button>
+            </li>
+            <li class="nav-section-body" data-section-body="docs">
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.blueprint == 'invoices' %}active{% endif %}"
+                           href="/invoices/">
+                            <i class="bi bi-receipt"></i> Накладні
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.blueprint == 'rv' %}active{% endif %}"
+                           href="/rv/">
+                            <i class="bi bi-list-columns-reverse"></i> Роздавальні відомості
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.blueprint == 'doc_templates' %}active{% endif %}"
+                           href="/doc-templates/">
+                            <i class="bi bi-file-earmark-ruled"></i> Шаблони
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.blueprint == 'planning' %}active{% endif %}"
+                           href="{{ url_for('planning.index') }}">
+                            <i class="bi bi-calendar-check"></i> Планування
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.blueprint == 'reports' %}active{% endif %}"
+                           href="{{ url_for('reports.index') }}">
+                            <i class="bi bi-file-earmark-bar-graph"></i> Звіти
+                        </a>
+                    </li>
+                </ul>
+            </li>
+
+            {# ── Модулі (collapsible, тільки якщо є) ── #}
+            {% if plugin_menu_items %}
+            <li>
+                <button class="nav-section-toggle" data-section="modules">
+                    <i class="bi bi-grid-fill nav-section-icon"></i>
+                    <span>Модулі</span>
+                    <i class="bi bi-chevron-down nav-section-chevron"></i>
+                </button>
+            </li>
+            <li class="nav-section-body" data-section-body="modules">
+                <ul class="nav flex-column">
+                    {% for item in plugin_menu_items %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path.startswith(item.url) %}active{% endif %}"
+                           href="{{ item.url }}">
+                            <i class="{{ item.icon }}"></i> {{ item.label }}
+                            {% if item.badge %}
+                            <span class="badge {{ item.badge.class }} ms-auto">{{ item.badge.text }}</span>
+                            {% endif %}
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </li>
+            {% endif %}
+
+            {# ── Розширення (collapsible, тільки якщо є) ── #}
+            {%- if _sidebar_extra %}
+            <li>
+                <button class="nav-section-toggle" data-section="extra">
+                    <i class="bi bi-puzzle nav-section-icon"></i>
+                    <span>Розширення</span>
+                    <i class="bi bi-chevron-down nav-section-chevron"></i>
+                </button>
+            </li>
+            <li class="nav-section-body" data-section-body="extra">
+                <ul class="nav flex-column">
+                    {%- for item in _sidebar_extra %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path.startswith(item.url) %}active{% endif %}"
+                           href="{{ item.url }}">
+                            <i class="{{ item.icon }}"></i> {{ item.label }}
+                            {%- if item.badge %}
+                            <span class="badge {{ item.badge.class }} ms-auto">{{ item.badge.text }}</span>
+                            {%- endif %}
+                        </a>
+                    </li>
+                    {%- endfor %}
+                </ul>
+            </li>
+            {%- endif %}
+
+            {# ── Система (collapsible) ── #}
+            <li>
+                <button class="nav-section-toggle" data-section="system"
+                        {% if _in_system %}data-default-open="1"{% endif %}>
+                    <i class="bi bi-gear-fill nav-section-icon"></i>
+                    <span>Система</span>
+                    <i class="bi bi-chevron-down nav-section-chevron"></i>
+                </button>
+            </li>
+            <li class="nav-section-body" data-section-body="system">
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.blueprint == 'import_export' %}active{% endif %}"
+                           href="{{ url_for('import_export.index') }}">
+                            <i class="bi bi-arrow-left-right"></i> Імпорт / Експорт
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.blueprint == 'plugins' %}active{% endif %}"
+                           href="{{ url_for('plugins.index') }}">
+                            <i class="bi bi-puzzle"></i> Модулі розширення
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path.startswith('/settings/') %}active{% endif %}"
+                           href="/settings/">
+                            <i class="bi bi-gear-fill"></i> Налаштування
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path.startswith('/audit/') %}active{% endif %}"
+                           href="/audit/">
+                            <i class="bi bi-journal-text"></i> Журнал дій
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path.startswith('/feedback') %}active{% endif %}"
+                           href="/feedback/">
+                            <i class="bi bi-chat-dots"></i> Зворотній зв'язок
+                        </a>
+                    </li>
+                </ul>
+            </li>
+        </ul>
+
+        <div class="sidebar-footer">
+            <a href="{{ url_for('profile') }}" class="sidebar-user-name text-decoration-none"
+               title="Особистий кабінет">
+                <i class="bi bi-person-circle me-1"></i>
+                {{ session.get('full_name', '') }}
+            </a>
+            <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-light w-100 mt-1">
+                <i class="bi bi-box-arrow-right me-1"></i>Вихід
+            </a>
+        </div>
+    </nav>
+
+    <!-- ===== MAIN ===== -->
+    <div class="app-main">
+        <div class="app-topbar">
+            <h1>{% block page_title %}{% endblock %}</h1>
+            <div class="d-flex gap-2">
+                {% block topbar_actions %}{% endblock %}
+            </div>
+        </div>
+
+        <div class="app-content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+</div>
+
+<!-- Toast контейнер -->
+<div class="toast-container-fixed" id="toastContainer">
+
+<!-- Кнопка зворотного зв'язку (фіксована) -->
+{% if session.get('user_id') %}
+<button id="fbFloatBtn" title="Зворотній зв'язок / Повідомити про помилку"
+        data-bs-toggle="modal" data-bs-target="#feedbackModal"
+        style="position:fixed;bottom:1.5rem;right:1.5rem;z-index:1040;
+               width:48px;height:48px;border-radius:50%;
+               background:var(--app-primary);color:#fff;border:none;
+               box-shadow:0 4px 16px rgba(0,0,0,.25);font-size:1.2rem;
+               display:flex;align-items:center;justify-content:center;
+               transition:transform .15s;">
+    <i class="bi bi-chat-dots-fill"></i>
+</button>
+
+<!-- Модаль зворотного зв'язку -->
+<div class="modal fade" id="feedbackModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-chat-dots-fill me-2 text-primary"></i>Зворотній зв'язок
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-2">
+                <div class="row g-2 mb-2">
+                    <div class="col-7">
+                        <label class="form-label small text-muted mb-1">Категорія</label>
+                        <select id="fbCategory" class="form-select form-select-sm">
+                            <option value="bug">🐛 Помилка в системі</option>
+                            <option value="feature">💡 Побажання / ідея</option>
+                            <option value="ui">🎨 Проблема з інтерфейсом</option>
+                            <option value="other">📝 Інше</option>
+                        </select>
+                    </div>
+                    <div class="col-5">
+                        <label class="form-label small text-muted mb-1">Пріоритет</label>
+                        <select id="fbPriority" class="form-select form-select-sm">
+                            <option value="normal">Нормальний</option>
+                            <option value="high">🔴 Високий</option>
+                            <option value="low">Низький</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small text-muted mb-1">Коротко про що <span class="text-danger">*</span></label>
+                    <input type="text" id="fbTitle" class="form-control form-control-sm"
+                           placeholder="Наприклад: Не зберігається накладна" maxlength="200">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small text-muted mb-1">Детальний опис</label>
+                    <textarea id="fbBody" class="form-control form-control-sm" rows="3"
+                              placeholder="Опишіть що відбувається, кроки відтворення, що очікується..."></textarea>
+                </div>
+                {# Діагностика — кнопка завжди видима #}
+                <div class="mb-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="fbLoadDiag()">
+                            <i class="bi bi-bug me-1"></i>Зібрати діагностику
+                            <span id="fbErrorCount" class="badge bg-danger ms-1 small" style="display:none"></span>
+                        </button>
+                        <span class="text-muted small">Додає логи помилок, мережу, сторінку</span>
+                    </div>
+                    <div id="fbErrorLogWrap" style="display:none" class="mt-2">
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                            <span class="form-label small text-muted mb-0">
+                                <i class="bi bi-terminal me-1"></i>Діагностичний лог
+                            </span>
+                            <div class="d-flex gap-2 align-items-center">
+                                <div class="form-check form-check-inline mb-0">
+                                    <input class="form-check-input" type="checkbox" id="fbIncludeErrors" checked>
+                                    <label class="form-check-label small text-muted" for="fbIncludeErrors">Включити у звіт</label>
+                                </div>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-muted" onclick="fbClearDiag()">
+                                    <i class="bi bi-x-circle"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <textarea id="fbErrorLog" class="form-control form-control-sm font-monospace"
+                                  rows="5" style="font-size:.7rem;background:#1e1e1e;color:#f8f8f2;resize:vertical"
+                                  placeholder="Лог помилок..."></textarea>
+                    </div>
+                </div>
+                <div class="form-check form-check-sm">
+                    <input class="form-check-input" type="checkbox" id="fbIncludeUrl" checked>
+                    <label class="form-check-label small text-muted" for="fbIncludeUrl">
+                        Додати поточну сторінку (<span id="fbUrlPreview" class="font-monospace"></span>)
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="submitFeedback()">
+                    <i class="bi bi-send me-1"></i>Надіслати
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── Показати поточний URL + завантажити лог при відкритті ──
+document.addEventListener('DOMContentLoaded', () => {
+    const el = document.getElementById('fbUrlPreview');
+    if (el) el.textContent = location.pathname;
+    const btn = document.getElementById('fbFloatBtn');
+    if (btn) {
+        btn.addEventListener('mouseenter', () => btn.style.transform = 'scale(1.1)');
+        btn.addEventListener('mouseleave', () => btn.style.transform = '');
+    }
+});
+
+// Оновлюємо лічильник помилок на кнопці при кожній помилці
+function _fbUpdateCount() {
+    const cnt = document.getElementById('fbErrorCount');
+    if (!cnt) return;
+    const logs = window._fbGetErrorLog ? window._fbGetErrorLog() : [];
+    const errors = logs.filter(l => l.includes('[JS ERROR]') || l.includes('[PROMISE') || l.includes('[CONSOLE.ERROR]'));
+    if (errors.length) {
+        cnt.textContent = errors.length;
+        cnt.style.display = '';
+    } else {
+        cnt.style.display = 'none';
+    }
+}
+// Перевіряємо раз на 3 секунди і при відкритті модалю
+setInterval(_fbUpdateCount, 3000);
+document.getElementById('feedbackModal')?.addEventListener('show.bs.modal', _fbUpdateCount);
+
+function fbLoadDiag() {
+    const logs = window._fbGetErrorLog ? window._fbGetErrorLog() : [];
+    const wrap = document.getElementById('fbErrorLogWrap');
+    const ta   = document.getElementById('fbErrorLog');
+    const cnt  = document.getElementById('fbErrorCount');
+
+    // Збираємо діагностику
+    const lines = [];
+    lines.push('=== Діагностика ===');
+    lines.push('Час: ' + new Date().toLocaleString('uk-UA'));
+    lines.push('Сторінка: ' + location.href);
+    lines.push('User-Agent: ' + navigator.userAgent);
+    lines.push('');
+
+    if (logs.length) {
+        lines.push('=== Помилки JS / Консолі (' + logs.length + ') ===');
+        lines.push(logs.join('\n'));
+    } else {
+        lines.push('=== Помилки JS / Консолі ===');
+        lines.push('(немає зафіксованих помилок)');
+    }
+
+    // Мережеві помилки через Performance API
+    if (window.performance && performance.getEntriesByType) {
+        const failedReqs = performance.getEntriesByType('resource').filter(r =>
+            r.initiatorType === 'fetch' || r.initiatorType === 'xmlhttprequest'
+        ).slice(-20);
+        if (failedReqs.length) {
+            lines.push('');
+            lines.push('=== Мережеві запити (останні 20) ===');
+            failedReqs.forEach(r => {
+                lines.push(`${r.initiatorType.toUpperCase()} ${r.name} [${Math.round(r.duration)}ms]`);
+            });
+        }
+    }
+
+    ta.value = lines.join('\n');
+    wrap.style.display = '';
+
+    const errCount = logs.filter(l => l.includes('[JS ERROR]') || l.includes('[PROMISE') || l.includes('[CONSOLE.ERROR]')).length;
+    if (errCount) {
+        cnt.textContent = errCount;
+        cnt.style.display = '';
+    }
+}
+
+function fbClearDiag() {
+    if (window._fbClearLog) window._fbClearLog();
+    document.getElementById('fbErrorLog').value = '';
+    document.getElementById('fbErrorLogWrap').style.display = 'none';
+    const cnt = document.getElementById('fbErrorCount');
+    if (cnt) cnt.style.display = 'none';
+}
+
+async function submitFeedback() {
+    const title = document.getElementById('fbTitle').value.trim();
+    if (!title) {
+        document.getElementById('fbTitle').focus();
+        document.getElementById('fbTitle').classList.add('is-invalid');
+        return;
+    }
+    document.getElementById('fbTitle').classList.remove('is-invalid');
+
+    let body = document.getElementById('fbBody').value.trim();
+
+    // Якщо є лог помилок і прапорець включений — додаємо до тіла
+    const inclErrors = document.getElementById('fbIncludeErrors')?.checked;
+    const errLog     = document.getElementById('fbErrorLog')?.value?.trim();
+    if (inclErrors && errLog) {
+        body += (body ? '\n\n' : '') + '--- Лог помилок браузера ---\n' + errLog;
+    }
+
+    const payload = {
+        category: document.getElementById('fbCategory').value,
+        priority: document.getElementById('fbPriority').value,
+        title,
+        body,
+        page_url: document.getElementById('fbIncludeUrl').checked ? location.href : '',
+    };
+
+    const r = await fetch('/feedback/add', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (d.ok) {
+        bootstrap.Modal.getInstance(document.getElementById('feedbackModal')).hide();
+        document.getElementById('fbTitle').value = '';
+        document.getElementById('fbBody').value  = '';
+        document.getElementById('fbCategory').value = 'bug';
+        document.getElementById('fbPriority').value = 'normal';
+        showToast('Повідомлення надіслано. Дякуємо!', 'success');
+    } else {
+        showToast(d.error || 'Помилка', 'danger');
+    }
+}
+</script>
+{% endif %}
+
+</div><!-- /toast-container-fixed --></div>
+
+<script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script>
+// ── Collapsible sidebar sections ──
+(function() {
+    const STORAGE_KEY = 'sidebar_collapsed';
+
+    function getSaved() {
+        try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
+    }
+    function setSaved(obj) {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(obj)); } catch {}
+    }
+
+    const saved = getSaved();
+
+    document.querySelectorAll('.nav-section-toggle').forEach(btn => {
+        const key  = btn.dataset.section;
+        const body = document.querySelector(`.nav-section-body[data-section-body="${key}"]`);
+        if (!body) return;
+
+        // Визначити початковий стан:
+        // 1. Якщо всередині є active-посилання — завжди розгорнуто
+        // 2. Якщо data-default-open="1" — розгорнуто за замовчуванням
+        // 3. Інакше — зі збереженого стану (default: розгорнуто)
+        const hasActive = body.querySelector('.nav-link.active') !== null;
+        const defaultOpen = btn.dataset.defaultOpen === '1';
+        const isCollapsed = hasActive || defaultOpen ? false : (saved[key] === true);
+
+        // Встановити max-height для анімації
+        body.style.maxHeight = body.scrollHeight + 'px';
+
+        if (isCollapsed) {
+            btn.classList.add('collapsed');
+            body.classList.add('collapsed');
+        }
+
+        btn.addEventListener('click', () => {
+            const closing = !btn.classList.contains('collapsed');
+            btn.classList.toggle('collapsed', closing);
+            body.classList.toggle('collapsed', closing);
+            if (!closing) {
+                // При розгортанні — встановити реальну висоту
+                body.style.maxHeight = body.scrollHeight + 'px';
+            }
+            const s = getSaved();
+            s[key] = closing;
+            setSaved(s);
+        });
+    });
+})();
+</script>
+{% block scripts %}{% endblock %}
+{{ slot('page.footer_scripts') | safe }}
+
+{# ══════════════════════════════════════════════════════════
+   Глобальний модаль: "Створити документ"
+   Відкривається через data-bs-toggle="modal" data-bs-target="#createDocModal"
+   або JS: new bootstrap.Modal(document.getElementById('createDocModal')).show()
+   Контекст (person_id, unit_id, back) передається через data-атрибути кнопки.
+   ══════════════════════════════════════════════════════════ #}
+<div class="modal fade" id="createDocModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-file-earmark-plus me-2"></i>Створити документ
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+
+                {# Крок 1 — тип документа #}
+                <div id="cdStep1">
+                    <p class="text-muted small mb-3">Оберіть тип документа:</p>
+                    <div class="d-grid gap-2">
+                        <button type="button" class="btn btn-outline-primary text-start"
+                                id="cdChooseInvoice">
+                            <i class="bi bi-file-earmark-text me-2"></i>
+                            <strong>Накладна</strong>
+                            <div class="text-muted small mt-1">Видача, повернення або переміщення майна</div>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary text-start"
+                                id="cdChooseRV">
+                            <i class="bi bi-table me-2"></i>
+                            <strong>Роздавальна відомість</strong>
+                            <div class="text-muted small mt-1">Видача одночасно декільком особам</div>
+                        </button>
+                    </div>
+                </div>
+
+                {# Крок 2 — спосіб (показується після вибору типу) #}
+                <div id="cdStep2" style="display:none">
+                    <button type="button" class="btn btn-link btn-sm ps-0 mb-3" id="cdBack">
+                        <i class="bi bi-arrow-left me-1"></i>Назад
+                    </button>
+                    <p class="text-muted small mb-3" id="cdStep2Title"></p>
+                    <div class="d-grid gap-2">
+                        <button type="button" class="btn btn-primary text-start" id="cdCreateSystem">
+                            <i class="bi bi-plus-circle me-2"></i>
+                            <strong>Сформувати в системі</strong>
+                            <div class="small mt-1 opacity-75">Заповнити форму і роздрукувати звідси</div>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary text-start" id="cdCreateExternal">
+                            <i class="bi bi-printer me-2"></i>
+                            <strong>Вже надрукована (зовнішня)</strong>
+                            <div class="small mt-1 opacity-75">Зареєструвати документ що вже існує на папері</div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Глобальна функція відкриття модалю "Створити документ"
+// ctx: { person_id, unit_id, back }
+window.openCreateDocModal = function(ctx) {
+    const el = document.getElementById('createDocModal');
+    if (!el) return;
+    _cdCtx = Object.assign({ person_id: '', unit_id: '', back: location.href }, ctx || {});
+    _cdGoStep1();
+    // Відкриваємо через new bootstrap.Modal щоб уникнути конфлікту з data-bs-toggle
+    let bsModal = bootstrap.Modal.getInstance(el);
+    if (!bsModal) bsModal = new bootstrap.Modal(el, { backdrop: true, keyboard: true });
+    bsModal.show();
+};
+
+var _cdCtx = {};
+var _cdDocType = null;
+
+function _cdGoStep1() {
+    document.getElementById('cdStep1').style.display = '';
+    document.getElementById('cdStep2').style.display = 'none';
+    _cdDocType = null;
+}
+function _cdGoStep2(docType) {
+    _cdDocType = docType;
+    document.getElementById('cdStep1').style.display = 'none';
+    document.getElementById('cdStep2').style.display = '';
+    document.getElementById('cdStep2Title').textContent =
+        docType === 'invoice' ? 'Накладна — спосіб створення:' : 'Роздавальна відомість — спосіб створення:';
+}
+
+// Заміна коми на крапку у всіх числових полях (.num-comma, .num-input) — глобально
+document.addEventListener('input', function(e) {
+    if (e.target.matches('.num-comma, .num-input')) {
+        const v = e.target.value;
+        const replaced = v.replace(',', '.');
+        if (replaced !== v) {
+            const pos = e.target.selectionStart;
+            e.target.value = replaced;
+            try { e.target.setSelectionRange(pos, pos); } catch(_) {}
+        }
+    }
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Делегування для кнопок "Створити документ" з data-атрибутами
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('.js-create-doc-btn');
+        if (!btn) return;
+        openCreateDocModal({
+            person_id: btn.dataset.personId || '',
+            unit_id:   btn.dataset.unitId   || '',
+            back:      btn.dataset.back     || location.href,
+        });
+    });
+
+    document.getElementById('cdChooseInvoice')?.addEventListener('click', () => _cdGoStep2('invoice'));
+    document.getElementById('cdChooseRV')?.addEventListener('click',      () => _cdGoStep2('rv'));
+    document.getElementById('cdBack')?.addEventListener('click', _cdGoStep1);
+
+    document.getElementById('cdCreateSystem')?.addEventListener('click', () => {
+        const el = document.getElementById('createDocModal');
+        bootstrap.Modal.getInstance(el)?.hide();
+        if (_cdDocType === 'invoice') {
+            const p = new URLSearchParams();
+            if (_cdCtx.person_id) p.set('recipient_personnel_id', _cdCtx.person_id);
+            if (_cdCtx.unit_id)   p.set('recipient_unit_id', _cdCtx.unit_id);
+            if (_cdCtx.back)      p.set('back', _cdCtx.back);
+            location.href = '/invoices/new?' + p.toString();
+        } else {
+            const p = new URLSearchParams();
+            if (_cdCtx.back) p.set('back', _cdCtx.back);
+            location.href = '/rv/new?' + p.toString();
+        }
+    });
+
+    document.getElementById('cdCreateExternal')?.addEventListener('click', () => {
+        const el = document.getElementById('createDocModal');
+        bootstrap.Modal.getInstance(el)?.hide();
+        if (_cdDocType === 'invoice') {
+            const p = new URLSearchParams({ is_external: '1' });
+            if (_cdCtx.person_id) p.set('recipient_personnel_id', _cdCtx.person_id);
+            if (_cdCtx.back)      p.set('back', _cdCtx.back);
+            location.href = '/invoices/new?' + p.toString();
+        } else {
+            const p = new URLSearchParams({ is_external: '1' });
+            if (_cdCtx.back) p.set('back', _cdCtx.back);
+            location.href = '/rv/new?' + p.toString();
+        }
+    });
+});
+</script>
+</body>
+</html>

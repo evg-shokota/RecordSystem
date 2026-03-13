@@ -1,0 +1,965 @@
+{% extends "base.html" %}
+{% block title %}{% if inv.status == 'draft' %}Чернетка{% else %}Накладна {{ inv.number }}{% endif %} — {{ unit_name }}{% endblock %}
+{% block page_title %}{% if inv.status == 'draft' %}Чернетка{% else %}Накладна № {{ inv.number }}{% endif %}{% endblock %}
+
+{% block topbar_actions %}
+{% if inv.status == 'draft' %}
+<form method="POST" action="{{ url_for('invoices.assign_number', inv_id=inv.id) }}" class="d-inline"
+      onsubmit="return confirm('Присвоїти номер накладній? Після цього номер не зміниться.')">
+    <button type="submit" class="btn btn-sm btn-success">
+        <i class="bi bi-hash me-1"></i>Присвоїти номер
+    </button>
+</form>
+{% endif %}
+{% if inv.status == 'created' %}
+<form method="POST" action="{{ url_for('invoices.issue', inv_id=inv.id) }}" class="d-inline">
+    <button type="submit" class="btn btn-sm btn-info">
+        <i class="bi bi-check2 me-1"></i>Видати
+    </button>
+</form>
+{% endif %}
+{% if inv.status == 'issued' %}
+<button type="button" class="btn btn-sm btn-warning" id="btnReceive">
+    <i class="bi bi-box-arrow-in-down me-1"></i>Отримано
+</button>
+{% endif %}
+{% if inv.status in ('created', 'issued', 'received') %}
+<form method="POST" action="{{ url_for('invoices.process', inv_id=inv.id) }}" class="d-inline"
+      onsubmit="return confirm('Провести накладну? Це спишить майно зі складу і запише на картку.')">
+    <button type="submit" class="btn btn-sm btn-success">
+        <i class="bi bi-check2-all me-1"></i>Провести
+    </button>
+</form>
+{% endif %}
+{% if inv.status not in ('processed', 'cancelled') %}
+<button type="button" class="btn btn-sm btn-outline-secondary" id="btnScanUpload" title="{% if inv.scan_path %}Скан завантажено{% else %}Завантажити скан{% endif %}">
+    <i class="bi bi-paperclip me-1"></i>{% if inv.scan_path %}<span class="text-success">Скан ✓</span>{% else %}Скан{% endif %}
+</button>
+{% endif %}
+{% if inv.status in ('draft', 'created', 'issued', 'received') %}
+<button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#cancelModal">
+    <i class="bi bi-x-lg me-1"></i>Скасувати
+</button>
+{% endif %}
+{% if inv.status in ('draft', 'created', 'issued', 'received') %}
+<a href="{{ url_for('invoices.edit', inv_id=inv.id) }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-pencil me-1"></i>Редагувати
+</a>
+{% endif %}
+{% if inv.status in ('draft', 'created', 'cancelled') %}
+<form method="POST" action="{{ url_for('invoices.delete', inv_id=inv.id) }}" class="d-inline"
+      onsubmit="return confirm('Видалити накладну назавжди?')">
+    <button type="submit" class="btn btn-sm btn-outline-danger">
+        <i class="bi bi-trash me-1"></i>Видалити
+    </button>
+</form>
+{% endif %}
+<button type="button" class="btn btn-sm btn-outline-primary" onclick="openDocEditor()">
+    <i class="bi bi-file-earmark-text me-1"></i>Документ
+</button>
+<a href="{{ url_for('invoices.render_invoice', inv_id=inv.id) }}"
+   class="btn btn-sm btn-outline-secondary" target="_blank">
+    <i class="bi bi-printer me-1"></i>Друк
+</a>
+<a href="{{ request.args.get('back') or url_for('invoices.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Назад
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# Статус-стрічка #}
+{% set _status_class = {'draft':'warning','created':'secondary','issued':'info','received':'primary','processed':'success','cancelled':'danger'} %}
+<div class="alert alert-{{ _status_class.get(inv.status,'secondary') }} py-2 mb-3">
+    {% if inv.status == 'draft' %}
+    <i class="bi bi-pencil-square me-1"></i><strong>Чернетка</strong> — номер не присвоєно
+    {% elif inv.status == 'created' %}
+    <i class="bi bi-hourglass-split me-1"></i><strong>Створена</strong> — очікує видачі
+    {% elif inv.status == 'issued' %}
+    <i class="bi bi-check2 me-1"></i><strong>Видана</strong> {{ inv.issued_date or '' }} — очікує підтвердження отримання
+    {% elif inv.status == 'received' %}
+    <i class="bi bi-box-arrow-in-down me-1"></i><strong>Отримано</strong> — майно фізично отримане, очікує проведення в системі
+    {% elif inv.status == 'processed' %}
+    <i class="bi bi-check2-all me-1"></i><strong>Проведена</strong> — майно списано зі складу
+    {% elif inv.status == 'cancelled' %}
+    <i class="bi bi-x-circle me-1"></i><strong>Скасована</strong>
+    {% if inv.cancel_comment %} — {{ inv.cancel_comment }}{% endif %}
+    {% endif %}
+</div>
+{% if inv.status in ('received', 'processed') and not inv.scan_path %}
+<div class="alert alert-warning py-2 mb-3">
+    <i class="bi bi-exclamation-triangle me-1"></i>
+    <strong>Увага:</strong> не завантажено скан документа.
+    {% if inv.status != 'processed' %}
+    <button type="button" class="btn btn-sm btn-warning ms-2" id="btnScanUploadAlert">
+        <i class="bi bi-paperclip me-1"></i>Завантажити скан
+    </button>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+    {# Реквізити #}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent fw-medium">Реквізити</div>
+            <div class="card-body">
+                <table class="table table-sm table-borderless mb-0">
+                    <tr>
+                        <td class="text-muted" style="width:140px">Номер:</td>
+                        <td>{% if inv.status == 'draft' %}<span class="badge bg-warning text-dark">Чернетка — без номера</span>{% else %}<strong>{{ inv.number }}</strong>{% endif %}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Напрямок:</td>
+                        <td>
+                            {% if inv.direction == 'issue' %}Видача зі складу
+                            {% elif inv.direction == 'return' %}Повернення на склад
+                            {% else %}Переміщення{% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Одержувач:</td>
+                        <td>
+                            {% if inv.recipient_type == 'personnel' %}
+                            {{ inv.recipient_rank or '' }} {{ inv.recipient_person_name | trim }}
+                            {% else %}
+                            {{ inv.recipient_unit_name or '—' }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Підстава:</td>
+                        <td>{{ inv.base_document or '—' }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Дійсна до:</td>
+                        <td>{{ inv.valid_until or '—' }}</td>
+                    </tr>
+                    {% if inv.notes %}
+                    <tr>
+                        <td class="text-muted">Примітка:</td>
+                        <td>{{ inv.notes }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <td class="text-muted">Загальна сума:</td>
+                        <td><strong>{{ "%.2f"|format(inv.total_sum) }} грн</strong></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {# Підписанти #}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent fw-medium">Підписанти</div>
+            <div class="card-body">
+                {% set sigs = inv.signatories | fromjson if inv.signatories else [] %}
+                {% if sigs %}
+                <table class="table table-sm table-borderless mb-0">
+                    {% for s in sigs %}
+                    <tr>
+                        <td class="text-muted" style="width:160px">{{ s.role or '—' }}:</td>
+                        <td>
+                            {% if s.is_tvo %}<em>В.о. </em>{% endif %}
+                            {{ s.rank or '' }} {{ s.name or '—' }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </table>
+                {% else %}
+                <p class="text-muted small mb-0">Підписантів не вказано</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Позиції #}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent fw-medium">Перелік майна</div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:40px">№</th>
+                        <th>Найменування</th>
+                        <th style="width:70px">Кат.</th>
+                        <th style="width:80px">Од.</th>
+                        <th style="width:100px">За планом</th>
+                        <th style="width:100px">Фактично</th>
+                        <th style="width:110px">Ціна, грн</th>
+                        <th style="width:120px">Сума, грн</th>
+                        <th>Серійні №</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in items %}
+                    <tr>
+                        <td class="text-muted">{{ loop.index }}</td>
+                        <td>{{ r.item_name }}</td>
+                        <td><span class="badge bg-secondary">Кат. {{ r.category }}</span></td>
+                        <td class="text-muted">{{ r.unit_of_measure }}</td>
+                        <td class="text-end">{{ r.planned_qty }}</td>
+                        <td class="text-end {{ 'text-warning' if r.actual_qty is not none and r.actual_qty != r.planned_qty }}">
+                            {{ r.actual_qty if r.actual_qty is not none else '—' }}
+                        </td>
+                        <td class="text-end">{{ "%.2f"|format(r.price) }}</td>
+                        <td class="text-end">
+                            {% set qty = r.actual_qty if r.actual_qty is not none else r.planned_qty %}
+                            {{ "%.2f"|format(qty * r.price) }}
+                        </td>
+                        <td class="text-muted small">
+                            {{ r.serial_numbers or '—' }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light fw-bold">
+                    <tr>
+                        <td colspan="7" class="text-end">Разом:</td>
+                        <td class="text-end">{{ "%.2f"|format(inv.total_sum) }} грн</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+{# ── Модальне: Отримано (фактичні кількості) ── #}
+{% if inv.status == 'issued' %}
+<div class="modal fade" id="receiveModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title"><i class="bi bi-box-arrow-in-down me-1"></i>Підтвердження отримання</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-2">Вкажіть фактично отримані кількості. Якщо позиція не отримана — вкажіть 0.</p>
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Найменування</th>
+                            <th class="text-center" style="width:80px">За планом</th>
+                            <th class="text-center" style="width:110px">Фактично</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in items %}
+                        <tr>
+                            <td>{{ r.item_name }} <span class="text-muted small">кат.{{ r.category }}</span></td>
+                            <td class="text-center text-muted">{{ r.planned_qty }}</td>
+                            <td>
+                                <input type="number" class="form-control form-control-sm text-center receive-actual"
+                                       data-item-id="{{ r.id }}"
+                                       value="{{ r.actual_qty if r.actual_qty is not none else r.planned_qty }}"
+                                       min="0" step="1">
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-warning btn-sm" id="btnReceiveConfirm">
+                    <i class="bi bi-check2 me-1"></i>Підтвердити отримання
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# ── Модальне: Завантажити скан ── #}
+{% if inv.status not in ('processed', 'cancelled') %}
+<div class="modal fade" id="scanModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title"><i class="bi bi-paperclip me-1"></i>Скан документа</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                {% if inv.scan_path %}
+                <div class="alert alert-success py-2 mb-3">
+                    <i class="bi bi-check-circle me-1"></i>
+                    Завантажено: <strong>{{ inv.scan_original_name or inv.scan_path }}</strong>
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-2" id="btnScanDelete">
+                        <i class="bi bi-trash"></i> Видалити
+                    </button>
+                </div>
+                {% endif %}
+                <label class="form-label form-label-sm">{% if inv.scan_path %}Замінити скан{% else %}Завантажити скан{% endif %} (PDF, JPG, PNG)</label>
+                <input type="file" class="form-control form-control-sm" id="scanFile" accept=".pdf,.jpg,.jpeg,.png">
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Закрити</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnScanSave">
+                    <i class="bi bi-upload me-1"></i>Завантажити
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# Модальне вікно скасування #}
+<div class="modal fade" id="cancelModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="POST" action="{{ url_for('invoices.cancel', inv_id=inv.id) }}">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Скасувати накладну</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label">Причина скасування (необов'язково)</label>
+                    <input type="text" name="comment" class="form-control" placeholder="Наприклад: помилка в позиціях">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Закрити</button>
+                    <button type="submit" class="btn btn-danger">Скасувати накладну</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ── Модальне вікно редактора документа ── #}
+<div class="modal fade" id="docEditorModal" tabindex="-1" style="z-index:1060">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content" style="height:100vh;overflow:hidden">
+
+            {# Заголовок #}
+            <div class="modal-header py-2 border-bottom">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <h6 class="modal-title mb-0">
+                        <i class="bi bi-file-earmark-text me-1"></i>
+                        {% if inv.status == 'draft' %}Чернетка{% else %}Накладна № {{ inv.number }}{% endif %}
+                        — редактор документа
+                    </h6>
+                    <span id="docSaveStatus" class="text-muted small" style="display:none">
+                        <i class="bi bi-circle-fill text-success" style="font-size:.5rem"></i> Збережено
+                    </span>
+                </div>
+                <div class="d-flex gap-1 ms-auto">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnDocMode" title="Переключити режим">
+                        <i class="bi bi-layout-split me-1"></i>Режим
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnDocRefresh" title="Оновити перегляд">
+                        <i class="bi bi-arrow-repeat"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" id="btnDocReset" title="Скинути до шаблону">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Скинути
+                    </button>
+                    <a href="{{ url_for('invoices.render_invoice', inv_id=inv.id) }}"
+                       class="btn btn-sm btn-outline-secondary" target="_blank" id="btnDocPrint">
+                        <i class="bi bi-printer me-1"></i>Друк
+                    </a>
+                    <button type="button" class="btn btn-sm btn-primary" id="btnDocSave">
+                        <i class="bi bi-floppy me-1"></i>Зберегти
+                    </button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрити"></button>
+                </div>
+            </div>
+
+            {# Тулбар редактора #}
+            <div id="docEditorToolbar" class="d-flex flex-wrap gap-1 px-2 py-1 border-bottom align-items-center" style="flex-shrink:0;background:var(--topbar-bg,#fff)">
+                <div class="btn-group btn-group-sm">
+                    <button type="button" class="btn btn-outline-secondary" onclick="docCmd('bold')" title="Жирний"><i class="bi bi-type-bold"></i></button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="docCmd('italic')" title="Курсив"><i class="bi bi-type-italic"></i></button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="docCmd('underline')" title="Підкреслений"><i class="bi bi-type-underline"></i></button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="docCmd('strikeThrough')" title="Закреслений"><i class="bi bi-type-strikethrough"></i></button>
+                </div>
+                <div class="btn-group btn-group-sm">
+                    <button type="button" class="btn btn-outline-secondary" onclick="docCmd('justifyLeft')" title="Ліво"><i class="bi bi-text-left"></i></button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="docCmd('justifyCenter')" title="Центр"><i class="bi bi-text-center"></i></button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="docCmd('justifyRight')" title="Право"><i class="bi bi-text-right"></i></button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="docCmd('justifyFull')" title="По ширині"><i class="bi bi-justify"></i></button>
+                </div>
+                <select id="docTbFont" class="form-select form-select-sm" style="width:130px"
+                        onchange="docApplyFont(this.value);this.value=''" title="Шрифт виділеного">
+                    <option value="">Шрифт...</option>
+                    <option value="Times New Roman" style="font-family:'Times New Roman'">Times New Roman</option>
+                    <option value="Arial" style="font-family:Arial">Arial</option>
+                    <option value="Calibri" style="font-family:Calibri">Calibri</option>
+                    <option value="Georgia" style="font-family:Georgia">Georgia</option>
+                    <option value="Verdana" style="font-family:Verdana">Verdana</option>
+                    <option value="Courier New" style="font-family:'Courier New'">Courier New</option>
+                    <option value="Tahoma" style="font-family:Tahoma">Tahoma</option>
+                </select>
+                <select id="docTbSize" class="form-select form-select-sm" style="width:80px"
+                        onchange="docApplySize(this.value);this.value=''" title="Розмір тексту">
+                    <option value="">pt...</option>
+                    <option value="8">8 pt</option><option value="9">9 pt</option>
+                    <option value="10">10 pt</option><option value="11">11 pt</option>
+                    <option value="12">12 pt</option><option value="13">13 pt</option>
+                    <option value="14">14 pt</option><option value="16">16 pt</option>
+                    <option value="18">18 pt</option><option value="20">20 pt</option>
+                    <option value="24">24 pt</option><option value="28">28 pt</option>
+                </select>
+                <div class="btn-group btn-group-sm">
+                    <button type="button" class="btn btn-outline-secondary" onclick="docCmd('insertUnorderedList')" title="Список"><i class="bi bi-list-ul"></i></button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="docCmd('insertOrderedList')" title="Нум. список"><i class="bi bi-list-ol"></i></button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="docCmd('outdent')" title="Менший відступ"><i class="bi bi-text-indent-right"></i></button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="docCmd('indent')" title="Більший відступ"><i class="bi bi-text-indent-left"></i></button>
+                </div>
+                <input type="color" id="docColorPicker" class="form-control form-control-color form-control-sm"
+                       style="width:32px;height:28px;padding:1px" value="#000000"
+                       onchange="docCmd('foreColor',this.value)" title="Колір тексту">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnDocTable" title="Вставити таблицю">
+                    <i class="bi bi-table"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="docCmd('undo')" title="Відмінити"><i class="bi bi-arrow-counterclockwise"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="docCmd('redo')" title="Повернути"><i class="bi bi-arrow-clockwise"></i></button>
+            </div>
+
+            {# Основна область: шорткоди + редактор + перегляд #}
+            <div id="docMainLayout" class="d-flex" style="flex:1;overflow:hidden;min-height:0">
+
+                {# Ліва панель: шорткоди #}
+                <div id="docShortcodesPanel" class="flex-shrink-0 border-end"
+                     style="width:210px;overflow-y:auto;padding:8px;background:var(--table-header-bg,#f8f9fa)">
+                    <div class="fw-semibold text-muted small text-uppercase mb-2 px-1">Шорткоди</div>
+
+                    <div class="mb-2">
+                        <div class="text-muted" style="font-size:.7rem;font-weight:600;text-transform:uppercase;padding:2px 4px">Документ</div>
+                        {% for code, label in [
+                            ('{{invoice_number}}','Номер документа'),
+                            ('{{invoice_date}}','Дата документа'),
+                            ('{{base_document}}','Підстава'),
+                            ('{{total_sum}}','Загальна сума (цифрами)'),
+                            ('{{total_sum_words}}','Загальна сума (прописом)'),
+                            ('{{valid_until}}','Дійсна до'),
+                            ('{{doc_date_full}}','Дата прописом'),
+                            ('{{current_year}}','Поточний рік')
+                        ] %}
+                        <button type="button" class="btn btn-sm btn-light w-100 text-start py-0 px-2 mb-1 doc-sc-btn border"
+                                data-code="{{ code }}" title="{{ label }}"
+                                style="font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                            <span class="text-primary font-monospace">{{ code }}</span>
+                            <span class="text-muted d-block" style="font-size:.65rem">{{ label }}</span>
+                        </button>
+                        {% endfor %}
+                    </div>
+
+                    <div class="mb-2">
+                        <div class="text-muted" style="font-size:.7rem;font-weight:600;text-transform:uppercase;padding:2px 4px">Одержувач</div>
+                        {% for code, label in [
+                            ('{{recipient_name}}','ПІБ одержувача'),
+                            ('{{recipient_rank}}','Звання одержувача'),
+                            ('{{recipient_unit}}','Підрозділ одержувача')
+                        ] %}
+                        <button type="button" class="btn btn-sm btn-light w-100 text-start py-0 px-2 mb-1 doc-sc-btn border"
+                                data-code="{{ code }}" title="{{ label }}"
+                                style="font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                            <span class="text-primary font-monospace">{{ code }}</span>
+                            <span class="text-muted d-block" style="font-size:.65rem">{{ label }}</span>
+                        </button>
+                        {% endfor %}
+                    </div>
+
+                    <div class="mb-2">
+                        <div class="text-muted" style="font-size:.7rem;font-weight:600;text-transform:uppercase;padding:2px 4px">Підписанти</div>
+                        {% for code, label in [
+                            ('{{chief_name}}','Начальник служби — ПІБ'),
+                            ('{{chief_rank}}','Начальник служби — звання'),
+                            ('{{chief_tvo}}','ТВО позначка'),
+                            ('{{given_name}}','Здав — ПІБ'),
+                            ('{{given_rank}}','Здав — звання'),
+                            ('{{received_name}}','Прийняв — ПІБ'),
+                            ('{{received_rank}}','Прийняв — звання'),
+                            ('{{warehouse_name}}','Нач. складу — ПІБ'),
+                            ('{{warehouse_rank}}','Нач. складу — звання'),
+                            ('{{clerk_name}}','Діловод РС — ПІБ'),
+                            ('{{clerk_rank}}','Діловод РС — звання')
+                        ] %}
+                        <button type="button" class="btn btn-sm btn-light w-100 text-start py-0 px-2 mb-1 doc-sc-btn border"
+                                data-code="{{ code }}" title="{{ label }}"
+                                style="font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                            <span class="text-primary font-monospace">{{ code }}</span>
+                            <span class="text-muted d-block" style="font-size:.65rem">{{ label }}</span>
+                        </button>
+                        {% endfor %}
+                    </div>
+
+                    <div class="mb-2">
+                        <div class="text-muted" style="font-size:.7rem;font-weight:600;text-transform:uppercase;padding:2px 4px">Організація</div>
+                        {% for code, label in [
+                            ('{{unit_name}}','Назва частини'),
+                            ('{{service_name}}','Назва служби')
+                        ] %}
+                        <button type="button" class="btn btn-sm btn-light w-100 text-start py-0 px-2 mb-1 doc-sc-btn border"
+                                data-code="{{ code }}" title="{{ label }}"
+                                style="font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                            <span class="text-primary font-monospace">{{ code }}</span>
+                            <span class="text-muted d-block" style="font-size:.65rem">{{ label }}</span>
+                        </button>
+                        {% endfor %}
+                    </div>
+
+                    <div class="mb-2">
+                        <div class="text-muted" style="font-size:.7rem;font-weight:600;text-transform:uppercase;padding:2px 4px">Таблиці</div>
+                        {% for code, label in [
+                            ('{{table:items_list}}','Таблиця позицій майна'),
+                            ('{{table:signatories}}','Блок підписантів')
+                        ] %}
+                        <button type="button" class="btn btn-sm btn-light w-100 text-start py-0 px-2 mb-1 doc-sc-btn border"
+                                data-code="{{ code }}" title="{{ label }}"
+                                style="font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                            <span class="text-primary font-monospace">{{ code }}</span>
+                            <span class="text-muted d-block" style="font-size:.65rem">{{ label }}</span>
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                {# Центр: редактор (A4) #}
+                <div id="docEditorSection" class="flex-grow-1 d-flex flex-column overflow-hidden border-end">
+                    <div id="docEditorScroll" style="flex:1;overflow-y:auto;background:var(--body-bg,#e8e8e8);padding:20px">
+                        <div id="docPageWrapper" style="width:794px;margin:0 auto;background:var(--card-bg,white);box-shadow:0 2px 8px rgba(0,0,0,.2)">
+                            <div id="docEditor"
+                                 contenteditable="true"
+                                 spellcheck="false"
+                                 style="outline:none;font-family:'Times New Roman',serif;font-size:12pt;line-height:1.6;padding:75px 38px 75px 113px;min-height:500px">
+                                <p class="text-muted text-center"><em>Завантаження...</em></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {# Права панель: live preview #}
+                <div id="docPreviewSection" style="width:45%;flex-shrink:0;overflow-y:auto;background:var(--body-bg,#e8e8e8);padding:20px">
+                    <div style="text-align:center;margin-bottom:8px">
+                        <span class="badge bg-secondary" style="font-size:.65rem">ПЕРЕГЛЯД (шорткоди замінено)</span>
+                    </div>
+                    <div id="docPreviewWrapper" style="width:794px;margin:0 auto;background:var(--card-bg,white);box-shadow:0 2px 8px rgba(0,0,0,.2)">
+                        <div id="docPreviewContent"
+                             style="font-family:'Times New Roman',serif;font-size:12pt;line-height:1.6;padding:75px 38px 75px 113px;min-height:200px">
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Модал: Вставити таблицю (для doc editor) #}
+<div class="modal fade" id="docTableModal" tabindex="-1" style="z-index:1070">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title">Вставити таблицю</h6>
+                <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="form-label form-label-sm">Рядків</label>
+                        <input type="number" id="docTblRows" class="form-control form-control-sm" value="3" min="1" max="50">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label form-label-sm">Стовпців</label>
+                        <input type="number" id="docTblCols" class="form-control form-control-sm" value="4" min="1" max="20">
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check form-check-sm">
+                            <input type="checkbox" id="docTblHeader" class="form-check-input" checked>
+                            <label class="form-check-label" for="docTblHeader">Перший рядок — заголовок</label>
+                        </div>
+                        <div class="form-check form-check-sm">
+                            <input type="checkbox" id="docTblBorder" class="form-check-input" checked>
+                            <label class="form-check-label" for="docTblBorder">Рамка</label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label form-label-sm">Ширина</label>
+                        <input type="text" id="docTblWidth" class="form-control form-control-sm" value="100%">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-sm btn-primary" id="btnDocInsertTable">Вставити</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const DOC_INV_ID = {{ inv.id }};
+
+// ── Елементи ─────────────────────────────────────────────────
+const docEditor       = document.getElementById('docEditor');
+const docPreviewContent = document.getElementById('docPreviewContent');
+const docSaveStatus   = document.getElementById('docSaveStatus');
+
+// ── Режим відображення: 0=split, 1=editor-only, 2=preview-only
+let docLayoutMode = 0;
+function applyDocLayout() {
+    const edSec = document.getElementById('docEditorSection');
+    const prSec = document.getElementById('docPreviewSection');
+    const sc    = document.getElementById('docShortcodesPanel');
+    if (docLayoutMode === 0) {
+        edSec.style.display = ''; prSec.style.display = '';
+        edSec.style.flex = '1'; prSec.style.width = '45%';
+    } else if (docLayoutMode === 1) {
+        edSec.style.display = ''; prSec.style.display = 'none';
+        edSec.style.flex = '1';
+    } else {
+        edSec.style.display = 'none'; prSec.style.display = '';
+        prSec.style.width = '100%';
+    }
+}
+document.getElementById('btnDocMode').addEventListener('click', () => {
+    docLayoutMode = (docLayoutMode + 1) % 3;
+    const labels = ['Розділений', 'Тільки редактор', 'Тільки перегляд'];
+    document.getElementById('btnDocMode').innerHTML =
+        `<i class="bi bi-layout-split me-1"></i>${labels[docLayoutMode]}`;
+    applyDocLayout();
+    if (docLayoutMode !== 1) docRefreshPreview();
+});
+
+// ── Збереження вибірки ───────────────────────────────────────
+let docSavedRange = null;
+docEditor.addEventListener('blur', () => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) docSavedRange = sel.getRangeAt(0).cloneRange();
+});
+
+function docRestoreSelection() {
+    if (docSavedRange) {
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(docSavedRange);
+    } else {
+        docEditor.focus();
+    }
+}
+
+// ── Команди форматування ─────────────────────────────────────
+function docCmd(command, value) {
+    docRestoreSelection();
+    document.execCommand(command, false, value || null);
+    docEditor.focus();
+    docSchedulePreview();
+}
+
+function docApplyFont(fontName) {
+    if (!fontName) return;
+    docRestoreSelection();
+    document.execCommand('fontName', false, fontName);
+    docEditor.focus();
+    docSchedulePreview();
+}
+
+function docApplySize(pt) {
+    if (!pt) return;
+    docRestoreSelection();
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) { docEditor.focus(); return; }
+    const range = sel.getRangeAt(0);
+    const span = document.createElement('span');
+    span.style.fontSize = pt + 'pt';
+    try {
+        range.surroundContents(span);
+    } catch(e) {
+        document.execCommand('insertHTML', false,
+            `<span style="font-size:${pt}pt">${range.toString()}</span>`);
+    }
+    docEditor.focus();
+    docSchedulePreview();
+}
+
+// ── Шорткоди ─────────────────────────────────────────────────
+document.querySelectorAll('.doc-sc-btn').forEach(btn => {
+    btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const code = btn.dataset.code;
+        docEditor.focus();
+        docRestoreSelection();
+        const span = document.createElement('span');
+        span.className = 'sc-token';
+        span.contentEditable = 'false';
+        span.setAttribute('data-sc', code);
+        span.textContent = code;
+        if (docSavedRange) {
+            docSavedRange.deleteContents();
+            docSavedRange.insertNode(span);
+            const r = document.createRange();
+            r.setStartAfter(span); r.collapse(true);
+            const sel = window.getSelection();
+            sel.removeAllRanges(); sel.addRange(r);
+            docSavedRange = r.cloneRange();
+        } else {
+            document.execCommand('insertHTML', false, span.outerHTML);
+        }
+        docSchedulePreview();
+    });
+});
+
+// ── Вставка таблиці ──────────────────────────────────────────
+document.getElementById('btnDocTable').addEventListener('click', () => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) docSavedRange = sel.getRangeAt(0).cloneRange();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('docTableModal')).show();
+});
+
+document.getElementById('btnDocInsertTable').addEventListener('click', () => {
+    const rows = parseInt(document.getElementById('docTblRows').value) || 3;
+    const cols = parseInt(document.getElementById('docTblCols').value) || 4;
+    const hasBorder = document.getElementById('docTblBorder').checked;
+    const hasHeader = document.getElementById('docTblHeader').checked;
+    const width = document.getElementById('docTblWidth').value.trim() || '100%';
+    const bs = hasBorder ? 'border:1px solid #000;border-collapse:collapse' : 'border-collapse:collapse';
+    const cs = hasBorder ? 'border:1px solid #000;padding:3px 6px' : 'padding:3px 6px';
+    let html = `<table style="${bs};width:${width}">`;
+    for (let r = 0; r < rows; r++) {
+        html += '<tr>';
+        for (let c = 0; c < cols; c++) {
+            const thBg = getComputedStyle(document.documentElement).getPropertyValue('--table-header-bg').trim() || '#f0f0f0';
+            html += (r === 0 && hasHeader)
+                ? `<th style="${cs};background:${thBg}"> </th>`
+                : `<td style="${cs}"> </td>`;
+        }
+        html += '</tr>';
+    }
+    html += '</table><p><br></p>';
+    bootstrap.Modal.getInstance(document.getElementById('docTableModal')).hide();
+    docRestoreSelection();
+    document.execCommand('insertHTML', false, html);
+    docEditor.focus();
+    docSchedulePreview();
+});
+
+// ── Отримати HTML (замінити sc-token на код) ──────────────────
+function getDocEditorHTML() {
+    const clone = docEditor.cloneNode(true);
+    clone.querySelectorAll('.sc-token').forEach(el => {
+        el.replaceWith(document.createTextNode(el.getAttribute('data-sc') || el.textContent));
+    });
+    return clone.innerHTML;
+}
+
+// ── Підсвітка шорткодів ───────────────────────────────────────
+function docHighlightShortcodes() {
+    const walker = document.createTreeWalker(docEditor, NodeFilter.SHOW_TEXT);
+    const regex = /\{\{[^}]+\}\}/g;
+    const nodes = [];
+    let node;
+    while ((node = walker.nextNode())) {
+        if (node.parentElement?.classList.contains('sc-token')) continue;
+        regex.lastIndex = 0;
+        if (regex.test(node.textContent)) nodes.push(node);
+    }
+    nodes.forEach(textNode => {
+        const frag = document.createDocumentFragment();
+        let last = 0;
+        const text = textNode.textContent;
+        regex.lastIndex = 0;
+        let m;
+        while ((m = regex.exec(text)) !== null) {
+            if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+            const sp = document.createElement('span');
+            sp.className = 'sc-token';
+            sp.contentEditable = 'false';
+            sp.setAttribute('data-sc', m[0]);
+            sp.textContent = m[0];
+            frag.appendChild(sp);
+            last = m.index + m[0].length;
+        }
+        if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+        textNode.parentNode.replaceChild(frag, textNode);
+    });
+}
+
+// ── Live preview ──────────────────────────────────────────────
+let docPreviewTimer = null;
+function docSchedulePreview() {
+    clearTimeout(docPreviewTimer);
+    docPreviewTimer = setTimeout(docRefreshPreview, 600);
+}
+
+async function docRefreshPreview() {
+    if (docLayoutMode === 1) return;
+    const html = getDocEditorHTML();
+    try {
+        const resp = await fetch(`/invoices/${DOC_INV_ID}/preview`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({html: html})
+        });
+        if (resp.ok) {
+            const d = await resp.json();
+            // d.html — відрендерений HTML-фрагмент (шорткоди замінено)
+            docPreviewContent.innerHTML = d.html || '';
+        }
+    } catch(e) { console.error('preview error', e); }
+}
+
+document.getElementById('btnDocRefresh').addEventListener('click', docRefreshPreview);
+docEditor.addEventListener('input', docSchedulePreview);
+
+// ── Завантаження контенту при відкритті модалу ───────────────
+let docEditorLoaded = false;
+
+async function openDocEditor() {
+    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('docEditorModal'));
+    modal.show();
+    if (docEditorLoaded) return;
+    docEditorLoaded = true;
+    try {
+        // Завантажуємо сирий HTML (з шорткодами) для редагування
+        const resp = await fetch(`/invoices/${DOC_INV_ID}/get-body`);
+        if (resp.ok) {
+            const d = await resp.json();
+            docEditor.innerHTML = d.html || '<p>Шаблон не знайдено. Оберіть шаблон у налаштуваннях.</p>';
+            docHighlightShortcodes();
+            docSaveStatus.style.display = '';
+            docRefreshPreview();
+        } else {
+            docEditor.innerHTML = '<p class="text-danger">Помилка завантаження шаблону</p>';
+        }
+    } catch(e) {
+        docEditor.innerHTML = '<p class="text-danger">Помилка завантаження документа</p>';
+    }
+}
+
+// ── Зберегти ──────────────────────────────────────────────────
+document.getElementById('btnDocSave').addEventListener('click', async () => {
+    const html = getDocEditorHTML();
+    const btn = document.getElementById('btnDocSave');
+    btn.disabled = true;
+    try {
+        const resp = await fetch(`/invoices/${DOC_INV_ID}/save-body`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({html: html})
+        });
+        if (resp.ok) {
+            docSaveStatus.innerHTML = '<i class="bi bi-circle-fill text-success" style="font-size:.5rem"></i> Збережено';
+            docSaveStatus.style.display = '';
+        } else {
+            docSaveStatus.innerHTML = '<i class="bi bi-circle-fill text-danger" style="font-size:.5rem"></i> Помилка';
+            docSaveStatus.style.display = '';
+        }
+    } catch(e) {
+        docSaveStatus.innerHTML = '<i class="bi bi-circle-fill text-danger" style="font-size:.5rem"></i> Помилка';
+        docSaveStatus.style.display = '';
+    }
+    btn.disabled = false;
+});
+
+// ── Скинути до шаблону ────────────────────────────────────────
+document.getElementById('btnDocReset').addEventListener('click', async () => {
+    if (!confirm('Скинути документ до шаблону? Усі зміни буде втрачено.')) return;
+    const btn = document.getElementById('btnDocReset');
+    btn.disabled = true;
+    try {
+        const resp = await fetch(`/invoices/${DOC_INV_ID}/reset-body`, {method: 'POST'});
+        if (resp.ok) {
+            docEditorLoaded = false;
+            docEditor.innerHTML = '<p class="text-muted text-center"><em>Завантаження...</em></p>';
+            await openDocEditor();
+        }
+    } catch(e) {}
+    btn.disabled = false;
+});
+
+// ── Підсвітка при вставці ─────────────────────────────────────
+docEditor.addEventListener('paste', () => {
+    setTimeout(docHighlightShortcodes, 100);
+});
+</script>
+
+<style>
+.sc-token {
+    display: inline-block;
+    background: rgba(var(--app-primary-rgb, 13,110,253), .12);
+    border: 1px solid rgba(var(--app-primary-rgb, 13,110,253), .3);
+    border-radius: 3px;
+    padding: 0 4px;
+    color: var(--app-primary, #0a3a6e);
+    font-family: monospace;
+    font-size: .82em;
+    line-height: 1.4;
+    cursor: default;
+    user-select: none;
+}
+#docEditor table td, #docEditor table th {
+    min-width: 20px;
+}
+#docEditor table td:focus, #docEditor table th:focus {
+    outline: 2px solid rgba(var(--app-primary-rgb, 13,110,253), .33);
+}
+.doc-sc-btn:hover {
+    background: rgba(var(--app-primary-rgb, 13,110,253), .1) !important;
+    border-color: rgba(var(--app-primary-rgb, 13,110,253), .4) !important;
+}
+#docEditorModal .modal-content { display: flex; flex-direction: column; }
+#docMainLayout { height: calc(100% - 92px); }
+</style>
+
+<script>
+const INV_ID = {{ inv.id }};
+
+// ── Отримано ─────────────────────────────────────────────────
+{% if inv.status == 'issued' %}
+const receiveModal = new bootstrap.Modal(document.getElementById('receiveModal'));
+
+document.getElementById('btnReceive').addEventListener('click', () => receiveModal.show());
+
+document.getElementById('btnReceiveConfirm').addEventListener('click', async () => {
+    const items = [];
+    document.querySelectorAll('.receive-actual').forEach(inp => {
+        items.push({ id: parseInt(inp.dataset.itemId), actual_qty: parseFloat(inp.value) || 0 });
+    });
+    const res  = await fetch(`/invoices/${INV_ID}/receive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items })
+    });
+    const data = await res.json();
+    if (data.ok) { receiveModal.hide(); showToast('Статус оновлено', 'success'); setTimeout(() => location.reload(), 600); }
+    else showToast(data.error || 'Помилка', 'danger');
+});
+{% endif %}
+
+// ── Скан ─────────────────────────────────────────────────────
+{% if inv.status not in ('processed', 'cancelled') %}
+const scanModal = new bootstrap.Modal(document.getElementById('scanModal'));
+
+function openScanModal() { scanModal.show(); }
+document.getElementById('btnScanUpload')?.addEventListener('click', openScanModal);
+document.getElementById('btnScanUploadAlert')?.addEventListener('click', openScanModal);
+
+document.getElementById('btnScanSave').addEventListener('click', async () => {
+    const file = document.getElementById('scanFile').files[0];
+    if (!file) { showToast('Оберіть файл', 'warning'); return; }
+    const fd = new FormData();
+    fd.append('scan', file);
+    const res  = await fetch(`/invoices/${INV_ID}/scan`, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.ok) { scanModal.hide(); showToast('Скан завантажено', 'success'); setTimeout(() => location.reload(), 600); }
+    else showToast(data.error || 'Помилка', 'danger');
+});
+
+document.getElementById('btnScanDelete')?.addEventListener('click', async () => {
+    if (!confirm('Видалити скан?')) return;
+    const res  = await fetch(`/invoices/${INV_ID}/scan/delete`, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) { scanModal.hide(); showToast('Скан видалено', 'success'); setTimeout(() => location.reload(), 600); }
+    else showToast(data.error || 'Помилка', 'danger');
+});
+{% endif %}
+</script>
+{% endblock %}
