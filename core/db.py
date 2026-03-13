@@ -1,5 +1,6 @@
 """
 core/db.py — підключення до SQLite та створення всіх таблиць
+Author: White
 """
 import sqlite3
 from datetime import datetime
@@ -1455,8 +1456,8 @@ def _insert_defaults(conn: sqlite3.Connection) -> None:
     # Початкові налаштування
     year = datetime.now().year
     defaults = [
-        ("company_name",        "А5027"),
-        ("service_name",        "Речова служба тилу"),
+        ("company_name",        ""),
+        ("service_name",        ""),
         ("chief_name",          ""),
         ("chief_rank",          ""),
         ("chief_is_tvo",        "0"),

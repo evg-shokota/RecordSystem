@@ -60,6 +60,7 @@ class Plugin(BasePlugin):
     on_*     → emit    (data hook)
     filter_* → filter  (filter hook)
     ui_*     → collect / collect_html  (ui hook — тип визначається реєстром)
+Author: White
 """
 
 

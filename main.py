@@ -1,6 +1,8 @@
 """
-main.py — точка входу системи обліку речового майна А5027
+main.py — точка входу системи обліку речового майна
 Flask + PyWebView
+
+Author: White
 """
 import os
 import sys
@@ -75,7 +77,7 @@ _active_slot = _slot_stub
 @app.context_processor
 def _inject_globals():
     from core.settings import get_setting
-    unit_name = get_setting("company_name", "А5027") or "А5027"
+    unit_name = get_setting("company_name", "") or "Речова служба"
     return {"slot": _active_slot, "unit_name": unit_name}
 
 
@@ -536,7 +538,7 @@ def main():
 
     if WEBVIEW_AVAILABLE:
         window = webview.create_window(
-            title="Облік речового майна — А5027",
+            title="Облік речового майна",
             url="http://127.0.0.1:5050",
             width=1400,
             height=900,

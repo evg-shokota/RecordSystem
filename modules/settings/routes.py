@@ -1,6 +1,7 @@
 """
 modules/settings/routes.py — Налаштування системи
 Включає: підрозділи, групи, словник майна, типи документів, норма №1, реквізити
+Author: White
 """
 import json
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify, flash

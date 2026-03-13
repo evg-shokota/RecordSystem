@@ -12,6 +12,7 @@ plugins/example_plugin/plugin.py — Повний приклад плагіна 
   1. Скопіюйте папку example_plugin → your_plugin
   2. Перейменуйте папку і змініть slug/name/description нижче
   3. Видаліть непотрібні хуки, залиште лише ті що треба
+Author: White
 """
 from core.plugin_base import BasePlugin
 
@@ -23,7 +24,7 @@ class Plugin(BasePlugin):
     slug        = "example_plugin"
     version     = "1.0.0"
     description = "Повний демонстраційний модуль — шаблон для написання власних розширень"
-    author      = "А5027 Dev"
+    author      = "White"
     icon        = "bi-puzzle-fill"
 
     # ── Налаштування модуля (відображаються у /plugins/<slug>/settings) ─

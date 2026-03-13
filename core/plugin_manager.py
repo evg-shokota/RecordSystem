@@ -7,6 +7,7 @@ core/plugin_manager.py — Менеджер плагінів системи.
 - Реєстрацію активних плагінів у Flask app
 - Надання меню-пунктів для sidebar
 - Встановлення / видалення / увімкнення / вимкнення
+Author: White
 """
 
 import importlib.util

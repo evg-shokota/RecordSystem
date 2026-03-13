@@ -1,5 +1,6 @@
 """
 modules/warehouse/routes.py — Склад: залишки, прихід, інвентаризація
+Author: White
 """
 import json
 import os
@@ -803,7 +804,7 @@ def inventory_print(inv_id):
         (inv_id,)
     ).fetchall()
     from core.settings import get_setting
-    unit_name = get_setting("company_name", "А5027") or "А5027"
+    unit_name = get_setting("company_name", "") or ""
     conn.close()
 
     total_expected = sum(r["qty_expected"] * r["price"] for r in items)
@@ -829,7 +830,7 @@ def inventory_export_xlsx(inv_id):
         (inv_id,)
     ).fetchall()
     from core.settings import get_setting
-    unit_name = get_setting("company_name", "А5027") or "А5027"
+    unit_name = get_setting("company_name", "") or ""
     conn.close()
 
     try:

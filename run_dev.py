@@ -1,6 +1,7 @@
 """
 run_dev.py — запуск для розробки з доступом по локальній мережі.
 Запуск: py run_dev.py
+Author: White
 """
 import traceback
 import sys
@@ -103,7 +104,7 @@ atexit.register(close_firewall, RULE_NAME)
 local_ips = get_local_ips()
 
 print("=" * 52)
-print("  Система обліку речового майна А5027")
+print("  Система обліку речового майна")
 print("=" * 52)
 print(f"  Локально:    http://127.0.0.1:{PORT}")
 for ip in local_ips:

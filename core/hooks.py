@@ -15,6 +15,7 @@ core/hooks.py — Система хуків і UI-слотів.
 Використання в шаблонах:
     {{ slot('dashboard.widgets') | safe }}
     {% set tabs = slot('personnel.card.tabs') %}
+Author: White
 """
 
 from __future__ import annotations

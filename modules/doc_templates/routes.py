@@ -2,6 +2,7 @@
 modules/doc_templates/routes.py — Шаблони документів
 CRUD + WYSIWYG редактор з live preview (side-by-side)
 Групи, системні шаблони (захищені від видалення), копіювання, set-default
+Author: White
 """
 import json
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify

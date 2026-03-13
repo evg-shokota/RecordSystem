@@ -1,5 +1,6 @@
 """
 core/renderer.py — єдина система рендеру документів із шаблонів
+Author: White
 
 Відповідає за:
   1. Заміну шорткодів в HTML шаблону реальними даними (або демоданими)
@@ -402,8 +403,8 @@ def _demo_context() -> dict:
     ctx.setdefault("warehouse_rank", "сержант")
     ctx.setdefault("clerk_name",     "Бондар Б.Б.")
     ctx.setdefault("clerk_rank",     "ст. солдат")
-    ctx.setdefault("unit_name",      "А5027")
-    ctx.setdefault("service_name",   "Речова служба тилу")
+    ctx.setdefault("unit_name",      "")
+    ctx.setdefault("service_name",   "")
 
     ctx["table:items_list"] = (
         '<table border="1" cellpadding="4" cellspacing="0" style="width:100%;border-collapse:collapse">'

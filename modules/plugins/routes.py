@@ -1,5 +1,6 @@
 """
 modules/plugins/routes.py — Керування плагінами системи.
+Author: White
 """
 import os
 import zipfile

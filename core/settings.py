@@ -1,5 +1,6 @@
 """
 core/settings.py — читання та запис налаштувань системи
+Author: White
 """
 from core.db import get_connection
 

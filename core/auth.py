@@ -1,5 +1,6 @@
 """
 core/auth.py — авторизація, ролі, сесії
+Author: White
 """
 import json
 import bcrypt

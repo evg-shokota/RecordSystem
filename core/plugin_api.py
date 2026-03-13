@@ -25,6 +25,7 @@ def my_view():
     items = bp.api.warehouse.get_stock()
     ...
 ─────────────────────────────────────────────
+Author: White
 """
 
 from __future__ import annotations

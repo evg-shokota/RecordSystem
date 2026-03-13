@@ -9,6 +9,7 @@ core/warehouse.py — спільна логіка складу
   qty_reserved  = зарезервовано (накладні issued/received + РВ active)
   qty_pending   = у чернетках (накладні assigned + РВ draft) — тільки попередження
   qty_free      = qty_in - qty_out - qty_reserved  ← доступно для нових накладних
+Author: White
 """
 
 

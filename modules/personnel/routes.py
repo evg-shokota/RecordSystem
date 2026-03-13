@@ -1,5 +1,6 @@
 """
 modules/personnel/routes.py — маршрути модуля Особовий склад
+Author: White
 """
 import json
 from datetime import datetime

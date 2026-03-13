@@ -8,6 +8,7 @@ modules/import_export/routes.py — Імпорт та експорт даних
   GET  /import-export/db/export              — скачати database.db
   GET  /import-export/db/import              — форма заміни БД
   POST /import-export/db/import              — замінити БД (з бекапом)
+Author: White
 """
 import os
 import json

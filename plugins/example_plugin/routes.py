@@ -7,6 +7,7 @@ plugins/example_plugin/routes.py — Приклад Blueprint плагіна.
   • Запис у власну БД-таблицю (api.db.write)
   • Читання через api.db.execute
   • Доступ до всіх підсистем SystemAPI
+Author: White
 """
 from flask import Blueprint, render_template, jsonify, request
 from core.auth import login_required
@@ -34,7 +35,7 @@ def index():
     recent_invoices = bp.api.invoices.get_list(limit=5)
 
     # ── SystemAPI: settings ───────────────────────────────────────────
-    unit_name = bp.api.settings.get("company_name", "А5027")
+    unit_name = bp.api.settings.get("company_name", "")
 
     # ── SystemAPI: db.execute (власна таблиця) ────────────────────────
     log_entries = bp.api.db.execute(

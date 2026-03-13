@@ -3,6 +3,7 @@ modules/supply_norms/routes.py — Норми видачі майна
 
 Норма = шаблон переліку майна що повинен отримати військовослужбовець
 залежно від типу контракту (Контракт 3 форма, Мобілізований тощо).
+Author: White
 """
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify, flash
 from core.auth import login_required

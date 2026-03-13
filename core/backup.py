@@ -1,6 +1,7 @@
 """
 core/backup.py — резервне копіювання БД
 Ротація: 7 щоденних, 1 недільний, 1 місячний, 1 річний
+Author: White
 """
 import shutil
 import os

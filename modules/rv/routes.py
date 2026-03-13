@@ -12,6 +12,7 @@ modules/rv/routes.py — Роздавальні відомості (Додато
   active    — активна (видача ще не завершена)
   closed    — закрита (всі підписали)
   cancelled — скасована
+Author: White
 """
 import json
 import time

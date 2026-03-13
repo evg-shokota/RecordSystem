@@ -1,5 +1,6 @@
 """
 modules/feedback/routes.py — Багтрекер / Побажання
+Author: White
 """
 import io
 from datetime import datetime
