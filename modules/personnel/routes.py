@@ -478,6 +478,7 @@ def _build_property_card(conn, person_id: int) -> dict:
     raw = conn.execute("""
         SELECT pi.id, pi.quantity, pi.price, pi.issue_date, pi.status,
                pi.invoice_id, pi.sheet_id, pi.source_type,
+               pi.source_doc_number, pi.source_doc_date,
                d.unit_of_measure,
                nd.id AS nd_id, nd.name AS nd_name,
                ndg.name AS nd_group_name,
@@ -524,13 +525,19 @@ def _build_property_card(conn, person_id: int) -> dict:
         else:
             src = r["source_type"] or "manual"
             if src == "attestat_import":
-                # Всі записи з атестату — одна фіксована колонка
-                key = "attestat"
+                # Кожен унікальний атестат (номер+дата) — окрема колонка
+                doc_num  = (r["source_doc_number"] or "").strip()
+                doc_date = (r["source_doc_date"] or "").strip()
+                key = f"attestat_{doc_num}_{doc_date}" if (doc_num or doc_date) else "attestat"
                 if key not in docs_map:
+                    if doc_num:
+                        label = f"Атестат №{doc_num}"
+                    else:
+                        label = "Атестат"
                     docs_map[key] = {
                         "key": key, "id": None,
-                        "label": "Атестат",
-                        "date": "",
+                        "label": label,
+                        "date": doc_date or "",
                         "type": "attestat_import",
                     }
             else:
@@ -585,7 +592,9 @@ def _build_property_card(conn, person_id: int) -> dict:
         elif r["sheet_id"] and f"rv_{r['sheet_id']}" in docs_map:
             doc_key = f"rv_{r['sheet_id']}"
         elif (r["source_type"] or "") == "attestat_import":
-            doc_key = "attestat"
+            doc_num  = (r["source_doc_number"] or "").strip()
+            doc_date = (r["source_doc_date"] or "").strip()
+            doc_key = f"attestat_{doc_num}_{doc_date}" if (doc_num or doc_date) else "attestat"
         else:
             doc_key = f"manual_{r['id']}"
 
@@ -1524,7 +1533,18 @@ def attestat_import(person_id):
         return redirect(url_for("personnel.index"))
 
     if request.method == "POST":
-        rows = request.get_json(silent=True) or []
+        payload = request.get_json(silent=True) or {}
+        # Підтримуємо два формати: {attestat_number, attestat_date, rows:[...]}
+        # або старий: просто масив рядків
+        if isinstance(payload, list):
+            rows = payload
+            attestat_number = None
+            attestat_date   = None
+        else:
+            rows = payload.get("rows") or []
+            attestat_number = (payload.get("attestat_number") or "").strip() or None
+            attestat_date   = (payload.get("attestat_date") or "").strip() or None
+
         if not rows:
             conn.close()
             return jsonify({"ok": False, "error": "Немає рядків для збереження"}), 400
@@ -1533,18 +1553,17 @@ def attestat_import(person_id):
         saved = 0
         errors = []
         for i, row in enumerate(rows):
-            item_id   = row.get("item_id")
-            quantity  = float(row.get("quantity") or 1)
-            price     = float(row.get("price") or 0)
-            category  = row.get("category") or "I"
-            issue_date = row.get("issue_date") or today
-            notes     = (row.get("notes") or "").strip() or None
+            item_id    = row.get("item_id")
+            quantity   = float(row.get("quantity") or 1)
+            price      = float(row.get("price") or 0)
+            category   = row.get("category") or "II"
+            issue_date = row.get("issue_date") or attestat_date or today
+            notes      = (row.get("notes") or "").strip() or None
 
             if not item_id:
                 errors.append(f"Рядок {i+1}: не вибрано найменування")
                 continue
 
-            # Перевірка що item_id існує
             item = conn.execute("SELECT id FROM item_dictionary WHERE id=?", (item_id,)).fetchone()
             if not item:
                 errors.append(f"Рядок {i+1}: невідоме майно (id={item_id})")
@@ -1553,19 +1572,23 @@ def attestat_import(person_id):
             conn.execute("""
                 INSERT INTO personnel_items
                     (personnel_id, item_id, quantity, price, category,
-                     source_type, issue_date, wear_started_date, status,
+                     source_type, source_doc_number, source_doc_date,
+                     issue_date, wear_started_date, status,
                      notes, created_at, updated_at)
                 VALUES (?,?,?,?,?,
-                        'attestat_import',?,?,  'active',
+                        'attestat_import',?,?,
+                        ?,?, 'active',
                         ?,datetime('now','localtime'),datetime('now','localtime'))
             """, (person_id, item_id, quantity, price, category,
+                  attestat_number, attestat_date,
                   issue_date, issue_date, notes))
             saved += 1
 
         if saved:
             conn.commit()
             log_action("add", "personnel_items", person_id,
-                       new_data={"source": "attestat_import", "count": saved})
+                       new_data={"source": "attestat_import", "count": saved,
+                                 "attestat_number": attestat_number})
 
         conn.close()
         return jsonify({"ok": True, "saved": saved, "errors": errors})
@@ -1587,6 +1610,7 @@ def attestat_import(person_id):
     existing = conn.execute("""
         SELECT pi.id, pi.quantity, pi.price, pi.category,
                pi.issue_date, pi.notes,
+               pi.source_doc_number, pi.source_doc_date,
                pi.item_id,
                d.name AS item_name, d.unit_of_measure
         FROM personnel_items pi
@@ -1594,7 +1618,7 @@ def attestat_import(person_id):
         WHERE pi.personnel_id = ?
           AND pi.source_type = 'attestat_import'
           AND pi.status = 'active'
-        ORDER BY pi.issue_date, d.name
+        ORDER BY pi.source_doc_date, pi.issue_date, d.name
     """, (person_id,)).fetchall()
     existing = [dict(r) for r in existing]
 

@@ -1024,6 +1024,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # warehouse_income: чернетка (застарілий підхід — замінено на income_docs)
     add_column_if_missing("warehouse_income", "status", "TEXT NOT NULL DEFAULT 'confirmed'")
 
+    # personnel_items: номер і дата документа-джерела (атестат, наказ тощо)
+    add_column_if_missing("personnel_items", "source_doc_number", "TEXT")
+    add_column_if_missing("personnel_items", "source_doc_date",   "TEXT")
+
     # ── Чернетки приходу (документ-заголовок + позиції) ─────────────
     cur.execute("""
         CREATE TABLE IF NOT EXISTS income_docs (

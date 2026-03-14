@@ -404,8 +404,7 @@
 
             {% if property_card.rows %}
             {%- set pc_docs       = property_card.docs %}
-            {%- set pc_attestat_doc = pc_docs | selectattr('type', 'equalto', 'attestat_import') | first | default(none) %}
-            {%- set pc_other_docs   = pc_docs | rejectattr('type', 'equalto', 'attestat_import') | list %}
+            {%- set pc_other_docs = pc_docs %}
             {%- set TOTAL_COLS = 12 %}
             {%- set empty_cols = TOTAL_COLS - (pc_other_docs | length) %}
 
@@ -415,7 +414,6 @@
                     <col style="width:28px;">     {# № #}
                     <col style="width:200px;">    {# Назва #}
                     <col style="width:50px;">     {# Стан #}
-                    <col style="width:44px;">     {# Атестат (завжди одна) #}
                     {% for _ in pc_other_docs %}<col style="width:42px;">{% endfor %}
                     {% for _ in range(empty_cols) %}<col style="width:38px;">{% endfor %}
                     <col style="width:38px;">     {# Разом #}
@@ -426,27 +424,10 @@
                         <th rowspan="2">#</th>
                         <th rowspan="2" class="text-start">Найменування</th>
                         <th rowspan="2" title="Стан забезпечення">Стан</th>
-
-                        {# Атестат — завжди одна фіксована колонка #}
-                        <th rowspan="2" style="height:55px; padding:2px;">
-                            <div style="writing-mode:vertical-rl; transform:rotate(180deg);
-                                        white-space:nowrap; font-size:0.65rem; line-height:1.2;">
-                                {% if pc_attestat_doc %}
-                                <a href="{{ url_for('personnel.attestat_import', person_id=person.id) }}"
-                                   class="text-decoration-none text-info" target="_blank"
-                                   title="Прийом з атестату">
-                                    <i class="bi bi-box-arrow-in-down"></i> Атестат
-                                </a>
-                                {% else %}
-                                <span class="text-muted">Атестат</span>
-                                {% endif %}
-                            </div>
-                        </th>
-
-                        {# Блок накладних/РВ #}
-                        <th colspan="{{ TOTAL_COLS }}" style="font-size:0.7rem;">
+                        <th colspan="{{ pc_other_docs | length if pc_other_docs else 1 }}" style="font-size:0.7rem;">
                             Найменування, номер і дата документа
                         </th>
+                        {% for _ in range(empty_cols) %}<th style="font-size:0.6rem; color:#ccc;">&nbsp;</th>{% endfor %}
                         <th rowspan="2" style="font-size:0.7rem;">Разом</th>
                     </tr>
 
@@ -468,6 +449,13 @@
                                 <i class="bi bi-list-columns-reverse" style="font-size:0.65rem;"></i><br>
                                 <b>{{ doc.label }}</b>
                             </a>
+                            {% elif doc.type == 'attestat_import' %}
+                            <a href="{{ url_for('personnel.attestat_import', person_id=person.id) }}"
+                               class="text-decoration-none text-info d-block" target="_blank"
+                               title="Прийом з атестату">
+                                <i class="bi bi-box-arrow-in-down" style="font-size:0.65rem;"></i><br>
+                                <b>{{ doc.label }}</b>
+                            </a>
                             {% else %}
                             <span style="font-size:0.65rem;">{{ doc.label }}</span>
                             {% endif %}
@@ -475,11 +463,6 @@
                             <div class="text-muted" style="font-size:0.6rem;">{{ doc.date }}</div>
                             {% endif %}
                         </th>
-                        {% endfor %}
-
-                        {# Порожні колонки для майбутніх документів #}
-                        {% for i in range(empty_cols) %}
-                        <th style="font-size:0.6rem; color:#ccc; padding:1px;">&nbsp;</th>
                         {% endfor %}
                     </tr>
                 </thead>
@@ -529,13 +512,7 @@
                         <td class="text-center text-muted">—</td>
                         {% endif %}
 
-                        {# Атестат — одна клітинка #}
-                        {%- set atst_cell = row.cells.get('attestat') %}
-                        <td class="text-center">
-                            {% if atst_cell %}{{ atst_cell.qty|int if atst_cell.qty == atst_cell.qty|int else atst_cell.qty }}{% endif %}
-                        </td>
-
-                        {# Заповнені документи #}
+                        {# Всі документи (накладні, РВ, атестати) #}
                         {% for doc in pc_other_docs %}
                         {%- set cell = row.cells.get(doc.key) %}
                         <td class="text-center
