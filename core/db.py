@@ -1295,6 +1295,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
     cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('default_theme', 'default')")
     conn.commit()
 
+    # income_docs: підтримка attestat_import — прив'язка до особи
+    add_column_if_missing("income_docs", "person_id", "INTEGER REFERENCES personnel(id)")
+
+    # personnel_items: прив'язка до income_doc (для attestat_import)
+    add_column_if_missing("personnel_items", "income_doc_id", "INTEGER REFERENCES income_docs(id)")
+
     # rank_presets: нова таблиця через CREATE IF NOT EXISTS — міграція не потрібна,
     # але якщо таблиця вже існує без нових колонок — додаємо
     try:

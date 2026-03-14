@@ -6,9 +6,11 @@
 <a href="{{ url_for('personnel.card', person_id=person.id) }}" class="btn btn-sm btn-outline-secondary">
     <i class="bi bi-arrow-left me-1"></i>До картки
 </a>
-<button class="btn btn-sm btn-primary" id="btnSaveAll" disabled>
-    <i class="bi bi-floppy me-1"></i>Зберегти нові рядки
-</button>
+{% if person.is_active %}
+<a href="{{ url_for('attestat_import.new', person_id=person.id) }}" class="btn btn-sm btn-primary">
+    <i class="bi bi-plus-lg me-1"></i>Новий прийом з атестату
+</a>
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -20,357 +22,115 @@
     Майно буде записано як <code>attestat_import</code> і відображатиметься в картці та атестаті.
 </div>
 
-{# ── Вже внесені записи — згруповані по атестатах ── #}
-{% if existing %}
-{% set grouped = {} %}
-{% for r in existing %}
-    {% set gkey = (r.source_doc_number or '') ~ '|' ~ (r.source_doc_date or '') %}
-    {% if gkey not in grouped %}{% set _ = grouped.update({gkey: {'num': r.source_doc_number, 'date': r.source_doc_date, 'rows': []}}) %}{% endif %}
-    {% set _ = grouped[gkey]['rows'].append(r) %}
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% for cat, msg in messages %}
+<div class="alert alert-{{ 'danger' if cat == 'error' else cat }} alert-dismissible py-2 mb-3">
+    {{ msg }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
 {% endfor %}
-{% for gkey, g in grouped.items() %}
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-transparent d-flex align-items-center justify-content-between">
-        <span class="fw-medium">
-            <i class="bi bi-file-earmark-text me-1 text-muted"></i>
-            {% if g.num %}Атестат №{{ g.num }}{% else %}Без номера{% endif %}
-            {% if g.date %}<span class="text-muted fw-normal ms-2 small">від {{ g.date }}</span>{% endif %}
-        </span>
-        <span class="badge bg-secondary">{{ g.rows|length }} позицій</span>
+{% endwith %}
+
+{% if not docs %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+        <p class="mb-3">Ще немає жодного документу прийому з атестату</p>
+        {% if person.is_active %}
+        <a href="{{ url_for('attestat_import.new', person_id=person.id) }}" class="btn btn-primary">
+            <i class="bi bi-plus-lg me-1"></i>Створити перший документ
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% else %}
+
+{# ── Таблиця документів ── #}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent">
+        <span class="fw-medium">Документи прийому з атестату</span>
+        <span class="badge bg-secondary ms-2">{{ docs|length }}</span>
     </div>
     <div class="card-body p-0">
-        <table class="table table-sm align-middle mb-0">
+        <table class="table table-sm table-hover align-middle mb-0">
             <thead class="table-light">
                 <tr>
-                    <th style="width:30px" class="text-center text-muted">#</th>
-                    <th>Найменування майна</th>
-                    <th class="text-center" style="width:40px">Од.</th>
-                    <th class="text-center" style="width:70px">К-сть</th>
-                    <th class="text-center" style="width:90px">Ціна, грн</th>
-                    <th class="text-center" style="width:50px">Кат.</th>
+                    <th style="width:36px" class="text-center text-muted">#</th>
+                    <th>Номер атестату</th>
                     <th class="text-center" style="width:110px">Дата</th>
-                    <th>Примітка</th>
-                    <th style="width:36px"></th>
+                    <th class="text-center" style="width:70px">Позицій</th>
+                    <th class="text-right" style="width:120px">Сума, грн</th>
+                    <th class="text-center" style="width:80px">Скан</th>
+                    <th class="text-center" style="width:90px">Статус</th>
+                    <th style="width:160px"></th>
                 </tr>
             </thead>
             <tbody>
-                {% for r in g.rows %}
-                <tr id="ex-row-{{ r.id }}">
-                    <td class="text-center text-muted small">{{ loop.index }}</td>
-                    <td>{{ r.item_name }}</td>
-                    <td class="text-center text-muted small">{{ r.unit_of_measure or 'шт' }}</td>
-                    <td class="text-center">{{ r.quantity }}</td>
-                    <td class="text-end">{{ "%.2f"|format(r.price) if r.price else '—' }}</td>
-                    <td class="text-center">{{ r.category or '—' }}</td>
-                    <td class="text-center">{{ r.issue_date or '—' }}</td>
-                    <td class="text-muted small">{{ r.notes or '' }}</td>
-                    <td class="text-center">
-                        <button type="button"
-                                class="btn btn-sm btn-outline-danger py-0 px-1 btn-del-existing"
-                                data-id="{{ r.id }}"
-                                title="Видалити">
-                            <i class="bi bi-x-lg"></i>
+            {% for doc in docs %}
+            <tr>
+                <td class="text-center text-muted small">{{ loop.index }}</td>
+                <td>
+                    {% if doc.document_number %}
+                    <span class="fw-medium">№ {{ doc.document_number }}</span>
+                    {% else %}
+                    <span class="text-muted fst-italic">Без номера</span>
+                    {% endif %}
+                    {% if doc.notes %}
+                    <div class="text-muted small">{{ doc.notes }}</div>
+                    {% endif %}
+                </td>
+                <td class="text-center">{{ doc.date or '—' }}</td>
+                <td class="text-center">{{ doc.items_count or 0 }}</td>
+                <td class="text-end pe-3">
+                    {% if doc.total_sum %}
+                    {{ "%.2f"|format(doc.total_sum) }}
+                    {% else %}—{% endif %}
+                </td>
+                <td class="text-center">
+                    {% if doc.scan_path %}
+                    <a href="{{ url_for('attestat_import.scan', person_id=person.id, doc_id=doc.id) }}"
+                       target="_blank" class="btn btn-sm btn-outline-secondary py-0 px-1"
+                       title="{{ doc.scan_original_name or 'Скан' }}">
+                        <i class="bi bi-file-earmark-text"></i>
+                    </a>
+                    {% else %}
+                    <span class="text-muted small">—</span>
+                    {% endif %}
+                </td>
+                <td class="text-center">
+                    {% if doc.status == 'confirmed' %}
+                    <span class="badge bg-success">Проведено</span>
+                    {% else %}
+                    <span class="badge bg-warning text-dark">Чернетка</span>
+                    {% endif %}
+                </td>
+                <td class="text-end pe-2">
+                    {% if doc.status == 'draft' %}
+                    <a href="{{ url_for('attestat_import.edit', person_id=person.id, doc_id=doc.id) }}"
+                       class="btn btn-sm btn-outline-primary py-0 px-2">
+                        <i class="bi bi-pencil me-1"></i>Редагувати
+                    </a>
+                    <form method="post"
+                          action="{{ url_for('attestat_import.delete', person_id=person.id, doc_id=doc.id) }}"
+                          class="d-inline"
+                          onsubmit="return confirm('Видалити цю чернетку?')">
+                        <button class="btn btn-sm btn-outline-danger py-0 px-2">
+                            <i class="bi bi-trash"></i>
                         </button>
-                    </td>
-                </tr>
-                {% endfor %}
+                    </form>
+                    {% else %}
+                    <a href="{{ url_for('attestat_import.edit', person_id=person.id, doc_id=doc.id) }}"
+                       class="btn btn-sm btn-outline-secondary py-0 px-2">
+                        <i class="bi bi-eye me-1"></i>Переглянути
+                    </a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
-{% endfor %}
 {% endif %}
 
-{# ── Нові рядки ── #}
-<div class="card border-0 shadow-sm">
-    <div class="card-header bg-transparent d-flex align-items-center justify-content-between">
-        <span class="fw-medium">Додати нове майно з атестату</span>
-        <button type="button" class="btn btn-sm btn-outline-primary" id="btnAddRow">
-            <i class="bi bi-plus-lg me-1"></i>Додати рядок
-        </button>
-    </div>
-    <div class="card-body border-bottom pb-3">
-        <div class="row g-2">
-            <div class="col-md-4">
-                <label class="form-label form-label-sm mb-1">Номер атестату</label>
-                <input type="text" id="attestatNumber" class="form-control form-control-sm"
-                       placeholder="напр. 123/2026-РС">
-            </div>
-            <div class="col-md-3">
-                <label class="form-label form-label-sm mb-1">Дата атестату</label>
-                <input type="date" id="attestatDate" class="form-control form-control-sm"
-                       value="{{ today }}">
-            </div>
-            <div class="col-md-5 d-flex align-items-end">
-                <div class="text-muted small">
-                    <i class="bi bi-info-circle me-1"></i>Дата атестату буде підставлена як дата видачі для кожної позиції
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="card-body p-0">
-        <div id="tableWrap" style="display:none">
-            <table class="table table-sm align-middle mb-0" id="importTable">
-                <thead class="table-light">
-                    <tr>
-                        <th style="width:30px" class="text-center text-muted">#</th>
-                        <th>Найменування майна</th>
-                        <th style="width:45px" class="text-center">Од.</th>
-                        <th style="width:70px" class="text-center">К-сть</th>
-                        <th style="width:120px" class="text-center">Ціна, грн</th>
-                        <th style="width:60px" class="text-center">Кат.</th>
-                        <th style="width:115px" class="text-center">Дата видачі</th>
-                        <th>Примітка</th>
-                        <th style="width:36px"></th>
-                    </tr>
-                </thead>
-                <tbody id="importBody"></tbody>
-            </table>
-        </div>
-        <div id="emptyHint" class="text-center text-muted py-4 small">
-            <i class="bi bi-arrow-up me-1"></i>Натисніть «Додати рядок» щоб почати
-        </div>
-    </div>
-</div>
-
-<div id="saveResult" class="mt-3 d-none"></div>
-
-{% endblock %}
-
-{% block scripts %}
-<script>
-const PERSON_ID = {{ person.id }};
-const TODAY = '{{ today }}';
-
-// Словник майна для SearchableSelect
-const ITEM_DICT = [
-    {% for d in item_dict %}
-    {id: {{ d.id }}, name: {{ d.name|tojson }}, unit: {{ (d.unit_of_measure or 'шт')|tojson }}},
-    {% endfor %}
-];
-
-// Живий масив опцій (може поповнюватись)
-const ITEM_OPTIONS = ITEM_DICT.map(d => ({
-    value: String(d.id),
-    label: d.name,
-    meta: { unit: d.unit },
-}));
-
-// Передати норми в DictItemAdder (один раз на сторінці)
-DictItemAdder.setNormOptions([
-    {% for group in norm_groups %}
-    {% for nd in group.norms %}
-    { value: '{{ nd.id }}', label: {{ nd.name|tojson }}, group: {{ group.name|tojson }}, meta: { unit: {{ (nd.unit or 'шт')|tojson }} } },
-    {% endfor %}
-    {% endfor %}
-]);
-
-let rowCount = 0;
-
-function addRow() {
-    rowCount++;
-    const tbody = document.getElementById('importBody');
-    document.getElementById('emptyHint').style.display = 'none';
-    document.getElementById('tableWrap').style.display = '';
-    document.getElementById('btnSaveAll').disabled = false;
-
-    // Контейнер — використовуємо div, а не tr, бо треба colspan для inline-блоку
-    // Фактично два рядки: основний + inline-add (спочатку прихований)
-    const rowId = 'irow_' + rowCount;
-    const addId = 'iadd_' + rowCount;
-
-    const mainTr = document.createElement('tr');
-    mainTr.id = rowId;
-    mainTr.dataset.rowNum = rowCount;
-    mainTr.innerHTML = `
-        <td class="text-center text-muted small row-num" style="vertical-align:top;padding-top:8px">${rowCount}</td>
-        <td style="min-width:220px;vertical-align:top">
-            <input type="hidden" class="fld-item-id">
-            <div class="fld-item-ss"></div>
-            <a href="#" class="btn-show-add-dict small mt-1 d-inline-block" style="font-size:11px">
-                <i class="bi bi-plus-circle me-1"></i>Немає в списку — додати до словника
-            </a>
-        </td>
-        <td class="text-center text-muted small fld-unit-label" style="vertical-align:top;padding-top:8px">шт</td>
-        <td style="vertical-align:top">
-            <input type="number" class="form-control form-control-sm text-center fld-qty"
-                   value="1" min="0.01" step="0.01" style="width:62px">
-        </td>
-        <td style="vertical-align:top">
-            <input type="number" inputmode="decimal" class="form-control form-control-sm text-end fld-price"
-                   value="" min="0" step="0.01" style="width:110px" placeholder="0.00">
-        </td>
-        <td style="vertical-align:top">
-            <select class="form-select form-select-sm fld-cat" style="width:60px">
-                <option value="II">II</option>
-                <option value="III">III</option>
-                <option value="I">I</option>
-            </select>
-        </td>
-        <td style="vertical-align:top">
-            <input type="date" class="form-control form-control-sm fld-date" value="${document.getElementById('attestatDate').value || TODAY}">
-        </td>
-        <td style="vertical-align:top">
-            <input type="text" class="form-control form-control-sm fld-notes" placeholder="—">
-        </td>
-        <td class="text-center" style="vertical-align:top;padding-top:4px">
-            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 btn-del-row" title="Видалити рядок">
-                <i class="bi bi-x-lg"></i>
-            </button>
-        </td>
-    `;
-    tbody.appendChild(mainTr);
-
-    // Inline-блок додавання до словника через DictItemAdder
-    const addTr = DictItemAdder.buildTr(9);
-    tbody.appendChild(addTr);
-
-    // SearchableSelect для вибору майна
-    const hiddenInp = mainTr.querySelector('.fld-item-id');
-    const ssWrap    = mainTr.querySelector('.fld-item-ss');
-    const unitLabel = mainTr.querySelector('.fld-unit-label');
-
-    const ss = new SearchableSelect({
-        container:   ssWrap,
-        hiddenInput: hiddenInp,
-        options:     ITEM_OPTIONS,
-        placeholder: '— оберіть або введіть назву —',
-        allowClear:  true,
-        size:        'sm',
-        onChange: (val) => {
-            if (val) {
-                const found = ITEM_DICT.find(d => String(d.id) === String(val));
-                if (found) unitLabel.textContent = found.unit || 'шт';
-            }
-            updateSaveBtn();
-        },
-    });
-
-    DictItemAdder.init(addTr, {
-        allSsWraps: () => document.querySelectorAll('.fld-item-ss'),
-        onSaved(newOpt) {
-            ITEM_DICT.push({ id: parseInt(newOpt.value), name: newOpt.label, unit: newOpt.meta.unit });
-            ITEM_OPTIONS.push(newOpt);
-            ss.setValue(newOpt.value);
-            unitLabel.textContent = newOpt.meta.unit || 'шт';
-            updateSaveBtn();
-        },
-    });
-
-    // Кнопка "Додати до словника" — toggle з підстановкою тексту пошуку
-    mainTr.querySelector('.btn-show-add-dict').addEventListener('click', e => {
-        e.preventDefault();
-        const searchVal = ssWrap.querySelector('input')?.value?.trim() || '';
-        DictItemAdder.toggle(addTr, searchVal || undefined);
-    });
-
-    // Видалити рядок
-    mainTr.querySelector('.btn-del-row').addEventListener('click', () => {
-        mainTr.remove();
-        addTr.remove();
-        renum();
-        updateSaveBtn();
-        if (!document.querySelector('#importBody tr[data-row-num]')) {
-            document.getElementById('tableWrap').style.display = 'none';
-            document.getElementById('emptyHint').style.display = '';
-        }
-    });
-
-    renum();
-    setTimeout(() => ssWrap.querySelector('.ss-display')?.focus(), 50);
-}
-
-function renum() {
-    let idx = 0;
-    document.querySelectorAll('#importBody tr[data-row-num]').forEach(tr => {
-        idx++;
-        const n = tr.querySelector('.row-num');
-        if (n) n.textContent = idx;
-    });
-}
-
-function updateSaveBtn() {
-    const count = document.querySelectorAll('#importBody tr[data-row-num]').length;
-    document.getElementById('btnSaveAll').disabled = count === 0;
-}
-
-document.getElementById('btnAddRow').addEventListener('click', addRow);
-
-document.getElementById('btnSaveAll').addEventListener('click', async () => {
-    const rows = [];
-    let hasError = false;
-
-    document.querySelectorAll('#importBody tr[data-row-num]').forEach(tr => {
-        const itemId = tr.querySelector('.fld-item-id').value;
-        const ssEl   = tr.querySelector('.fld-item-ss');
-        if (!itemId) {
-            ssEl.classList.add('border', 'border-danger', 'rounded');
-            hasError = true;
-            return;
-        }
-        ssEl.classList.remove('border', 'border-danger', 'rounded');
-        rows.push({
-            item_id:    parseInt(itemId),
-            quantity:   parseFloat(tr.querySelector('.fld-qty').value) || 1,
-            price:      parseFloat(tr.querySelector('.fld-price').value) || 0,
-            category:   tr.querySelector('.fld-cat').value,
-            issue_date: tr.querySelector('.fld-date').value || TODAY,
-            notes:      tr.querySelector('.fld-notes').value.trim(),
-        });
-    });
-
-    if (hasError) { showToast('Оберіть найменування для всіх рядків', 'warning'); return; }
-    if (!rows.length) { showToast('Немає рядків для збереження', 'warning'); return; }
-
-    const attestatNumber = document.getElementById('attestatNumber').value.trim();
-    const attestatDate   = document.getElementById('attestatDate').value.trim();
-
-    const btn = document.getElementById('btnSaveAll');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Збереження...';
-
-    const resp = await fetch(`/personnel/${PERSON_ID}/attestat-import`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ attestat_number: attestatNumber, attestat_date: attestatDate, rows })
-    });
-    const d = await resp.json();
-
-    if (d.ok) {
-        const res = document.getElementById('saveResult');
-        res.className = 'mt-3 alert alert-success';
-        let msg = `<i class="bi bi-check-circle me-1"></i>Збережено ${d.saved} позицій.`;
-        if (d.errors && d.errors.length)
-            msg += `<br><strong>Помилки:</strong> ${d.errors.join('; ')}`;
-        msg += ` <a href="/personnel/${PERSON_ID}/attestat-import" class="alert-link ms-2">Оновити сторінку →</a>`;
-        res.innerHTML = msg;
-        res.classList.remove('d-none');
-        document.getElementById('importBody').innerHTML = '';
-        document.getElementById('tableWrap').style.display = 'none';
-        document.getElementById('emptyHint').style.display = '';
-        document.getElementById('btnSaveAll').disabled = true;
-        btn.innerHTML = '<i class="bi bi-floppy me-1"></i>Зберегти нові рядки';
-    } else {
-        showToast(d.error || 'Помилка збереження', 'danger');
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-floppy me-1"></i>Зберегти нові рядки';
-    }
-});
-
-// Видалення існуючих записів
-document.querySelectorAll('.btn-del-existing').forEach(btn => {
-    btn.addEventListener('click', async function() {
-        const id = this.dataset.id;
-        if (!confirm('Видалити цей запис?')) return;
-        const resp = await fetch(`/personnel/${PERSON_ID}/attestat-import/${id}/delete`, {method:'POST'});
-        const d = await resp.json();
-        if (d.ok) {
-            document.getElementById(`ex-row-${id}`).remove();
-            showToast('Запис видалено', 'success');
-        } else {
-            showToast(d.error || 'Помилка видалення', 'danger');
-        }
-    });
-});
-</script>
 {% endblock %}

@@ -194,6 +194,7 @@ def register_blueprints(app: Flask) -> None:
     from modules.reports.routes import bp as reports_bp
     from modules.import_export.routes import bp as import_export_bp
     from modules.feedback.routes import bp as feedback_bp
+    from modules.attestat_import.routes import bp as attestat_import_bp
 
     app.register_blueprint(personnel_bp)
     app.register_blueprint(warehouse_bp)
@@ -207,6 +208,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(reports_bp)
     app.register_blueprint(import_export_bp)
     app.register_blueprint(feedback_bp)
+    app.register_blueprint(attestat_import_bp)
 
     @app.context_processor
     def inject_plugin_menu():

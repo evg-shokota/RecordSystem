@@ -479,12 +479,16 @@ def _build_property_card(conn, person_id: int) -> dict:
         SELECT pi.id, pi.quantity, pi.price, pi.issue_date, pi.status,
                pi.invoice_id, pi.sheet_id, pi.source_type,
                pi.source_doc_number, pi.source_doc_date,
+               pi.income_doc_id,
+               COALESCE(pi.source_doc_number, idoc.document_number) AS eff_doc_number,
+               COALESCE(pi.source_doc_date, idoc.date)              AS eff_doc_date,
                d.unit_of_measure,
                nd.id AS nd_id, nd.name AS nd_name,
                ndg.name AS nd_group_name,
                ndg.sort_order AS g_order, nd.sort_order AS nd_order
         FROM personnel_items pi
         JOIN item_dictionary d ON pi.item_id = d.id
+        LEFT JOIN income_docs idoc ON pi.income_doc_id = idoc.id
         LEFT JOIN norm_dictionary nd ON d.norm_dict_id = nd.id
         LEFT JOIN norm_dict_groups ndg ON nd.group_id = ndg.id
         WHERE pi.personnel_id = ?
@@ -525,17 +529,20 @@ def _build_property_card(conn, person_id: int) -> dict:
         else:
             src = r["source_type"] or "manual"
             if src == "attestat_import":
-                # Кожен унікальний атестат (номер+дата) — окрема колонка
-                doc_num  = (r["source_doc_number"] or "").strip()
-                doc_date = (r["source_doc_date"] or "").strip()
-                key = f"attestat_{doc_num}_{doc_date}" if (doc_num or doc_date) else "attestat"
+                # Кожен унікальний атестат — окрема колонка
+                # Пріоритет: income_doc_id (новий підхід) → source_doc_number/date (legacy)
+                if r["income_doc_id"]:
+                    key = f"attestat_doc_{r['income_doc_id']}"
+                    doc_num  = (r["eff_doc_number"] or "").strip()
+                    doc_date = (r["eff_doc_date"] or "").strip()
+                else:
+                    doc_num  = (r["source_doc_number"] or "").strip()
+                    doc_date = (r["source_doc_date"] or "").strip()
+                    key = f"attestat_{doc_num}_{doc_date}" if (doc_num or doc_date) else "attestat"
                 if key not in docs_map:
-                    if doc_num:
-                        label = f"Атестат №{doc_num}"
-                    else:
-                        label = "Атестат"
+                    label = f"Атестат №{doc_num}" if doc_num else "Атестат"
                     docs_map[key] = {
-                        "key": key, "id": None,
+                        "key": key, "id": r["income_doc_id"],
                         "label": label,
                         "date": doc_date or "",
                         "type": "attestat_import",
@@ -592,9 +599,12 @@ def _build_property_card(conn, person_id: int) -> dict:
         elif r["sheet_id"] and f"rv_{r['sheet_id']}" in docs_map:
             doc_key = f"rv_{r['sheet_id']}"
         elif (r["source_type"] or "") == "attestat_import":
-            doc_num  = (r["source_doc_number"] or "").strip()
-            doc_date = (r["source_doc_date"] or "").strip()
-            doc_key = f"attestat_{doc_num}_{doc_date}" if (doc_num or doc_date) else "attestat"
+            if r["income_doc_id"]:
+                doc_key = f"attestat_doc_{r['income_doc_id']}"
+            else:
+                doc_num  = (r["source_doc_number"] or "").strip()
+                doc_date = (r["source_doc_date"] or "").strip()
+                doc_key = f"attestat_{doc_num}_{doc_date}" if (doc_num or doc_date) else "attestat"
         else:
             doc_key = f"manual_{r['id']}"
 
@@ -1513,127 +1523,20 @@ def attestat(person_id):
 
 
 # ─────────────────────────────────────────────────────────────
-#  Прийом майна з атестату (AJAX)
+#  Прийом майна з атестату — редирект до нового blueprint
 # ─────────────────────────────────────────────────────────────
 
 @bp.route("/<int:person_id>/attestat-import", methods=["GET", "POST"])
 @login_required
 def attestat_import(person_id):
-    """
-    GET  — сторінка форми внесення майна з атестату.
-    POST — зберегти рядки (JSON array).
-    """
-    conn = get_connection()
-    person = conn.execute(
-        "SELECT * FROM personnel WHERE id=?", (person_id,)
-    ).fetchone()
-    if not person:
-        conn.close()
-        flash("Особу не знайдено", "error")
-        return redirect(url_for("personnel.index"))
-
-    if request.method == "POST":
-        payload = request.get_json(silent=True) or {}
-        # Підтримуємо два формати: {attestat_number, attestat_date, rows:[...]}
-        # або старий: просто масив рядків
-        if isinstance(payload, list):
-            rows = payload
-            attestat_number = None
-            attestat_date   = None
-        else:
-            rows = payload.get("rows") or []
-            attestat_number = (payload.get("attestat_number") or "").strip() or None
-            attestat_date   = (payload.get("attestat_date") or "").strip() or None
-
-        if not rows:
-            conn.close()
-            return jsonify({"ok": False, "error": "Немає рядків для збереження"}), 400
-
-        today = __import__("datetime").date.today().isoformat()
-        saved = 0
-        errors = []
-        for i, row in enumerate(rows):
-            item_id    = row.get("item_id")
-            quantity   = float(row.get("quantity") or 1)
-            price      = float(row.get("price") or 0)
-            category   = row.get("category") or "II"
-            issue_date = row.get("issue_date") or attestat_date or today
-            notes      = (row.get("notes") or "").strip() or None
-
-            if not item_id:
-                errors.append(f"Рядок {i+1}: не вибрано найменування")
-                continue
-
-            item = conn.execute("SELECT id FROM item_dictionary WHERE id=?", (item_id,)).fetchone()
-            if not item:
-                errors.append(f"Рядок {i+1}: невідоме майно (id={item_id})")
-                continue
-
-            conn.execute("""
-                INSERT INTO personnel_items
-                    (personnel_id, item_id, quantity, price, category,
-                     source_type, source_doc_number, source_doc_date,
-                     issue_date, wear_started_date, status,
-                     notes, created_at, updated_at)
-                VALUES (?,?,?,?,?,
-                        'attestat_import',?,?,
-                        ?,?, 'active',
-                        ?,datetime('now','localtime'),datetime('now','localtime'))
-            """, (person_id, item_id, quantity, price, category,
-                  attestat_number, attestat_date,
-                  issue_date, issue_date, notes))
-            saved += 1
-
-        if saved:
-            conn.commit()
-            log_action("add", "personnel_items", person_id,
-                       new_data={"source": "attestat_import", "count": saved,
-                                 "attestat_number": attestat_number})
-
-        conn.close()
-        return jsonify({"ok": True, "saved": saved, "errors": errors})
-
-    # GET — форма
-    from datetime import date
-    from modules.warehouse.routes import _get_norm_groups
-    item_dict = conn.execute("""
-        SELECT id, name, unit_of_measure,
-               norm_dict_id,
-               (SELECT nd.name FROM norm_dictionary nd WHERE nd.id = item_dictionary.norm_dict_id) AS norm_dict_name
-        FROM item_dictionary
-        ORDER BY name
-    """).fetchall()
-
-    norm_groups = _get_norm_groups(conn)
-
-    # Вже внесені записи з атестату (для відображення і редагування)
-    existing = conn.execute("""
-        SELECT pi.id, pi.quantity, pi.price, pi.category,
-               pi.issue_date, pi.notes,
-               pi.source_doc_number, pi.source_doc_date,
-               pi.item_id,
-               d.name AS item_name, d.unit_of_measure
-        FROM personnel_items pi
-        JOIN item_dictionary d ON pi.item_id = d.id
-        WHERE pi.personnel_id = ?
-          AND pi.source_type = 'attestat_import'
-          AND pi.status = 'active'
-        ORDER BY pi.source_doc_date, pi.issue_date, d.name
-    """, (person_id,)).fetchall()
-    existing = [dict(r) for r in existing]
-
-    conn.close()
-
-    return render_template("personnel/attestat_import.html",
-                           person=person, item_dict=item_dict,
-                           existing=existing, norm_groups=norm_groups,
-                           today=date.today().isoformat())
+    """Редирект до нового blueprint attestat_import.index."""
+    return redirect(url_for("attestat_import.index", person_id=person_id))
 
 
 @bp.route("/<int:person_id>/attestat-import/<int:item_pi_id>/delete", methods=["POST"])
 @login_required
 def attestat_import_delete(person_id, item_pi_id):
-    """Видалити один запис з атестату (AJAX)."""
+    """Legacy: видалення окремого запису (тепер не використовується — залишено для сумісності)."""
     conn = get_connection()
     row = conn.execute(
         "SELECT id FROM personnel_items WHERE id=? AND personnel_id=? AND source_type='attestat_import'",

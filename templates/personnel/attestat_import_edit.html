@@ -1,0 +1,510 @@
+{% extends "base.html" %}
+{% block title %}{% if doc.status == 'draft' %}Редагування{% else %}Перегляд{% endif %} атестату — {{ person.last_name }} {{ person.first_name }}{% endblock %}
+{% block page_title %}{% if doc.status == 'draft' %}Редагування{% else %}Перегляд{% endif %} прийому з атестату{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('attestat_import.index', person_id=person.id) }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>До списку
+</a>
+{% if doc.status == 'draft' %}
+<button type="submit" form="editForm" name="action" value="save" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-floppy me-1"></i>Зберегти чернетку
+</button>
+<button type="submit" form="editForm" name="action" value="confirm" class="btn btn-sm btn-success" id="btnConfirm">
+    <i class="bi bi-check-circle me-1"></i>Провести
+</button>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+
+{% if errors %}
+<div class="alert alert-danger py-2 mb-3">
+    <ul class="mb-0 small">
+        {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{# ── Шапка особи ── #}
+<div class="alert alert-info border-0 py-2 mb-3 small">
+    <i class="bi bi-person me-1"></i>
+    <strong>{{ person.rank or '' }} {{ person.last_name }} {{ person.first_name }} {{ person.middle_name or '' }}</strong>
+    {% if doc.status == 'confirmed' %}
+    <span class="badge bg-success ms-2">Проведено</span>
+    {% else %}
+    <span class="badge bg-warning text-dark ms-2">Чернетка</span>
+    {% endif %}
+</div>
+
+<form id="editForm" method="post" enctype="multipart/form-data"
+      action="{{ url_for('attestat_import.edit', person_id=person.id, doc_id=doc.id) }}">
+
+{# ── Шапка документу ── #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-transparent fw-medium">
+        <i class="bi bi-file-earmark-text me-1"></i>Реквізити документу
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label form-label-sm">Номер атестату</label>
+                <input type="text" name="document_number" class="form-control form-control-sm"
+                       value="{{ doc.document_number or '' }}"
+                       placeholder="напр. 123/2026-РС"
+                       {% if doc.status != 'draft' %}readonly{% endif %}>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label form-label-sm">Дата атестату</label>
+                <input type="date" name="date" class="form-control form-control-sm"
+                       id="docDateField"
+                       value="{{ doc.date or today }}"
+                       {% if doc.status != 'draft' %}readonly{% endif %}>
+            </div>
+            <div class="col-md-5">
+                <label class="form-label form-label-sm">Примітка</label>
+                <input type="text" name="notes" class="form-control form-control-sm"
+                       value="{{ doc.notes or '' }}"
+                       placeholder="необов'язково"
+                       {% if doc.status != 'draft' %}readonly{% endif %}>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Скан документу ── #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-transparent fw-medium">
+        <i class="bi bi-paperclip me-1"></i>Скан атестату
+    </div>
+    <div class="card-body">
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            {% if doc.scan_path %}
+            <div id="scanInfo">
+                <i class="bi bi-file-earmark-check text-success me-1"></i>
+                <span class="small">{{ doc.scan_original_name or 'Файл завантажено' }}</span>
+                <a href="{{ url_for('attestat_import.scan', person_id=person.id, doc_id=doc.id) }}"
+                   target="_blank" class="btn btn-sm btn-outline-secondary ms-2 py-0 px-2">
+                    <i class="bi bi-eye me-1"></i>Відкрити
+                </a>
+            </div>
+            {% else %}
+            <span id="scanInfo" class="text-muted small"><i class="bi bi-paperclip me-1"></i>Скан не завантажено</span>
+            {% endif %}
+            <div class="d-flex align-items-center gap-2" id="scanUploadBlock">
+                <input type="file" id="scanFile" accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif"
+                       class="form-control form-control-sm" style="max-width:280px">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="btnUploadScan">
+                    <i class="bi bi-upload me-1"></i>Завантажити
+                </button>
+                <span id="scanSpinner" class="d-none spinner-border spinner-border-sm text-primary"></span>
+            </div>
+        </div>
+        <div id="scanResult" class="mt-2 d-none small"></div>
+    </div>
+</div>
+
+{# ── Таблиця позицій ── #}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent d-flex align-items-center justify-content-between">
+        <span class="fw-medium"><i class="bi bi-list-ul me-1"></i>Позиції майна</span>
+        {% if doc.status == 'draft' %}
+        <button type="button" class="btn btn-sm btn-outline-primary" id="btnAddRow">
+            <i class="bi bi-plus-lg me-1"></i>Додати рядок
+        </button>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        {% if doc.status != 'draft' and not doc_items %}
+        <div class="text-center text-muted py-4 small">Позицій немає</div>
+        {% else %}
+        <div id="tableWrap" {% if not doc_items %}style="display:none"{% endif %}>
+            <table class="table table-sm align-middle mb-0" id="itemsTable">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:32px" class="text-center text-muted">#</th>
+                        <th>Найменування майна</th>
+                        <th style="width:45px" class="text-center">Од.</th>
+                        <th style="width:70px" class="text-center">К-сть</th>
+                        <th style="width:115px" class="text-center">Ціна, грн</th>
+                        <th style="width:60px" class="text-center">Кат.</th>
+                        <th style="width:100px" class="text-center">Ном.код</th>
+                        {% if doc.status == 'draft' %}<th style="width:36px"></th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody id="itemsBody">
+                    {% for item in doc_items %}
+                    {# Тільки перегляд для підтверджених #}
+                    {% if doc.status == 'draft' %}
+                    <tr data-row-num="{{ loop.index }}" id="row_{{ loop.index }}">
+                        <td class="text-center text-muted small row-num">{{ loop.index }}</td>
+                        <td style="min-width:200px">
+                            <input type="hidden" class="fld-item-id" name="item_id[]" value="{{ item.item_id }}">
+                            <div class="fld-item-ss" data-prefill-id="{{ item.item_id }}" data-prefill-name="{{ item.item_name }}"></div>
+                            <a href="#" class="btn-show-add-dict small mt-1 d-inline-block" style="font-size:11px">
+                                <i class="bi bi-plus-circle me-1"></i>Немає в списку — додати до словника
+                            </a>
+                        </td>
+                        <td class="text-center text-muted small fld-unit-label" title="{{ item.unit_of_measure }}">{{ item.unit_of_measure or 'шт' }}</td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm text-center fld-qty"
+                                   name="quantity[]" value="{{ item.quantity }}" min="0.01" step="0.01" style="width:62px">
+                        </td>
+                        <td>
+                            <input type="number" inputmode="decimal" class="form-control form-control-sm text-end fld-price"
+                                   name="price[]" value="{{ item.price or '' }}" min="0" step="0.01" style="width:100px" placeholder="0.00">
+                        </td>
+                        <td>
+                            <select class="form-select form-select-sm fld-cat" name="category[]" style="width:60px">
+                                {% for cat in categories %}
+                                <option value="{{ cat }}" {% if item.category == cat %}selected{% endif %}>{{ cat }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <input type="text" class="form-control form-control-sm fld-nom"
+                                   name="nom_code[]" value="{{ item.nom_code or '' }}" placeholder="—" style="width:90px">
+                        </td>
+                        <td class="text-center">
+                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 btn-del-row" title="Видалити">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {# Placeholder для DictItemAdder — буде замінено при ініціалізації #}
+                    <tr class="dict-add-placeholder" data-for-row="{{ loop.index }}"></tr>
+                    {% else %}
+                    {# Режим перегляду #}
+                    <tr>
+                        <td class="text-center text-muted small">{{ loop.index }}</td>
+                        <td>
+                            {{ item.item_name }}
+                            {% if item.is_inventory %}
+                            <span class="badge bg-warning text-dark ms-1" title="Інвентарне майно">
+                                <i class="bi bi-shield"></i>
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center text-muted small">{{ item.unit_of_measure or 'шт' }}</td>
+                        <td class="text-center">{{ item.quantity }}</td>
+                        <td class="text-end pe-2">{{ "%.2f"|format(item.price) if item.price else '—' }}</td>
+                        <td class="text-center">{{ item.category or '—' }}</td>
+                        <td class="text-center text-muted small">{{ item.nom_code or '—' }}</td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if doc.status == 'draft' %}
+        <div id="emptyHint" class="text-center text-muted py-4 small" {% if doc_items %}style="display:none"{% endif %}>
+            <i class="bi bi-arrow-up me-1"></i>Натисніть «Додати рядок» щоб внести майно
+        </div>
+        {% endif %}
+        {% endif %}
+    </div>
+    {% if doc.status == 'draft' %}
+    <div class="card-footer bg-transparent d-flex justify-content-between align-items-center">
+        <span id="rowCountLabel" class="text-muted small">
+            Позицій: <span id="rowCount">{{ doc_items|length }}</span>
+        </span>
+        <div class="d-flex gap-2">
+            <button type="submit" form="editForm" name="action" value="save" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-floppy me-1"></i>Зберегти чернетку
+            </button>
+            <button type="submit" form="editForm" name="action" value="confirm"
+                    class="btn btn-sm btn-success" id="btnConfirmBottom">
+                <i class="bi bi-check-circle me-1"></i>Провести
+            </button>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+{% if doc.status == 'draft' %}
+<script>
+const PERSON_ID  = {{ person.id }};
+const DOC_ID     = {{ doc.id }};
+const TODAY      = '{{ today }}';
+const CATEGORIES = {{ categories | tojson }};
+
+// Словник майна для SearchableSelect
+const ITEM_DICT = [
+    {% for d in item_dict %}
+    {id: {{ d.id }}, name: {{ d.name|tojson }}, unit: {{ (d.unit_of_measure or 'шт')|tojson }}, is_inventory: {{ d.is_inventory }}},
+    {% endfor %}
+];
+
+const ITEM_OPTIONS = ITEM_DICT.map(d => ({
+    value: String(d.id),
+    label: d.name,
+    meta: { unit: d.unit, is_inventory: d.is_inventory },
+}));
+
+// Норм-групи для DictItemAdder
+DictItemAdder.setNormOptions([
+    {% for group in norm_groups %}
+    {% for nd in group.norms %}
+    { value: '{{ nd.id }}', label: {{ nd.name|tojson }}, group: {{ group.name|tojson }}, meta: { unit: {{ (nd.unit or 'шт')|tojson }} } },
+    {% endfor %}
+    {% endfor %}
+]);
+
+let rowCount = document.querySelectorAll('#itemsBody tr[data-row-num]').length;
+
+// ── Ініціалізація вже існуючих рядків ──
+document.querySelectorAll('#itemsBody tr[data-row-num]').forEach(mainTr => {
+    const ssWrap    = mainTr.querySelector('.fld-item-ss');
+    const hiddenInp = mainTr.querySelector('.fld-item-id');
+    const unitLabel = mainTr.querySelector('.fld-unit-label');
+
+    const prefillId   = ssWrap.dataset.prefillId;
+    const prefillName = ssWrap.dataset.prefillName;
+
+    const ss = new SearchableSelect({
+        container:   ssWrap,
+        hiddenInput: hiddenInp,
+        options:     ITEM_OPTIONS,
+        placeholder: '— оберіть або введіть назву —',
+        allowClear:  true,
+        size:        'sm',
+        onChange: (val) => {
+            if (val) {
+                const found = ITEM_DICT.find(d => String(d.id) === String(val));
+                if (found) unitLabel.textContent = found.unit || 'шт';
+            }
+        },
+    });
+
+    if (prefillId) ss.setValue(prefillId);
+
+    // Знаходимо відповідний DictItemAdder placeholder
+    const addTr = mainTr.nextElementSibling;
+    if (addTr && addTr.classList.contains('dict-add-placeholder')) {
+        // Перетворюємо placeholder в реальний addTr
+        const realAddTr = DictItemAdder.buildTr(8);
+        addTr.parentNode.replaceChild(realAddTr, addTr);
+
+        DictItemAdder.init(realAddTr, {
+            allSsWraps: () => document.querySelectorAll('.fld-item-ss'),
+            onSaved(newOpt) {
+                ITEM_DICT.push({ id: parseInt(newOpt.value), name: newOpt.label, unit: newOpt.meta.unit });
+                ITEM_OPTIONS.push(newOpt);
+                ss.setValue(newOpt.value);
+                unitLabel.textContent = newOpt.meta.unit || 'шт';
+            },
+        });
+
+        mainTr.querySelector('.btn-show-add-dict')?.addEventListener('click', e => {
+            e.preventDefault();
+            const searchVal = ssWrap.querySelector('input')?.value?.trim() || '';
+            DictItemAdder.toggle(realAddTr, searchVal || undefined);
+        });
+
+        mainTr.querySelector('.btn-del-row')?.addEventListener('click', () => {
+            mainTr.remove();
+            realAddTr.remove();
+            renum();
+            updateRowCount();
+        });
+    }
+});
+
+// ── Додати новий рядок ──
+function addRow() {
+    rowCount++;
+    const tbody = document.getElementById('itemsBody');
+    document.getElementById('emptyHint').style.display = 'none';
+    document.getElementById('tableWrap').style.display = '';
+
+    const mainTr = document.createElement('tr');
+    mainTr.id = 'row_' + rowCount;
+    mainTr.dataset.rowNum = rowCount;
+    mainTr.innerHTML = `
+        <td class="text-center text-muted small row-num" style="vertical-align:top;padding-top:8px">${rowCount}</td>
+        <td style="min-width:200px;vertical-align:top">
+            <input type="hidden" class="fld-item-id" name="item_id[]">
+            <div class="fld-item-ss"></div>
+            <a href="#" class="btn-show-add-dict small mt-1 d-inline-block" style="font-size:11px">
+                <i class="bi bi-plus-circle me-1"></i>Немає в списку — додати до словника
+            </a>
+        </td>
+        <td class="text-center text-muted small fld-unit-label" style="vertical-align:top;padding-top:8px">шт</td>
+        <td style="vertical-align:top">
+            <input type="number" class="form-control form-control-sm text-center fld-qty"
+                   name="quantity[]" value="1" min="0.01" step="0.01" style="width:62px">
+        </td>
+        <td style="vertical-align:top">
+            <input type="number" inputmode="decimal" class="form-control form-control-sm text-end fld-price"
+                   name="price[]" value="" min="0" step="0.01" style="width:100px" placeholder="0.00">
+        </td>
+        <td style="vertical-align:top">
+            <select class="form-select form-select-sm fld-cat" name="category[]" style="width:60px">
+                ${CATEGORIES.map(c => `<option value="${c}"${c==='II'?' selected':''}>${c}</option>`).join('')}
+            </select>
+        </td>
+        <td style="vertical-align:top">
+            <input type="text" class="form-control form-control-sm fld-nom"
+                   name="nom_code[]" placeholder="—" style="width:90px">
+        </td>
+        <td class="text-center" style="vertical-align:top;padding-top:4px">
+            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 btn-del-row" title="Видалити">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(mainTr);
+
+    const addTr = DictItemAdder.buildTr(8);
+    tbody.appendChild(addTr);
+
+    const hiddenInp = mainTr.querySelector('.fld-item-id');
+    const ssWrap    = mainTr.querySelector('.fld-item-ss');
+    const unitLabel = mainTr.querySelector('.fld-unit-label');
+
+    const ss = new SearchableSelect({
+        container:   ssWrap,
+        hiddenInput: hiddenInp,
+        options:     ITEM_OPTIONS,
+        placeholder: '— оберіть або введіть назву —',
+        allowClear:  true,
+        size:        'sm',
+        onChange: (val) => {
+            if (val) {
+                const found = ITEM_DICT.find(d => String(d.id) === String(val));
+                if (found) {
+                    unitLabel.textContent = found.unit || 'шт';
+                    // Іконка інвентарного майна
+                    let icon = mainTr.querySelector('.inv-badge');
+                    if (found.is_inventory) {
+                        if (!icon) {
+                            icon = document.createElement('span');
+                            icon.className = 'badge bg-warning text-dark ms-1 inv-badge';
+                            icon.title = 'Інвентарне майно';
+                            icon.innerHTML = '<i class="bi bi-shield"></i>';
+                            ssWrap.parentNode.insertBefore(icon, ssWrap.nextSibling);
+                        }
+                    } else {
+                        if (icon) icon.remove();
+                    }
+                }
+            }
+        },
+    });
+
+    DictItemAdder.init(addTr, {
+        allSsWraps: () => document.querySelectorAll('.fld-item-ss'),
+        onSaved(newOpt) {
+            ITEM_DICT.push({ id: parseInt(newOpt.value), name: newOpt.label, unit: newOpt.meta.unit, is_inventory: 0 });
+            ITEM_OPTIONS.push(newOpt);
+            ss.setValue(newOpt.value);
+            unitLabel.textContent = newOpt.meta.unit || 'шт';
+        },
+    });
+
+    mainTr.querySelector('.btn-show-add-dict').addEventListener('click', e => {
+        e.preventDefault();
+        const searchVal = ssWrap.querySelector('input')?.value?.trim() || '';
+        DictItemAdder.toggle(addTr, searchVal || undefined);
+    });
+
+    mainTr.querySelector('.btn-del-row').addEventListener('click', () => {
+        mainTr.remove();
+        addTr.remove();
+        renum();
+        updateRowCount();
+        if (!document.querySelector('#itemsBody tr[data-row-num]')) {
+            document.getElementById('tableWrap').style.display = 'none';
+            document.getElementById('emptyHint').style.display = '';
+        }
+    });
+
+    renum();
+    updateRowCount();
+    setTimeout(() => ssWrap.querySelector('.ss-display')?.focus(), 50);
+}
+
+function renum() {
+    let idx = 0;
+    document.querySelectorAll('#itemsBody tr[data-row-num]').forEach(tr => {
+        idx++;
+        const n = tr.querySelector('.row-num');
+        if (n) n.textContent = idx;
+    });
+}
+
+function updateRowCount() {
+    const cnt = document.querySelectorAll('#itemsBody tr[data-row-num]').length;
+    const el = document.getElementById('rowCount');
+    if (el) el.textContent = cnt;
+
+    // Кнопки "Провести" активні тільки якщо є хоча б 1 рядок
+    document.querySelectorAll('#btnConfirm, #btnConfirmBottom').forEach(btn => {
+        btn.disabled = cnt === 0;
+    });
+}
+
+document.getElementById('btnAddRow').addEventListener('click', addRow);
+
+// Авто-підстановка дати з шапки
+document.getElementById('docDateField')?.addEventListener('change', function() {
+    // Нічого не робимо автоматично — кожен рядок має власну дату (зберігається в шапці)
+});
+
+// ── Upload скану ──
+document.getElementById('btnUploadScan')?.addEventListener('click', async () => {
+    const fileInp = document.getElementById('scanFile');
+    if (!fileInp.files.length) { showToast('Оберіть файл', 'warning'); return; }
+
+    const formData = new FormData();
+    formData.append('scan', fileInp.files[0]);
+
+    const spinner = document.getElementById('scanSpinner');
+    const btn     = document.getElementById('btnUploadScan');
+    spinner.classList.remove('d-none');
+    btn.disabled = true;
+
+    const resp = await fetch(`/personnel/${PERSON_ID}/attestat-import/${DOC_ID}/upload-scan`, {
+        method: 'POST',
+        body: formData,
+    });
+    const d = await resp.json();
+
+    spinner.classList.add('d-none');
+    btn.disabled = false;
+
+    if (d.ok) {
+        const scanInfo = document.getElementById('scanInfo');
+        scanInfo.innerHTML = `<i class="bi bi-file-earmark-check text-success me-1"></i><span class="small">${d.filename}</span>`;
+        showToast('Скан завантажено', 'success');
+        const res = document.getElementById('scanResult');
+        res.className = 'mt-2 small text-success';
+        res.textContent = 'Скан завантажено: ' + d.filename;
+        res.classList.remove('d-none');
+    } else {
+        showToast(d.error || 'Помилка завантаження', 'danger');
+    }
+});
+
+// Перевірка при submit: попередження якщо немає позицій
+document.getElementById('editForm')?.addEventListener('submit', function(e) {
+    const action = document.activeElement?.value;
+    if (action === 'confirm') {
+        const cnt = document.querySelectorAll('#itemsBody tr[data-row-num]').length;
+        if (cnt === 0) {
+            e.preventDefault();
+            showToast('Додайте хоча б одну позицію перед проведенням', 'warning');
+        }
+    }
+});
+
+// Ініціалізація лічильника
+updateRowCount();
+</script>
+{% endif %}
+{% endblock %}
