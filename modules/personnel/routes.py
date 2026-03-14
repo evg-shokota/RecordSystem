@@ -1533,22 +1533,6 @@ def attestat_import(person_id):
     return redirect(url_for("attestat_import.index", person_id=person_id))
 
 
-@bp.route("/<int:person_id>/attestat-import/<int:item_pi_id>/delete", methods=["POST"])
-@login_required
-def attestat_import_delete(person_id, item_pi_id):
-    """Legacy: видалення окремого запису (тепер не використовується — залишено для сумісності)."""
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT id FROM personnel_items WHERE id=? AND personnel_id=? AND source_type='attestat_import'",
-        (item_pi_id, person_id)
-    ).fetchone()
-    if not row:
-        conn.close()
-        return jsonify({"ok": False, "error": "Запис не знайдено"}), 404
-    conn.execute("DELETE FROM personnel_items WHERE id=?", (item_pi_id,))
-    conn.commit()
-    conn.close()
-    return jsonify({"ok": True})
 
 
 # ─────────────────────────────────────────────────────────────

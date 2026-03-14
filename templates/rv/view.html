@@ -156,7 +156,7 @@
                         {% for item in matrix.cols %}
                         {% set cell = matrix.qty.get((row.id, item.item_id), {}) %}
                         {% set qty = cell.get('quantity', 0) or 0 %}
-                        {% set _ = row_sum.__setattr__('val', row_sum.val + qty * item.price) %}
+                        {% set row_sum.val = row_sum.val + qty * item.price %}
                         <td class="text-center">{{ qty if qty else '—' }}</td>
                         {% endfor %}
                         <td class="text-end">{{ "%.2f"|format(row_sum.val) }}</td>
@@ -175,7 +175,7 @@
                         {% set col_total = namespace(val=0) %}
                         {% for row in matrix.rows %}
                             {% set cell = matrix.qty.get((row.id, item.item_id), {}) %}
-                            {% set _ = col_total.__setattr__('val', col_total.val + (cell.get('quantity', 0) or 0)) %}
+                            {% set col_total.val = col_total.val + (cell.get('quantity', 0) or 0) %}
                         {% endfor %}
                         <td class="text-center">{{ col_total.val if col_total.val else '—' }}</td>
                         {% endfor %}

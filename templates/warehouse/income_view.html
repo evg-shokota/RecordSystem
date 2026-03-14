@@ -80,7 +80,7 @@
                     {% set total = namespace(val=0) %}
                     {% for r in rows %}
                     {% set sum = r.quantity * r.price %}
-                    {% set _ = total.__setattr__('val', total.val + sum) %}
+                    {% set total.val = total.val + sum %}
                     <tr>
                         <td class="text-center text-muted">{{ loop.index }}</td>
                         <td>

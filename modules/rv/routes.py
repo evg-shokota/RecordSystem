@@ -382,14 +382,14 @@ def new():
                doc_date, given_by_rank, given_by_name, received_by_rank, received_by_name,
                chief_rank, chief_name, chief_is_tvo, clerk_rank, clerk_name,
                base_document, notes, status)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft')
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             f"ЧЕРНЕТКА-{int(time.time())}", 0, 0, "",
             unit_id, unit_text, service_name, supplier_name,
             doc_date, given_by_rank, given_by_name,
             received_by_rank, received_by_name,
             chief_rank, chief_name, chief_is_tvo,
-            clerk_rank, clerk_name, base_doc, notes,
+            clerk_rank, clerk_name, base_doc, notes, "draft",
         ))
         conn.commit()
         sid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
