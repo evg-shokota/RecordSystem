@@ -78,7 +78,7 @@
         </button>
     </div>
     <div class="card-body p-0">
-        <div class="table-responsive" id="tableWrap" style="display:none">
+        <div id="tableWrap" style="display:none">
             <table class="table table-sm align-middle mb-0" id="importTable">
                 <thead class="table-light">
                     <tr>
@@ -86,7 +86,7 @@
                         <th>Найменування майна</th>
                         <th style="width:45px" class="text-center">Од.</th>
                         <th style="width:70px" class="text-center">К-сть</th>
-                        <th style="width:90px" class="text-center">Ціна, грн</th>
+                        <th style="width:120px" class="text-center">Ціна, грн</th>
                         <th style="width:60px" class="text-center">Кат.</th>
                         <th style="width:115px" class="text-center">Дата видачі</th>
                         <th>Примітка</th>
@@ -111,97 +111,156 @@
 const PERSON_ID = {{ person.id }};
 const TODAY = '{{ today }}';
 
+// Словник майна для SearchableSelect
 const ITEM_DICT = [
     {% for d in item_dict %}
     {id: {{ d.id }}, name: {{ d.name|tojson }}, unit: {{ (d.unit_of_measure or 'шт')|tojson }}},
     {% endfor %}
 ];
 
-let rowCount = 0;
+// Живий масив опцій (може поповнюватись)
+const ITEM_OPTIONS = ITEM_DICT.map(d => ({
+    value: String(d.id),
+    label: d.name,
+    meta: { unit: d.unit },
+}));
 
-function buildItemOptions() {
-    let html = '<option value="">— оберіть майно —</option>';
-    ITEM_DICT.forEach(d => {
-        html += `<option value="${d.id}" data-unit="${escH(d.unit)}">${escH(d.name)}</option>`;
-    });
-    return html;
-}
+// Передати норми в DictItemAdder (один раз на сторінці)
+DictItemAdder.setNormOptions([
+    {% for group in norm_groups %}
+    {% for nd in group.norms %}
+    { value: '{{ nd.id }}', label: {{ nd.name|tojson }}, group: {{ group.name|tojson }}, meta: { unit: {{ (nd.unit or 'шт')|tojson }} } },
+    {% endfor %}
+    {% endfor %}
+]);
+
+let rowCount = 0;
 
 function addRow() {
     rowCount++;
     const tbody = document.getElementById('importBody');
     document.getElementById('emptyHint').style.display = 'none';
     document.getElementById('tableWrap').style.display = '';
+    document.getElementById('btnSaveAll').disabled = false;
 
-    const tr = document.createElement('tr');
-    tr.dataset.row = rowCount;
-    tr.innerHTML = `
-        <td class="text-center text-muted small row-num">${rowCount}</td>
-        <td style="min-width:220px">
-            <select class="form-select form-select-sm fld-item">
-                ${buildItemOptions()}
-            </select>
+    // Контейнер — використовуємо div, а не tr, бо треба colspan для inline-блоку
+    // Фактично два рядки: основний + inline-add (спочатку прихований)
+    const rowId = 'irow_' + rowCount;
+    const addId = 'iadd_' + rowCount;
+
+    const mainTr = document.createElement('tr');
+    mainTr.id = rowId;
+    mainTr.dataset.rowNum = rowCount;
+    mainTr.innerHTML = `
+        <td class="text-center text-muted small row-num" style="vertical-align:top;padding-top:8px">${rowCount}</td>
+        <td style="min-width:220px;vertical-align:top">
+            <input type="hidden" class="fld-item-id">
+            <div class="fld-item-ss"></div>
+            <a href="#" class="btn-show-add-dict small mt-1 d-inline-block" style="font-size:11px">
+                <i class="bi bi-plus-circle me-1"></i>Немає в списку — додати до словника
+            </a>
         </td>
-        <td class="text-center text-muted small fld-unit-label" style="min-width:35px">шт</td>
-        <td>
+        <td class="text-center text-muted small fld-unit-label" style="vertical-align:top;padding-top:8px">шт</td>
+        <td style="vertical-align:top">
             <input type="number" class="form-control form-control-sm text-center fld-qty"
-                   value="1" min="0.01" step="0.01" style="width:62px;margin:auto">
+                   value="1" min="0.01" step="0.01" style="width:62px">
         </td>
-        <td>
-            <input type="text" inputmode="decimal" class="form-control form-control-sm text-end fld-price num-comma"
-                   value="0" style="width:82px;margin:auto">
+        <td style="vertical-align:top">
+            <input type="number" inputmode="decimal" class="form-control form-control-sm text-end fld-price"
+                   value="" min="0" step="0.01" style="width:110px" placeholder="0.00">
         </td>
-        <td>
-            <select class="form-select form-select-sm fld-cat" style="width:60px;margin:auto">
-                <option value="I">I</option>
+        <td style="vertical-align:top">
+            <select class="form-select form-select-sm fld-cat" style="width:60px">
                 <option value="II">II</option>
                 <option value="III">III</option>
+                <option value="I">I</option>
             </select>
         </td>
-        <td>
-            <input type="date" class="form-control form-control-sm fld-date"
-                   value="${TODAY}">
+        <td style="vertical-align:top">
+            <input type="date" class="form-control form-control-sm fld-date" value="${TODAY}">
         </td>
-        <td>
+        <td style="vertical-align:top">
             <input type="text" class="form-control form-control-sm fld-notes" placeholder="—">
         </td>
-        <td class="text-center">
-            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 btn-del-row" title="Видалити">
+        <td class="text-center" style="vertical-align:top;padding-top:4px">
+            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 btn-del-row" title="Видалити рядок">
                 <i class="bi bi-x-lg"></i>
             </button>
         </td>
     `;
-    tbody.appendChild(tr);
+    tbody.appendChild(mainTr);
 
-    tr.querySelector('.fld-item').addEventListener('change', function() {
-        const opt = this.options[this.selectedIndex];
-        tr.querySelector('.fld-unit-label').textContent = opt.dataset.unit || 'шт';
+    // Inline-блок додавання до словника через DictItemAdder
+    const addTr = DictItemAdder.buildTr(9);
+    tbody.appendChild(addTr);
+
+    // SearchableSelect для вибору майна
+    const hiddenInp = mainTr.querySelector('.fld-item-id');
+    const ssWrap    = mainTr.querySelector('.fld-item-ss');
+    const unitLabel = mainTr.querySelector('.fld-unit-label');
+
+    const ss = new SearchableSelect({
+        container:   ssWrap,
+        hiddenInput: hiddenInp,
+        options:     ITEM_OPTIONS,
+        placeholder: '— оберіть або введіть назву —',
+        allowClear:  true,
+        size:        'sm',
+        onChange: (val) => {
+            if (val) {
+                const found = ITEM_DICT.find(d => String(d.id) === String(val));
+                if (found) unitLabel.textContent = found.unit || 'шт';
+            }
+            updateSaveBtn();
+        },
     });
-    tr.querySelector('.btn-del-row').addEventListener('click', function() {
-        tr.remove();
+
+    DictItemAdder.init(addTr, {
+        allSsWraps: () => document.querySelectorAll('.fld-item-ss'),
+        onSaved(newOpt) {
+            ITEM_DICT.push({ id: parseInt(newOpt.value), name: newOpt.label, unit: newOpt.meta.unit });
+            ITEM_OPTIONS.push(newOpt);
+            ss.setValue(newOpt.value);
+            unitLabel.textContent = newOpt.meta.unit || 'шт';
+            updateSaveBtn();
+        },
+    });
+
+    // Кнопка "Додати до словника" — toggle з підстановкою тексту пошуку
+    mainTr.querySelector('.btn-show-add-dict').addEventListener('click', e => {
+        e.preventDefault();
+        const searchVal = ssWrap.querySelector('input')?.value?.trim() || '';
+        DictItemAdder.toggle(addTr, searchVal || undefined);
+    });
+
+    // Видалити рядок
+    mainTr.querySelector('.btn-del-row').addEventListener('click', () => {
+        mainTr.remove();
+        addTr.remove();
         renum();
         updateSaveBtn();
-        if (!document.querySelector('#importBody tr')) {
+        if (!document.querySelector('#importBody tr[data-row-num]')) {
             document.getElementById('tableWrap').style.display = 'none';
             document.getElementById('emptyHint').style.display = '';
         }
     });
 
     renum();
-    updateSaveBtn();
-    tr.querySelector('.fld-item').focus();
+    setTimeout(() => ssWrap.querySelector('.ss-display')?.focus(), 50);
 }
 
 function renum() {
-    document.querySelectorAll('#importBody tr').forEach((tr, i) => {
+    let idx = 0;
+    document.querySelectorAll('#importBody tr[data-row-num]').forEach(tr => {
+        idx++;
         const n = tr.querySelector('.row-num');
-        if (n) n.textContent = i + 1;
+        if (n) n.textContent = idx;
     });
 }
 
 function updateSaveBtn() {
-    document.getElementById('btnSaveAll').disabled =
-        document.querySelectorAll('#importBody tr').length === 0;
+    const count = document.querySelectorAll('#importBody tr[data-row-num]').length;
+    document.getElementById('btnSaveAll').disabled = count === 0;
 }
 
 document.getElementById('btnAddRow').addEventListener('click', addRow);
@@ -210,16 +269,17 @@ document.getElementById('btnSaveAll').addEventListener('click', async () => {
     const rows = [];
     let hasError = false;
 
-    document.querySelectorAll('#importBody tr').forEach(tr => {
-        const itemId = parseInt(tr.querySelector('.fld-item').value);
+    document.querySelectorAll('#importBody tr[data-row-num]').forEach(tr => {
+        const itemId = tr.querySelector('.fld-item-id').value;
+        const ssEl   = tr.querySelector('.fld-item-ss');
         if (!itemId) {
-            tr.querySelector('.fld-item').classList.add('is-invalid');
+            ssEl.classList.add('border', 'border-danger', 'rounded');
             hasError = true;
             return;
         }
-        tr.querySelector('.fld-item').classList.remove('is-invalid');
+        ssEl.classList.remove('border', 'border-danger', 'rounded');
         rows.push({
-            item_id:    itemId,
+            item_id:    parseInt(itemId),
             quantity:   parseFloat(tr.querySelector('.fld-qty').value) || 1,
             price:      parseFloat(tr.querySelector('.fld-price').value) || 0,
             category:   tr.querySelector('.fld-cat').value,
@@ -229,6 +289,7 @@ document.getElementById('btnSaveAll').addEventListener('click', async () => {
     });
 
     if (hasError) { showToast('Оберіть найменування для всіх рядків', 'warning'); return; }
+    if (!rows.length) { showToast('Немає рядків для збереження', 'warning'); return; }
 
     const btn = document.getElementById('btnSaveAll');
     btn.disabled = true;
@@ -253,7 +314,8 @@ document.getElementById('btnSaveAll').addEventListener('click', async () => {
         document.getElementById('importBody').innerHTML = '';
         document.getElementById('tableWrap').style.display = 'none';
         document.getElementById('emptyHint').style.display = '';
-        updateSaveBtn();
+        document.getElementById('btnSaveAll').disabled = true;
+        btn.innerHTML = '<i class="bi bi-floppy me-1"></i>Зберегти нові рядки';
     } else {
         showToast(d.error || 'Помилка збереження', 'danger');
         btn.disabled = false;
@@ -276,9 +338,5 @@ document.querySelectorAll('.btn-del-existing').forEach(btn => {
         }
     });
 });
-
-function escH(s) {
-    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
 </script>
 {% endblock %}

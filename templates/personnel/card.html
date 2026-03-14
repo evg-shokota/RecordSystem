@@ -18,6 +18,10 @@
 <a href="{{ url_for('personnel.edit', person_id=person.id) }}" class="btn btn-sm btn-primary">
     <i class="bi bi-pencil me-1"></i>Редагувати
 </a>
+<a href="{{ url_for('personnel.property_card_print', person_id=person.id) }}"
+   class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-card-list me-1"></i>Картка майна
+</a>
 <a href="{{ url_for('personnel.attestat', person_id=person.id) }}" class="btn btn-sm btn-outline-secondary">
     <i class="bi bi-file-earmark-person me-1"></i>Атестат
 </a>
@@ -180,14 +184,36 @@
                     <dt class="col-sm-5 text-muted fw-normal">Зарахований</dt>
                     <dd class="col-sm-7">
                         {% if person.enroll_date %}{{ person.enroll_date }}{% endif %}
-                        {% if person.enroll_order %} · {{ person.enroll_order }}{% endif %}
+                        {% if person.enroll_order %}
+                         ·
+                        {% if person.enroll_order_file %}
+                        <a href="{{ person.enroll_order_file }}" target="_blank"
+                           class="text-decoration-none text-body" title="Відкрити файл наказу зарахування">
+                            {{ person.enroll_order }}
+                            <i class="bi bi-file-earmark-pdf text-success ms-1" style="font-size:11px;"></i>
+                        </a>
+                        {% else %}
+                        <span class="text-muted" title="Файл наказу не завантажено">{{ person.enroll_order }}</span>
+                        {% endif %}
+                        {% endif %}
                     </dd>
                     {% endif %}
                     {% if person.dismiss_date or person.dismiss_order %}
                     <dt class="col-sm-5 text-muted fw-normal">Вибув</dt>
                     <dd class="col-sm-7">
                         {% if person.dismiss_date %}{{ person.dismiss_date }}{% endif %}
-                        {% if person.dismiss_order %} · {{ person.dismiss_order }}{% endif %}
+                        {% if person.dismiss_order %}
+                         ·
+                        {% if person.dismiss_order_file %}
+                        <a href="{{ person.dismiss_order_file }}" target="_blank"
+                           class="text-decoration-none text-body" title="Відкрити файл наказу вибуття">
+                            {{ person.dismiss_order }}
+                            <i class="bi bi-file-earmark-pdf text-success ms-1" style="font-size:11px;"></i>
+                        </a>
+                        {% else %}
+                        <span class="text-muted" title="Файл наказу не завантажено">{{ person.dismiss_order }}</span>
+                        {% endif %}
+                        {% endif %}
                     </dd>
                     {% endif %}
                 </dl>
@@ -363,149 +389,191 @@
 
         {# ── Вкладка: Картка речового майна ── #}
         <div class="tab-pane fade" id="pane-property-card" role="tabpanel">
-            {% if property_card.rows %}
-            <div class="table-responsive">
-                <table class="table table-sm table-bordered mb-0" id="propertyCardTable"
-                       style="font-size:0.8rem; min-width:600px;">
-                    <thead class="table-light">
-                        <tr>
-                            <th class="align-middle" style="min-width:200px">Назва майна</th>
-                            <th class="text-center align-middle" style="width:50px">Норма</th>
-                            <th class="text-center align-middle" style="width:65px">Строк носіння</th>
-                            {% for doc in property_card.docs %}
-                            <th class="text-center align-middle" style="min-width:75px; max-width:95px;">
-                                {% if doc.type == 'invoice' %}
-                                <a href="{{ url_for('invoices.view', invoice_id=doc.id) }}"
-                                   class="text-decoration-none d-block" title="{{ doc.label }}">
-                                    <i class="bi bi-receipt text-primary" style="font-size:0.7rem"></i>
-                                    <span class="d-block" style="font-size:0.7rem; line-height:1.2; word-break:break-all;">{{ doc.label }}</span>
-                                </a>
-                                {% elif doc.type == 'rv' %}
-                                <a href="{{ url_for('rv.view', sheet_id=doc.id) }}"
-                                   class="text-decoration-none d-block" title="{{ doc.label }}">
-                                    <i class="bi bi-list-columns-reverse text-success" style="font-size:0.7rem"></i>
-                                    <span class="d-block" style="font-size:0.7rem; line-height:1.2; word-break:break-all;">{{ doc.label }}</span>
-                                </a>
-                                {% elif doc.type == 'attestat_import' %}
-                                <span style="font-size:0.7rem" title="Прийом з атестату">
-                                    <i class="bi bi-box-arrow-in-down text-info" style="font-size:0.7rem"></i>
-                                    <span class="d-block">{{ doc.label }}</span>
-                                </span>
-                                {% else %}
-                                <span style="font-size:0.7rem">{{ doc.label }}</span>
-                                {% endif %}
-                                <div class="text-muted" style="font-size:0.65rem">{{ doc.date }}</div>
-                            </th>
-                            {% endfor %}
-                            <th class="text-center align-middle" style="width:55px">Разом</th>
-                            <th class="text-center align-middle" style="width:65px">Стан</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% set ns = namespace(cur_group='') %}
-                        {% for row in property_card.rows %}
-                        {% if row.group_name != ns.cur_group %}
-                        {% set ns.cur_group = row.group_name %}
-                        <tr class="table-secondary">
-                            <td colspan="{{ 3 + property_card.docs|length + 2 }}"
-                                class="fw-bold small py-1 px-2">{{ row.group_name }}</td>
-                        </tr>
-                        {% endif %}
-                        <tr>
-                            <td class="align-middle">{{ row.norm_name }}</td>
-                            <td class="text-center align-middle text-muted small">
-                                {% if row.norm_qty %}{{ row.norm_qty|int if row.norm_qty == row.norm_qty|int else row.norm_qty }} {{ abbr_unit(row.unit) }}{% else %}—{% endif %}
-                            </td>
-                            <td class="text-center align-middle small">
-                                {% if not row.from_norm %}
-                                    <span class="text-muted">—</span>
-                                {% elif row.wear_years == 0 %}
-                                    <span class="text-muted">до зносу</span>
-                                {% else %}
-                                    {% set wear_months = (row.wear_years * 12)|int %}
-                                    {% if row.days_left is defined and row.days_left is not none %}
-                                        {% if row.days_left < 0 %}
-                                            <span class="text-danger fw-semibold" title="Строк вийшов {{ row.expiry_date }}">
-                                                <i class="bi bi-exclamation-triangle-fill"></i> вийшов
-                                            </span>
-                                        {% elif row.days_left <= 30 %}
-                                            <span class="text-warning fw-semibold" title="Закінчується {{ row.expiry_date }}">
-                                                {{ row.days_left }}д
-                                            </span>
-                                        {% else %}
-                                            <span class="text-muted">{{ (row.days_left / 30)|int }}м</span>
-                                        {% endif %}
-                                    {% else %}
-                                        <span class="text-muted">{{ wear_months }}м</span>
-                                    {% endif %}
-                                {% endif %}
-                            </td>
-                            {% for doc in property_card.docs %}
-                            {% set cell = row.cells.get(doc.key) %}
-                            <td class="text-center align-middle
-                                {% if cell and cell.status == 'written_off' %}text-muted text-decoration-line-through
-                                {% elif cell and cell.status == 'returned' %}text-muted{% endif %}">
-                                {% if cell %}
-                                    {{ cell.qty|int if cell.qty == cell.qty|int else cell.qty }}
-                                {% else %}
-                                    <span class="text-muted">—</span>
-                                {% endif %}
-                            </td>
-                            {% endfor %}
-                            <td class="text-center align-middle fw-semibold small">
-                                {% if row.total_qty %}{{ row.total_qty|int if row.total_qty == row.total_qty|int else row.total_qty }}{% else %}—{% endif %}
-                            </td>
-                            {# Стан — кольорова клітинка #}
-                            {% if row.color == 'green' %}
-                            <td class="text-center align-middle bg-success-subtle text-success fw-semibold small"
-                                title="Норма виконана, строк актуальний">
-                                <i class="bi bi-check-circle-fill"></i>
-                                {{ row.total_active|int if row.total_active == row.total_active|int else row.total_active }}
-                            </td>
-                            {% elif row.color == 'yellow' %}
-                            <td class="text-center align-middle bg-warning-subtle text-warning fw-semibold small"
-                                title="Потребує заміни — строк носіння вийшов або закінчується">
-                                <i class="bi bi-arrow-clockwise"></i>
-                                {{ row.total_active|int if row.total_active == row.total_active|int else row.total_active }}
-                            </td>
-                            {% elif row.color == 'orange' %}
-                            <td class="text-center align-middle bg-warning-subtle text-warning fw-semibold small"
-                                title="Видано частково">
-                                <i class="bi bi-dash-circle"></i>
-                                {{ row.total_active|int if row.total_active == row.total_active|int else row.total_active }}
-                            </td>
-                            {% elif row.color == 'red' %}
-                            <td class="text-center align-middle bg-danger-subtle text-danger fw-semibold small"
-                                title="Не видавалось">
-                                <i class="bi bi-x-circle-fill"></i> 0
-                            </td>
-                            {% else %}
-                            <td class="text-center align-middle text-muted small">
-                                {{ row.total_active|int if row.total_active == row.total_active|int else row.total_active }}
-                            </td>
-                            {% endif %}
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+
+            {# Toolbar вкладки #}
+            <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom">
+                <span class="text-muted small">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Матрична картка обліку майна особистого користування
+                </span>
+                <a href="{{ url_for('personnel.property_card_print', person_id=person.id) }}"
+                   class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-printer me-1"></i>Відкрити картку (друк)
+                </a>
             </div>
-            <div class="px-3 py-2 text-muted small border-top d-flex flex-wrap gap-3">
+
+            {% if property_card.rows %}
+            {%- set pc_docs       = property_card.docs %}
+            {%- set pc_attestat_doc = pc_docs | selectattr('type', 'equalto', 'attestat_import') | first | default(none) %}
+            {%- set pc_other_docs   = pc_docs | rejectattr('type', 'equalto', 'attestat_import') | list %}
+            {%- set TOTAL_COLS = 12 %}
+            {%- set empty_cols = TOTAL_COLS - (pc_other_docs | length) %}
+
+            <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0" style="font-size:0.75rem; min-width:700px; table-layout:fixed;">
+                <colgroup>
+                    <col style="width:28px;">     {# № #}
+                    <col style="width:200px;">    {# Назва #}
+                    <col style="width:50px;">     {# Стан #}
+                    <col style="width:44px;">     {# Атестат (завжди одна) #}
+                    {% for _ in pc_other_docs %}<col style="width:42px;">{% endfor %}
+                    {% for _ in range(empty_cols) %}<col style="width:38px;">{% endfor %}
+                    <col style="width:38px;">     {# Разом #}
+                </colgroup>
+                <thead class="table-light">
+                    {# Рядок 1 #}
+                    <tr class="text-center align-middle">
+                        <th rowspan="2">#</th>
+                        <th rowspan="2" class="text-start">Найменування</th>
+                        <th rowspan="2" title="Стан забезпечення">Стан</th>
+
+                        {# Атестат — завжди одна фіксована колонка #}
+                        <th rowspan="2" style="height:55px; padding:2px;">
+                            <div style="writing-mode:vertical-rl; transform:rotate(180deg);
+                                        white-space:nowrap; font-size:0.65rem; line-height:1.2;">
+                                {% if pc_attestat_doc %}
+                                <a href="{{ url_for('personnel.attestat_import', person_id=person.id) }}"
+                                   class="text-decoration-none text-info" target="_blank"
+                                   title="Прийом з атестату">
+                                    <i class="bi bi-box-arrow-in-down"></i> Атестат
+                                </a>
+                                {% else %}
+                                <span class="text-muted">Атестат</span>
+                                {% endif %}
+                            </div>
+                        </th>
+
+                        {# Блок накладних/РВ #}
+                        <th colspan="{{ TOTAL_COLS }}" style="font-size:0.7rem;">
+                            Найменування, номер і дата документа
+                        </th>
+                        <th rowspan="2" style="font-size:0.7rem;">Разом</th>
+                    </tr>
+
+                    {# Рядок 2 — окремі документи #}
+                    <tr class="text-center">
+                        {% for doc in pc_other_docs %}
+                        <th style="font-size:0.65rem; padding:2px; line-height:1.2;">
+                            {% if doc.type == 'invoice' %}
+                            <a href="{{ url_for('invoices.view', invoice_id=doc.id) }}"
+                               class="text-decoration-none text-primary d-block" target="_blank"
+                               title="Відкрити накладну {{ doc.label }}">
+                                <i class="bi bi-receipt" style="font-size:0.65rem;"></i><br>
+                                <b>{{ doc.label }}</b>
+                            </a>
+                            {% elif doc.type == 'rv' %}
+                            <a href="{{ url_for('rv.view', sheet_id=doc.id) }}"
+                               class="text-decoration-none text-success d-block" target="_blank"
+                               title="Відкрити РВ {{ doc.label }}">
+                                <i class="bi bi-list-columns-reverse" style="font-size:0.65rem;"></i><br>
+                                <b>{{ doc.label }}</b>
+                            </a>
+                            {% else %}
+                            <span style="font-size:0.65rem;">{{ doc.label }}</span>
+                            {% endif %}
+                            {% if doc.date %}
+                            <div class="text-muted" style="font-size:0.6rem;">{{ doc.date }}</div>
+                            {% endif %}
+                        </th>
+                        {% endfor %}
+
+                        {# Порожні колонки для майбутніх документів #}
+                        {% for i in range(empty_cols) %}
+                        <th style="font-size:0.6rem; color:#ccc; padding:1px;">&nbsp;</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {%- set ns = namespace(cur_group='', row_num=0) %}
+                    {% for row in property_card.rows %}
+
+                    {# Рядок-заголовок групи #}
+                    {% if row.group_name != ns.cur_group %}
+                    {%- set ns.cur_group = row.group_name %}
+                    <tr class="table-secondary">
+                        <td colspan="{{ 3 + TOTAL_COLS + 1 }}"
+                            class="fw-bold py-1 px-2" style="font-size:0.7rem;">
+                            {{ row.group_name }}
+                        </td>
+                    </tr>
+                    {% endif %}
+
+                    {%- set ns.row_num = ns.row_num + 1 %}
+                    <tr>
+                        <td class="text-center text-muted">{{ ns.row_num }}</td>
+                        <td>{{ row.norm_name }}</td>
+
+                        {# Стан кольором #}
+                        {% if row.color == 'green' %}
+                        <td class="text-center bg-success-subtle text-success fw-semibold"
+                            title="Норма виконана">
+                            <i class="bi bi-check-circle-fill"></i>
+                        </td>
+                        {% elif row.color == 'yellow' %}
+                        <td class="text-center bg-warning-subtle text-warning fw-semibold"
+                            title="Строк носіння вийшов — потребує заміни">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </td>
+                        {% elif row.color == 'orange' %}
+                        <td class="text-center bg-warning-subtle text-warning fw-semibold"
+                            title="Видано частково">
+                            <i class="bi bi-dash-circle"></i>
+                        </td>
+                        {% elif row.color == 'red' %}
+                        <td class="text-center bg-danger-subtle text-danger fw-semibold"
+                            title="Не видавалось">
+                            <i class="bi bi-x-circle-fill"></i>
+                        </td>
+                        {% else %}
+                        <td class="text-center text-muted">—</td>
+                        {% endif %}
+
+                        {# Атестат — одна клітинка #}
+                        {%- set atst_cell = row.cells.get('attestat') %}
+                        <td class="text-center">
+                            {% if atst_cell %}{{ atst_cell.qty|int if atst_cell.qty == atst_cell.qty|int else atst_cell.qty }}{% endif %}
+                        </td>
+
+                        {# Заповнені документи #}
+                        {% for doc in pc_other_docs %}
+                        {%- set cell = row.cells.get(doc.key) %}
+                        <td class="text-center
+                            {%- if cell and cell.status == 'written_off' %} text-muted text-decoration-line-through
+                            {%- elif cell and cell.status == 'returned' %} text-muted
+                            {%- endif %}">
+                            {% if cell %}{{ cell.qty|int if cell.qty == cell.qty|int else cell.qty }}{% endif %}
+                        </td>
+                        {% endfor %}
+
+                        {# Порожні #}
+                        {% for i in range(empty_cols) %}
+                        <td></td>
+                        {% endfor %}
+
+                        {# Разом #}
+                        <td class="text-center fw-semibold">
+                            {% if row.total_active %}
+                                {{ row.total_active|int if row.total_active == row.total_active|int else row.total_active }}
+                            {% else %}—{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+
+            {# Легенда #}
+            <div class="px-3 py-2 text-muted border-top d-flex flex-wrap gap-3" style="font-size:0.75rem;">
                 <span><i class="bi bi-receipt text-primary me-1"></i>Накладна</span>
                 <span><i class="bi bi-list-columns-reverse text-success me-1"></i>РВ</span>
                 <span><i class="bi bi-box-arrow-in-down text-info me-1"></i>Атестат</span>
-                <span class="ms-2">
-                    <span class="badge bg-success-subtle text-success border border-success-subtle">✓</span> норма виконана
-                </span>
-                <span>
-                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle">↻</span> потребує заміни
-                </span>
-                <span>
-                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle">–</span> часткова видача
-                </span>
-                <span>
-                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">✗</span> не видавалось
-                </span>
+                <span class="ms-2 text-success"><i class="bi bi-check-circle-fill me-1"></i>норма виконана</span>
+                <span class="text-warning"><i class="bi bi-arrow-clockwise me-1"></i>потребує заміни</span>
+                <span class="text-warning"><i class="bi bi-dash-circle me-1"></i>часткова видача</span>
+                <span class="text-danger"><i class="bi bi-x-circle-fill me-1"></i>не видавалось</span>
             </div>
+
             {% else %}
             <div class="p-4 text-center text-muted">
                 <i class="bi bi-card-list fs-2 d-block mb-2"></i>

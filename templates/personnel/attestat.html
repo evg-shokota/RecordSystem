@@ -63,7 +63,7 @@
         <tr>
             <td style="width:50%">
                 <strong>Звання:</strong> {{ person.rank or '—' }}<br>
-                <strong>ПІБ:</strong> {{ person.last_name }} {{ person.first_name }} {{ person.middle_name or '' }}<br>
+                <strong>ПІБ:</strong> {{ person.last_name | upper }} {{ person.first_name }} {{ person.middle_name or '' }}<br>
                 <strong>Посада:</strong> {{ person.position or '—' }}
             </td>
             <td>
@@ -161,7 +161,7 @@
         <div class="text-end">
             Майно отримав<br>
             {{ person.rank or '' }} ________________
-            {{ person.last_name }} {{ person.first_name[0] if person.first_name else '' }}.{{ person.middle_name[0] if person.middle_name else '' }}.<br>
+            {{ person.last_name | upper }} {{ person.first_name[0] if person.first_name else '' }}.{{ person.middle_name[0] if person.middle_name else '' }}.<br>
             "____" ____________ {{ today[-4:] }} р.
         </div>
     </div>

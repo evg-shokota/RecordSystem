@@ -144,6 +144,9 @@
                             <td style="min-width:220px">
                                 <input type="hidden" name="item_id[]" class="item-sel">
                                 <div class="item-ss-wrap"></div>
+                                <a href="#" class="btn-show-add-dict small mt-1 d-inline-block" style="font-size:11px">
+                                    <i class="bi bi-plus-circle me-1"></i>Немає в списку — додати до словника
+                                </a>
                             </td>
                             <td>
                                 <select name="category[]" class="form-select form-select-sm cat-sel">
@@ -219,6 +222,15 @@
 
 {% block scripts %}
 <script>
+// ─── Норми для DictItemAdder ───────────────────────────────────
+DictItemAdder.setNormOptions([
+    {% for group in norm_groups %}
+    {% for nd in group.norms %}
+    { value: '{{ nd.id }}', label: {{ nd.name|tojson }}, group: {{ group.name|tojson }}, meta: { unit: {{ (nd.unit or 'шт')|tojson }} } },
+    {% endfor %}
+    {% endfor %}
+]);
+
 // ─── Дані зі складу ───────────────────────────────────────────
 const stockData = {{ stock | tojson }};
 
@@ -446,20 +458,57 @@ function addRow(initialItemId) {
     clone.id = 'invrow_' + (++rowCount);
     clone.style.display = '';
     clone.classList.add('inv-row-active');
+    clone.dataset.rowNum = rowCount;
 
     clone.querySelectorAll('input[type=number]').forEach(i => i.value = i.name.includes('price') ? '0' : '');
     clone.querySelectorAll('input[type=text]').forEach(i => i.value = '');
 
+    const tbody = document.getElementById('invRows');
+    tbody.appendChild(clone);
+
+    // Inline блок додавання до словника
+    const addTr = DictItemAdder.buildTr(9);
+    tbody.appendChild(addTr);
+
     const stockRow = initInvItemSS(clone, initialItemId || null);
-    clone._stockRow = stockRow; // зберігаємо для setValue при редагуванні
+    clone._stockRow = stockRow;
+
+    // Кнопка "Немає в списку"
+    clone.querySelector('.btn-show-add-dict').addEventListener('click', e => {
+        e.preventDefault();
+        const ssWrap = clone.querySelector('.item-ss-wrap');
+        const searchVal = ssWrap.querySelector('input')?.value?.trim() || '';
+        DictItemAdder.toggle(addTr, searchVal || undefined);
+    });
+
+    DictItemAdder.init(addTr, {
+        allSsWraps: () => document.querySelectorAll('.item-ss-wrap'),
+        onSaved(newOpt) {
+            // Додати до stockData щоб нові рядки теж бачили позицію
+            const newItemId = parseInt(newOpt.value);
+            if (!stockData.find(s => s.item_id === newItemId)) {
+                stockData.push({
+                    item_id: newItemId,
+                    item_name: newOpt.label,
+                    unit_of_measure: newOpt.meta?.unit || 'шт',
+                    category: 'I',
+                    price: 0,
+                    quantity: 0,
+                    stock_id: null,
+                });
+            }
+            stockRow._ss?.setValue(newOpt.value);
+            updatePreview();
+        },
+    });
 
     clone.querySelector('.btn-del').addEventListener('click', () => {
         clone.remove();
+        addTr.remove();
         renum();
         updatePreview();
     });
 
-    document.getElementById('invRows').appendChild(clone);
     renum();
     if (!initialItemId) clone.querySelector('.ss-display')?.click();
     return clone;

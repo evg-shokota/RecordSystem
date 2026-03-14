@@ -238,8 +238,8 @@ register_blueprints(app)
 def serve_storage(filename):
     """Роздає файли з папки storage/ (фото, скани тощо)."""
     from flask import send_from_directory
-    storage_dir = Path(__file__).parent / "storage"
-    return send_from_directory(str(storage_dir), filename)
+    from core.settings import get_storage_path
+    return send_from_directory(str(get_storage_path()), filename)
 
 
 @app.route("/units/")

@@ -54,7 +54,7 @@
         {% set row_sum = namespace(val=0) %}
         <tr>
             <td>{{ loop.index }}</td>
-            <td class="name-cell">{{ row.last_name }} {{ row.first_name[0] }}.{% if row.middle_name %} {{ row.middle_name[0] }}.{% endif %}</td>
+            <td class="name-cell">{{ row.last_name | upper }} {{ row.first_name[0] }}.{% if row.middle_name %} {{ row.middle_name[0] }}.{% endif %}</td>
             <td>{{ row.rank or '' }}</td>
             {% for item in matrix.cols %}
             {% set cell = matrix.qty.get((row.id, item.item_id), {}) %}

@@ -50,11 +50,12 @@ def general():
             "rv_suffix":           request.form.get("rv_suffix", "РВ"),
             "rv_sequence":         request.form.get("rv_sequence", "1"),
             "backup_reminder_days":request.form.get("backup_reminder_days", "3"),
+            "storage_path":        request.form.get("storage_path", "").strip(),
         })
         flash("Налаштування збережено", "success")
         return redirect(url_for("settings.general"))
     s = get_all_settings()
-    from core.settings import get_setting
+    from core.settings import get_setting, get_storage_path
     rank_mode = get_setting("rank_mode", "army")
     default_theme = s.get("default_theme", "default")
     conn = get_connection()
@@ -64,7 +65,8 @@ def general():
     ).fetchall()]
     conn.close()
     return render_template("settings/general.html", s=s, rank_names=rank_names,
-                           default_theme=default_theme)
+                           default_theme=default_theme,
+                           current_storage_path=str(get_storage_path()))
 
 
 # ─────────────────────────────────────────────
@@ -1207,6 +1209,46 @@ def backup_create():
         flash(f"Резервну копію створено: {dest.name}", "success")
     except Exception as e:
         flash(f"Помилка при створенні бекапу: {e}", "danger")
+    return redirect(url_for("settings.backup"))
+
+
+@bp.route("/backup/download-full")
+@login_required
+def backup_download_full():
+    """Створити та завантажити повний ZIP-бекап (БД + файли)."""
+    from core.backup import create_full_backup
+    from flask import send_file
+    try:
+        zip_path = create_full_backup()
+        return send_file(str(zip_path), as_attachment=True, download_name=zip_path.name,
+                         mimetype="application/zip")
+    except Exception as e:
+        flash(f"Помилка при створенні бекапу: {e}", "danger")
+        return redirect(url_for("settings.backup"))
+
+
+@bp.route("/backup/restore", methods=["POST"])
+@login_required
+def backup_restore():
+    """Відновити систему з повного ZIP-бекапу."""
+    import tempfile
+    from pathlib import Path
+    from core.backup import restore_full_backup
+
+    f = request.files.get("backup_file")
+    if not f or not f.filename.endswith(".zip"):
+        flash("Виберіть ZIP-файл повного бекапу", "danger")
+        return redirect(url_for("settings.backup"))
+
+    tmp = Path(tempfile.mktemp(suffix=".zip"))
+    try:
+        f.save(str(tmp))
+        restore_full_backup(tmp)
+        flash("Відновлення завершено успішно. Перезапустіть систему для застосування змін.", "success")
+    except Exception as e:
+        flash(f"Помилка відновлення: {e}", "danger")
+    finally:
+        tmp.unlink(missing_ok=True)
     return redirect(url_for("settings.backup"))
 
 

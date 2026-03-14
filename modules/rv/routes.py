@@ -198,6 +198,8 @@ def new():
         all_items = conn.execute(
             "SELECT id, name, unit_of_measure FROM item_dictionary ORDER BY name"
         ).fetchall()
+        from modules.warehouse.routes import _get_norm_groups
+        norm_groups = _get_norm_groups(conn)
 
         if request.method == "POST":
             import os
@@ -308,11 +310,17 @@ def new():
                 if scan_file and scan_file.filename:
                     ext = os.path.splitext(scan_file.filename)[1].lower()
                     if ext in (".pdf", ".jpg", ".jpeg", ".png"):
-                        from core.db import get_db_path
-                        storage_dir = os.path.join(os.path.dirname(get_db_path()), "storage", "scans", "rv")
-                        os.makedirs(storage_dir, exist_ok=True)
-                        filename = f"rv_{sid}{ext}"
-                        scan_file.save(os.path.join(storage_dir, filename))
+                        from core.settings import get_storage_path
+                        rv_row = conn.execute(
+                            "SELECT number, doc_date, created_at FROM distribution_sheets WHERE id=?",
+                            (sid,)
+                        ).fetchone()
+                        number_safe = (rv_row["number"] or str(sid)).replace("/", "-").replace(" ", "_")
+                        date_str = (rv_row["doc_date"] or rv_row["created_at"] or "")[:10].replace("-", "")
+                        filename = f"rv_{number_safe}_{date_str}{ext}" if date_str else f"rv_{number_safe}{ext}"
+                        storage_path = get_storage_path() / "scans" / "rv"
+                        storage_path.mkdir(parents=True, exist_ok=True)
+                        scan_file.save(str(storage_path / filename))
                         rel_path = f"scans/rv/{filename}"
                         orig_name = _secure(scan_file.filename)
                         conn.execute(
@@ -332,6 +340,7 @@ def new():
                 all_items=[dict(r) for r in all_items],
                 errors=errors, form=request.form,
                 today=date.today().isoformat(),
+                norm_groups=norm_groups,
             )
 
         conn.close()
@@ -342,6 +351,7 @@ def new():
             all_items=[dict(r) for r in all_items],
             errors=[], form={},
             today=date.today().isoformat(),
+            norm_groups=norm_groups,
         )
 
     # ── Звичайна РВ ────────────────────────────────────────────

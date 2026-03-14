@@ -12,11 +12,39 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <p class="text-muted mb-0">Резервні копії зберігаються в папці <code>backups/</code> поряд з базою даних.</p>
-    <form method="POST" action="{{ url_for('settings.backup_create') }}">
-        <button type="submit" class="btn btn-primary">
-            <i class="bi bi-database-fill-add me-1"></i>Створити копію зараз
-        </button>
-    </form>
+    <div class="d-flex gap-2">
+        <form method="POST" action="{{ url_for('settings.backup_create') }}">
+            <button type="submit" class="btn btn-outline-primary">
+                <i class="bi bi-database-fill-add me-1"></i>Копія БД
+            </button>
+        </form>
+        <a href="{{ url_for('settings.backup_download_full') }}" class="btn btn-primary">
+            <i class="bi bi-file-zip me-1"></i>Повний бекап (БД + файли)
+        </a>
+    </div>
+</div>
+
+{# Відновлення з бекапу #}
+<div class="card border-warning mb-3">
+    <div class="card-header bg-warning-subtle fw-semibold">
+        <i class="bi bi-arrow-counterclockwise me-1"></i>Відновлення з повного бекапу
+    </div>
+    <div class="card-body">
+        <p class="text-muted small mb-3">
+            Завантажте ZIP-файл повного бекапу. <strong class="text-danger">Всі поточні дані та файли будуть замінені!</strong>
+            Після відновлення необхідно перезапустити систему.
+        </p>
+        <form method="POST" action="{{ url_for('settings.backup_restore') }}"
+              onsubmit="return confirm('УВАГА! Всі поточні дані будуть замінені даними з бекапу. Продовжити?')">
+            <div class="d-flex gap-2 align-items-center">
+                <input type="file" name="backup_file" accept=".zip"
+                       class="form-control form-control-sm" style="max-width:320px;" required>
+                <button type="submit" class="btn btn-warning btn-sm">
+                    <i class="bi bi-cloud-upload me-1"></i>Відновити
+                </button>
+            </div>
+        </form>
+    </div>
 </div>
 
 <div class="card border-0 shadow-sm">

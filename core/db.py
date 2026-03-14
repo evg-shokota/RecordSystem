@@ -199,11 +199,14 @@ def init_db() -> None:
             size_jacket TEXT,
             size_pants TEXT,
             size_shoes TEXT,
+            size_vest  TEXT,
             -- Зарахування / вибуття
             enroll_date TEXT,
             enroll_order TEXT,
+            enroll_order_file TEXT,
             dismiss_date TEXT,
             dismiss_order TEXT,
+            dismiss_order_file TEXT,
             -- Стан
             is_active INTEGER NOT NULL DEFAULT 1,
             archived_at TEXT,
@@ -996,6 +999,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
     add_column_if_missing("doc_templates", "default_for_type","INTEGER NOT NULL DEFAULT 0")
     add_column_if_missing("doc_templates", "font_family",     "TEXT NOT NULL DEFAULT 'Times New Roman'")
     add_column_if_missing("doc_templates", "base_font_size",  "INTEGER NOT NULL DEFAULT 12")
+
+    # personnel: розмір бронежилета та файли наказів
+    add_column_if_missing("personnel", "size_vest",           "TEXT")
+    add_column_if_missing("personnel", "enroll_order_file",   "TEXT")
+    add_column_if_missing("personnel", "dismiss_order_file",  "TEXT")
 
     # invoices: збережений HTML тіла документа (індивідуальне для цієї накладної)
     add_column_if_missing("invoices", "body_html", "TEXT")

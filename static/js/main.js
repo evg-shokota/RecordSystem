@@ -755,6 +755,208 @@ class StockItemRow {
 
 
 // =====================================================
+// DictItemAdder — inline додавання позиції до словника
+// майна прямо під рядком таблиці (без модальних вікон).
+//
+// Використання:
+//   // 1. Передати опції норм один раз на сторінці:
+//   DictItemAdder.setNormOptions([{value, label, group, meta:{unit}},...]);
+//
+//   // 2. Для кожного рядка таблиці:
+//   const addTr = DictItemAdder.buildTr(colspan);   // створити рядок-розширення
+//   mainTr.after(addTr);
+//   DictItemAdder.init(addTr, {
+//       onSaved(newOpt) { /* новий {value, label, meta} — вибрати його */ },
+//       triggerEl,       // елемент що відкриває блок (опційно, для toggle)
+//       prefillName,     // рядок для поля "Назва" (опційно)
+//   });
+//
+//   // 3. Кнопка відкриття:
+//   btn.addEventListener('click', () => DictItemAdder.toggle(addTr, prefillName));
+// =====================================================
+
+const DictItemAdder = (() => {
+    let _normOptions = [];
+
+    /** Встановити опції словника норм (один раз на сторінці через Jinja2) */
+    function setNormOptions(opts) { _normOptions = opts || []; }
+
+    /** Побудувати <tr class="dict-add-row"> з повною формою. colspan — кількість колонок під даними. */
+    function buildTr(colspan = 8) {
+        const tr = document.createElement('tr');
+        tr.className = 'dict-add-row';
+        tr.style.display = 'none';
+        tr.innerHTML = `
+            <td></td>
+            <td colspan="${colspan - 1}">
+              <div class="border rounded p-2 mb-1" style="font-size:13px;background:var(--card-bg,#f8f9fa)">
+                <div class="fw-medium mb-2 text-muted small">
+                  <i class="bi bi-plus-circle me-1"></i>Нова позиція словника майна
+                </div>
+                <div class="alert alert-danger py-1 small mb-2 dict-add-error" style="display:none"></div>
+                <div class="row g-2 mb-2">
+                  <div class="col-md-5">
+                    <label class="form-label form-label-sm mb-1">Назва <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control form-control-sm dict-name" placeholder="Назва майна">
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label form-label-sm mb-1">Од. виміру</label>
+                    <input type="text" class="form-control form-control-sm dict-unit" value="шт" placeholder="шт, пар...">
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label form-label-sm mb-1">Сезон</label>
+                    <select class="form-select form-select-sm dict-season">
+                      <option value="demi">Демісезон</option>
+                      <option value="winter">Зима</option>
+                      <option value="summer">Літо</option>
+                    </select>
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label form-label-sm mb-1">Стать</label>
+                    <select class="form-select form-select-sm dict-gender">
+                      <option value="unisex">Унісекс</option>
+                      <option value="male">Чол.</option>
+                      <option value="female">Жін.</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="border rounded px-3 py-2 mb-2" style="background:var(--bs-body-bg,#fff)">
+                  <div class="row g-0">
+                    <div class="col-6 col-md-3 py-1">
+                      <div class="form-check form-switch mb-0">
+                        <input type="checkbox" class="form-check-input dict-inventory" role="switch">
+                        <label class="form-check-label small">Інвентарне</label>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-3 py-1">
+                      <div class="form-check form-switch mb-0">
+                        <input type="checkbox" class="form-check-input dict-serial" role="switch">
+                        <label class="form-check-label small">Серійний №</label>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-3 py-1">
+                      <div class="form-check form-switch mb-0">
+                        <input type="checkbox" class="form-check-input dict-passport" role="switch">
+                        <label class="form-check-label small">Паспорт</label>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-3 py-1">
+                      <div class="form-check form-switch mb-0">
+                        <input type="checkbox" class="form-check-input dict-exploit" role="switch">
+                        <label class="form-check-label small">Акт вв. експл.</label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label form-label-sm mb-1">
+                    Прив'язка до словника норм
+                    <span class="text-muted fw-normal">(необов'язково)</span>
+                  </label>
+                  <input type="hidden" class="dict-norm-id">
+                  <div class="dict-norm-ss"></div>
+                </div>
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-success btn-dict-save">
+                    <i class="bi bi-check-lg me-1"></i>Зберегти та обрати
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary btn-dict-cancel">Скасувати</button>
+                </div>
+              </div>
+            </td>`;
+        return tr;
+    }
+
+    /**
+     * Ініціалізувати вже вставлений addTr.
+     * opts.onSaved(newOpt)  — callback після збереження, отримує {value, label, meta}
+     * opts.allSsWraps       — масив або NodeList .item-ss-wrap для оновлення всіх SS на сторінці
+     */
+    function init(addTr, opts = {}) {
+        const normHidden = addTr.querySelector('.dict-norm-id');
+
+        // SearchableSelect для норм
+        new SearchableSelect({
+            container:   addTr.querySelector('.dict-norm-ss'),
+            hiddenInput: normHidden,
+            options:     _normOptions,
+            placeholder: '— не прив\'язано —',
+            allowClear:  true,
+            size:        'sm',
+            onChange(val, opt) {
+                if (opt && opt.meta && opt.meta.unit) {
+                    const unitInp = addTr.querySelector('.dict-unit');
+                    if (!unitInp.value || unitInp.value === 'шт') unitInp.value = opt.meta.unit;
+                }
+            }
+        });
+
+        addTr.querySelector('.btn-dict-cancel').addEventListener('click', () => {
+            addTr.style.display = 'none';
+        });
+
+        addTr.querySelector('.btn-dict-save').addEventListener('click', async () => {
+            const name  = addTr.querySelector('.dict-name').value.trim();
+            const errEl = addTr.querySelector('.dict-add-error');
+            if (!name) { errEl.textContent = 'Введіть назву'; errEl.style.display = ''; return; }
+            errEl.style.display = 'none';
+
+            const fd = new FormData();
+            fd.append('name',            name);
+            fd.append('unit_of_measure', addTr.querySelector('.dict-unit').value.trim() || 'шт');
+            fd.append('season',          addTr.querySelector('.dict-season').value);
+            fd.append('gender',          addTr.querySelector('.dict-gender').value);
+            if (addTr.querySelector('.dict-inventory').checked) fd.append('is_inventory', '1');
+            if (addTr.querySelector('.dict-serial').checked)    fd.append('has_serial_number', '1');
+            if (addTr.querySelector('.dict-passport').checked)  fd.append('needs_passport', '1');
+            if (addTr.querySelector('.dict-exploit').checked)   fd.append('needs_exploitation_act', '1');
+            if (normHidden.value) fd.append('norm_dict_id', normHidden.value);
+
+            const saveBtn = addTr.querySelector('.btn-dict-save');
+            saveBtn.disabled = true;
+            const resp = await fetch('/settings/items/add', { method: 'POST', body: fd });
+            const data = await resp.json();
+            saveBtn.disabled = false;
+
+            if (data.ok) {
+                const unit      = addTr.querySelector('.dict-unit').value.trim() || 'шт';
+                const hasSerial = addTr.querySelector('.dict-serial').checked;
+                const newOpt    = { value: String(data.id), label: name, meta: { unit, serial: hasSerial ? 1 : 0 } };
+
+                // Оновити всі SS на сторінці
+                const wraps = opts.allSsWraps
+                    ? (typeof opts.allSsWraps === 'function' ? opts.allSsWraps() : opts.allSsWraps)
+                    : document.querySelectorAll('.item-ss-wrap');
+                wraps.forEach(w => { if (w._ssInstance) w._ssInstance.addOption(newOpt); });
+
+                addTr.style.display = 'none';
+                if (opts.onSaved) opts.onSaved(newOpt);
+                if (typeof showToast === 'function') showToast(`"${name}" додано до словника`, 'success');
+            } else {
+                errEl.textContent = data.error || 'Помилка збереження';
+                errEl.style.display = '';
+            }
+        });
+    }
+
+    /**
+     * Toggle показу/приховування рядка-розширення.
+     * prefillName — рядок для поля "Назва" (наприклад, текст з поля пошуку).
+     */
+    function toggle(addTr, prefillName) {
+        const visible = addTr.style.display !== 'none';
+        addTr.style.display = visible ? 'none' : '';
+        if (!visible) {
+            if (prefillName) addTr.querySelector('.dict-name').value = prefillName;
+            setTimeout(() => addTr.querySelector('.dict-name').focus(), 0);
+        }
+    }
+
+    return { setNormOptions, buildTr, init, toggle };
+})();
+
+
+// =====================================================
 // Ініціалізація при завантаженні
 // =====================================================
 

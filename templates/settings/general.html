@@ -174,6 +174,39 @@
                     </div>
                 </div>
 
+                <!-- Сховище файлів -->
+                <div class="col-12">
+                    <h6 class="fw-bold text-muted mb-3 border-bottom pb-2">
+                        <i class="bi bi-folder2-open me-1"></i>Сховище файлів
+                    </h6>
+                    <div class="row g-3 align-items-start">
+                        <div class="col-md-8">
+                            <label class="form-label">Папка для зберігання файлів</label>
+                            <input type="text" name="storage_path" class="form-control"
+                                   value="{{ s.get('storage_path','') }}"
+                                   placeholder="Залиште порожнім — буде папка storage/ поруч з базою даних">
+                            <div class="form-text">
+                                Поточне сховище: <code>{{ current_storage_path }}</code>
+                                <br>
+                                Структура: <code>personnel/прізвище_І_Б_№/</code>{photos, orders, scans} · <code>scans/rv/</code>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label text-muted">Структура сховища</label>
+                            <div class="p-2 bg-light rounded border" style="font-size:11px; font-family:monospace; line-height:1.8;">
+                                📁 &lt;папка сховища&gt;/<br>
+                                &nbsp;&nbsp;📁 personnel/<br>
+                                &nbsp;&nbsp;&nbsp;&nbsp;📁 іваненко_І_І_42/ <span class="text-muted fw-normal" style="font-family:sans-serif;">прізвище_ін._пб._№картки</span><br>
+                                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;📁 photos/ <span class="text-muted fw-normal" style="font-family:sans-serif;">— фото</span><br>
+                                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;📁 orders/ <span class="text-muted fw-normal" style="font-family:sans-serif;">— накази</span><br>
+                                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;📁 scans/ <span class="text-muted fw-normal" style="font-family:sans-serif;">— скани накладних цієї особи</span><br>
+                                &nbsp;&nbsp;📁 scans/<br>
+                                &nbsp;&nbsp;&nbsp;&nbsp;📁 rv/ <span class="text-muted fw-normal" style="font-family:sans-serif;">— скани РВ (rv_№_дата)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
             <hr class="mt-2">

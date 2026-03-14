@@ -86,6 +86,59 @@ def manual_backup() -> Path:
     return do_backup("manual")
 
 
+def create_full_backup() -> Path:
+    """ZIP-архів: database.db + вся папка storage. Для повного бекапу та міграції."""
+    import zipfile
+    from core.settings import get_storage_path
+
+    db_path = Path(get_db_path())
+    storage_path = get_storage_path()
+    backup_dir = get_backup_dir()
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    zip_path = backup_dir / f"full_backup_{timestamp}.zip"
+
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.write(db_path, "database.db")
+        if storage_path.exists():
+            for f in storage_path.rglob("*"):
+                if f.is_file():
+                    zf.write(f, "storage/" + str(f.relative_to(storage_path)).replace("\\", "/"))
+    return zip_path
+
+
+def restore_full_backup(zip_path: Path) -> None:
+    """Розпаковує повний бекап: БД + файли storage.
+    УВАГА: перезаписує поточну БД та файли. Потрібен перезапуск після відновлення."""
+    import zipfile
+    from core.settings import get_storage_path
+
+    db_path = Path(get_db_path())
+    storage_path = get_storage_path()
+
+    with zipfile.ZipFile(zip_path, 'r') as zf:
+        names = zf.namelist()
+        if "database.db" not in names:
+            raise ValueError("Архів не містить database.db — можливо це не повний бекап системи")
+
+        # Розпакувати БД у тимчасовий файл, потім замінити
+        tmp_db = db_path.parent / "database_restore_tmp.db"
+        with zf.open("database.db") as src, open(tmp_db, "wb") as dst:
+            dst.write(src.read())
+        # Замінити БД
+        shutil.copy2(tmp_db, db_path)
+        tmp_db.unlink(missing_ok=True)
+
+        # Розпакувати файли storage
+        for name in names:
+            if name.startswith("storage/") and not name.endswith("/"):
+                rel = name[len("storage/"):]
+                target = storage_path / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(name) as src, open(target, "wb") as dst:
+                    dst.write(src.read())
+
+
 def check_backup_reminder() -> bool:
     """
     Перевірити чи потрібне нагадування про бекап.

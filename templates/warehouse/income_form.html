@@ -271,96 +271,6 @@
     </div>
 
 </form>
-
-{# ── Модальне: Нова позиція словника майна ── #}
-<div class="modal fade" id="modalNewDictItem" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header py-2">
-                <h6 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Нова позиція словника майна</h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body pb-2">
-                <div id="newDictItemError" class="alert alert-danger py-2 small" style="display:none"></div>
-
-                <div class="row g-2 mb-2">
-                    <div class="col-md-5">
-                        <label class="form-label form-label-sm mb-1">Назва <span class="text-danger">*</span></label>
-                        <input type="text" id="ndName" class="form-control form-control-sm" placeholder="Назва майна">
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label form-label-sm mb-1">Од. виміру</label>
-                        {# SearchableSelect з можливістю вводу свого варіанту #}
-                        <input type="hidden" id="ndUnit" value="шт">
-                        <div id="ndUnitSS"></div>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label form-label-sm mb-1">Сезон</label>
-                        <select id="ndSeason" class="form-select form-select-sm">
-                            <option value="demi">Демісезон</option>
-                            <option value="winter">Зима</option>
-                            <option value="summer">Літо</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label form-label-sm mb-1">Стать</label>
-                        <select id="ndGender" class="form-select form-select-sm">
-                            <option value="unisex">Унісекс</option>
-                            <option value="male">Чол.</option>
-                            <option value="female">Жін.</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="border rounded px-3 py-2 mb-2 bg-light">
-                    <div class="row g-0">
-                        <div class="col-6 col-md-3 py-1">
-                            <div class="form-check form-switch mb-0">
-                                <input type="checkbox" id="ndInventory" class="form-check-input" role="switch">
-                                <label class="form-check-label small" for="ndInventory">Інвентарне</label>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md-3 py-1">
-                            <div class="form-check form-switch mb-0">
-                                <input type="checkbox" id="ndSerial" class="form-check-input" role="switch">
-                                <label class="form-check-label small" for="ndSerial">Серійний №</label>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md-3 py-1">
-                            <div class="form-check form-switch mb-0">
-                                <input type="checkbox" id="ndPassport" class="form-check-input" role="switch">
-                                <label class="form-check-label small" for="ndPassport">Паспорт</label>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md-3 py-1">
-                            <div class="form-check form-switch mb-0">
-                                <input type="checkbox" id="ndExploitAct" class="form-check-input" role="switch">
-                                <label class="form-check-label small" for="ndExploitAct">Акт вв. експл.</label>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row g-2">
-                    <div class="col-12">
-                        <label class="form-label form-label-sm mb-1">
-                            Відповідність у словнику норм
-                            <span class="text-muted fw-normal">(не обов'язково)</span>
-                        </label>
-                        <input type="hidden" id="ndNormDict" value="">
-                        <div id="ndNormDictSS"></div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer py-2">
-                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
-                <button type="button" class="btn btn-success btn-sm" id="btnSaveNewDictItem">
-                    <i class="bi bi-check-lg me-1"></i>Зберегти та обрати
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
@@ -409,6 +319,28 @@ function initItemSS(tr, initialValue) {
     return ss;
 }
 
+function _attachDictAdder(mainTr, tbody) {
+    const addTr = DictItemAdder.buildTr(9);
+    tbody.appendChild(addTr);
+    DictItemAdder.init(addTr, {
+        allSsWraps: () => document.querySelectorAll('#incomeRows .item-ss-wrap'),
+        onSaved(newOpt) {
+            ITEMS_DATA.push(newOpt);
+            const ss = mainTr.querySelector('.item-ss-wrap')?._ssInstance;
+            if (ss) ss.setValue(newOpt.value);
+        },
+    });
+    mainTr.querySelector('.btn-new-dict-item').addEventListener('click', () => {
+        DictItemAdder.toggle(addTr);
+    });
+    mainTr.querySelector('.btn-del-row').addEventListener('click', function() {
+        if (addTr.parentNode) addTr.remove();
+        mainTr.remove();
+        updateRowNums();
+    });
+    return addTr;
+}
+
 function addRow() {
     const template = document.getElementById('rowTemplate');
     const clone = template.cloneNode(true);
@@ -416,34 +348,24 @@ function addRow() {
     clone.style.display = '';
     clone.classList.add('income-row-active');
 
-    // Очистити текстові inputs
     clone.querySelectorAll('input:not([type=hidden])').forEach(inp => {
         inp.value = inp.classList.contains('num-input') && inp.name.includes('price') ? '0' : '';
     });
 
-    // Ініціалізувати SS
     initItemSS(clone, null);
-
-    // Кнопка видалення рядка
-    clone.querySelector('.btn-del-row').addEventListener('click', function() {
-        this.closest('tr').remove();
-        updateRowNums();
-    });
-
-    document.getElementById('incomeRows').appendChild(clone);
+    const tbody = document.getElementById('incomeRows');
+    tbody.appendChild(clone);
+    _attachDictAdder(clone, tbody);
     updateRowNums();
-    // Відкрити SS одразу
     clone.querySelector('.ss-display')?.click();
 }
 
-// Ініціалізувати SS для pre-filled рядків (при редагуванні чернетки)
+// Pre-filled рядки (при редагуванні)
 document.querySelectorAll('.income-row-active[data-prefilled]').forEach(tr => {
-    const itemId = tr.dataset.itemId;
-    initItemSS(tr, itemId);
-    tr.querySelector('.btn-del-row').addEventListener('click', function() {
-        this.closest('tr').remove();
-        updateRowNums();
-    });
+    initItemSS(tr, tr.dataset.itemId);
+    const tbody = tr.parentNode;
+    const addTr = _attachDictAdder(tr, tbody);
+    tr.after(addTr);
 });
 
 function updateRowNums() {
@@ -522,158 +444,13 @@ document.getElementById('incomeForm').addEventListener('change', () => UnsavedGu
 document.getElementById('incomeForm').addEventListener('submit', () => UnsavedGuard.markClean());
 document.getElementById('btnSaveDraft').addEventListener('click', () => UnsavedGuard.markClean(), true);
 
-// ═══════════════════════════════════════════════════════════════
-//  Модальне: Нова позиція словника майна
-// ═══════════════════════════════════════════════════════════════
-let _targetSelect = null;
-const newDictModal = new bootstrap.Modal(document.getElementById('modalNewDictItem'));
-
-// ── SearchableSelect для "Одиниця виміру" (з можливістю вводу свого) ──
-const UNIT_OPTIONS = [
-    { value: 'шт',    label: 'шт — штука' },
-    { value: 'к-кт',  label: 'к-кт — комплект' },
-    { value: 'пара',  label: 'пара' },
-    { value: 'од',    label: 'од — одиниця' },
-    { value: 'м',     label: 'м — метр' },
-    { value: 'кг',    label: 'кг — кілограм' },
-    { value: 'л',     label: 'л — літр' },
-];
-
-// Для одиниці виміру — SearchableSelect з можливістю вводу довільного значення
-// (allowCustom = true: якщо не знайдено в списку — зберігає те що введено)
-const _unitHidden = document.getElementById('ndUnit');
-const _unitSS = new SearchableSelect({
-    container:   document.getElementById('ndUnitSS'),
-    hiddenInput: _unitHidden,
-    options:     UNIT_OPTIONS,
-    placeholder: 'шт',
-    allowClear:  false,
-    size:        'sm',
-    onChange(val, opt) {
-        // якщо обрано — значення вже в hidden; якщо скинуто — 'шт'
-        if (!val) _unitHidden.value = 'шт';
-    }
-});
-_unitSS.setValue('шт');
-
-// Перевизначимо _openDropdown щоб дозволити введення довільного значення:
-// коли SearchableSelect закривається без вибору — беремо текст з поля пошуку як значення
-const _origClose = _unitSS._close.bind(_unitSS);
-_unitSS._close = function() {
-    const typed = this._searchInput.value.trim();
-    if (typed && !this.options.find(o => o.value === typed)) {
-        // Нестандартне значення — додаємо тимчасово і обираємо
-        this.options.push({ value: typed, label: typed });
-        this._select({ value: typed, label: typed });
-    }
-    _origClose();
-};
-
-// ── SearchableSelect для "Відповідність у словнику норм" ──
-const NORM_OPTIONS = [
+// Передати норми в DictItemAdder
+DictItemAdder.setNormOptions([
     {% for group in norm_groups %}
     {% for nd in group.norms %}
     { value: '{{ nd.id }}', label: {{ nd.name|tojson }}, group: {{ group.name|tojson }}, meta: { unit: {{ (nd.unit or 'шт')|tojson }} } },
     {% endfor %}
     {% endfor %}
-];
-
-const _normHidden = document.getElementById('ndNormDict');
-const _normSS = new SearchableSelect({
-    container:   document.getElementById('ndNormDictSS'),
-    hiddenInput: _normHidden,
-    options:     NORM_OPTIONS,
-    placeholder: '— не прив\'язано (необов\'язково) —',
-    allowClear:  true,
-    size:        'sm',
-    onChange(val, opt) {
-        if (opt && opt.meta && opt.meta.unit) {
-            // Автопідставити одиницю якщо ще не змінювали
-            const curUnit = _unitHidden.value;
-            if (!curUnit || curUnit === 'шт') {
-                _unitSS.setValue(opt.meta.unit);
-                if (!_unitSS.getValue()) {
-                    // нестандартна одиниця — вставляємо напряму
-                    _unitHidden.value = opt.meta.unit;
-                    _unitSS.options.push({ value: opt.meta.unit, label: opt.meta.unit });
-                    _unitSS._select({ value: opt.meta.unit, label: opt.meta.unit });
-                }
-            }
-        }
-    }
-});
-
-document.getElementById('incomeRows').addEventListener('click', function(e) {
-    const btn = e.target.closest('.btn-new-dict-item');
-    if (!btn) return;
-    _targetSelect = btn.closest('td').querySelector('.item-select');
-    document.getElementById('ndName').value = '';
-    _unitSS.setValue('шт');
-    document.getElementById('ndSeason').value = 'demi';
-    document.getElementById('ndGender').value = 'unisex';
-    document.getElementById('ndInventory').checked  = false;
-    document.getElementById('ndSerial').checked     = false;
-    document.getElementById('ndPassport').checked   = false;
-    document.getElementById('ndExploitAct').checked = false;
-    _normSS.reset();
-    document.getElementById('newDictItemError').style.display = 'none';
-    newDictModal.show();
-    setTimeout(() => document.getElementById('ndName').focus(), 300);
-});
-
-document.getElementById('btnSaveNewDictItem').addEventListener('click', function() {
-    const name = document.getElementById('ndName').value.trim();
-    if (!name) {
-        const err = document.getElementById('newDictItemError');
-        err.textContent = "Введіть назву позиції";
-        err.style.display = '';
-        return;
-    }
-    const unitVal = _unitHidden.value.trim() || 'шт';
-    const fd = new FormData();
-    fd.append('name',               name);
-    fd.append('unit_of_measure',    unitVal);
-    fd.append('season',             document.getElementById('ndSeason').value);
-    fd.append('gender',             document.getElementById('ndGender').value);
-    if (document.getElementById('ndInventory').checked)  fd.append('is_inventory', '1');
-    if (document.getElementById('ndSerial').checked)     fd.append('has_serial_number', '1');
-    if (document.getElementById('ndPassport').checked)   fd.append('needs_passport', '1');
-    if (document.getElementById('ndExploitAct').checked) fd.append('needs_exploitation_act', '1');
-    const normDictId = _normHidden.value;
-    if (normDictId) fd.append('norm_dict_id', normDictId);
-
-    fetch('/settings/items/add', { method: 'POST', body: fd })
-        .then(r => r.json())
-        .then(data => {
-            if (!data.ok) {
-                const err = document.getElementById('newDictItemError');
-                err.textContent = data.error || 'Помилка збереження';
-                err.style.display = '';
-                return;
-            }
-            const hasSerial = document.getElementById('ndSerial').checked;
-            // Додати нову позицію в глобальний масив
-            const newOpt = { value: String(data.id), label: name, meta: { unit: unitVal, serial: hasSerial ? 1 : 0 } };
-            ITEMS_DATA.push(newOpt);
-            // Оновити всі існуючі SearchableSelect у рядках таблиці
-            document.querySelectorAll('#incomeRows .item-ss-wrap').forEach(wrap => {
-                const ssInst = wrap._ssInstance;
-                if (ssInst) ssInst.addOption(newOpt);
-            });
-            // Обрати нову позицію в цільовому рядку
-            if (_targetSelect) {
-                const targetWrap = _targetSelect.closest('td').querySelector('.item-ss-wrap');
-                if (targetWrap && targetWrap._ssInstance) {
-                    targetWrap._ssInstance.setValue(String(data.id));
-                }
-            }
-            newDictModal.hide();
-        })
-        .catch(() => {
-            const err = document.getElementById('newDictItemError');
-            err.textContent = 'Помилка мережі';
-            err.style.display = '';
-        });
-});
+]);
 </script>
 {% endblock %}

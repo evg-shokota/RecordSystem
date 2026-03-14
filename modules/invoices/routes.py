@@ -241,7 +241,9 @@ def _form_data_for_invoice(conn, settings, exclude_invoice_id=None):
     """).fetchall()
     units_list = conn.execute("SELECT id, name FROM units ORDER BY name").fetchall()
     stock = _get_stock(conn, exclude_invoice_id=exclude_invoice_id)
-    return personnel_list, units_list, stock
+    from modules.warehouse.routes import _get_norm_groups
+    norm_groups = _get_norm_groups(conn)
+    return personnel_list, units_list, stock, norm_groups
 
 
 def _validate_and_collect_items(conn, item_ids, cats, prices, planned_qtys, serials_raw,
@@ -294,7 +296,7 @@ def new():
 
     # ── Зовнішня (вже надрукована) накладна ────────────────────
     if is_external:
-        personnel_list, units_list, _ = _form_data_for_invoice(conn, settings)
+        personnel_list, units_list, _, norm_groups = _form_data_for_invoice(conn, settings)
         # Всі позиції словника (не зі складу — зовнішня)
         all_items = conn.execute(
             "SELECT id, name, unit_of_measure FROM item_dictionary ORDER BY name"
@@ -382,12 +384,8 @@ def new():
                 if scan_file and scan_file.filename:
                     ext = os.path.splitext(scan_file.filename)[1].lower()
                     if ext in (".pdf", ".jpg", ".jpeg", ".png"):
-                        from core.db import get_db_path
-                        storage_dir = os.path.join(os.path.dirname(get_db_path()), "storage", "scans", "invoices")
-                        os.makedirs(storage_dir, exist_ok=True)
-                        filename = f"invoice_{invoice_id}{ext}"
-                        scan_file.save(os.path.join(storage_dir, filename))
-                        rel_path = f"scans/invoices/{filename}"
+                        filepath, rel_path = _invoice_scan_storage(conn, invoice_id, ext)
+                        scan_file.save(str(filepath))
                         orig_name = _secure(scan_file.filename)
                         conn.execute(
                             "UPDATE invoices SET scan_path=?, scan_original_name=? WHERE id=?",
@@ -424,7 +422,7 @@ def new():
         )
 
     # ── Звичайна накладна ───────────────────────────────────────
-    personnel_list, units_list, stock = _form_data_for_invoice(conn, settings)
+    personnel_list, units_list, stock, norm_groups = _form_data_for_invoice(conn, settings)
 
     if request.method == "POST":
         errors = []
@@ -533,6 +531,7 @@ def new():
             default_signatories=_default_signatories(settings, direction),
             edit_mode=False, inv=None,
             existing_items_json="[]",
+            norm_groups=norm_groups,
         )
 
     # Префіл отримувача якщо переходимо з картки особи (?recipient_personnel_id=N)
@@ -552,6 +551,7 @@ def new():
         default_signatories=_default_signatories(settings),
         edit_mode=False, inv=None,
         existing_items_json="[]",
+        norm_groups=norm_groups,
     )
 
 
@@ -576,7 +576,7 @@ def edit(inv_id):
         return redirect(url_for("invoices.view", inv_id=inv_id))
 
     settings = get_all_settings()
-    personnel_list, units_list, stock = _form_data_for_invoice(conn, settings, exclude_invoice_id=inv_id)
+    personnel_list, units_list, stock, norm_groups = _form_data_for_invoice(conn, settings, exclude_invoice_id=inv_id)
 
     existing_items = conn.execute("""
         SELECT ii.*, d.name AS item_name, d.unit_of_measure
@@ -675,6 +675,7 @@ def edit(inv_id):
             default_signatories=_default_signatories(settings, direction),
             edit_mode=True, inv=inv,
             existing_items_json="[]",
+            norm_groups=norm_groups,
         )
 
     # GET — заповнити форму поточними даними
@@ -702,6 +703,7 @@ def edit(inv_id):
         default_signatories=_default_signatories(settings),
         edit_mode=True, inv=inv,
         existing_items_json=existing_items_json_str,
+        norm_groups=norm_groups,
     )
 
 
@@ -795,6 +797,40 @@ def receive(inv_id):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _invoice_scan_storage(conn, inv_id: int, ext: str):
+    """Повертає (filepath, rel_path) для збереження скану накладної.
+    Якщо накладна прив'язана до конкретного військовослужбовця — зберігає в його папці.
+    Інакше — у scans/invoices/."""
+    from core.settings import get_storage_path
+    from pathlib import Path
+
+    inv = conn.execute(
+        "SELECT number, issued_date, created_at, recipient_personnel_id FROM invoices WHERE id=?",
+        (inv_id,)
+    ).fetchone()
+
+    # Формуємо ім'я файлу: invoice_<номер>_<дата>.<ext>
+    number_safe = (inv["number"] or str(inv_id)).replace("/", "-").replace(" ", "_")
+    date_str = (inv["issued_date"] or inv["created_at"] or "")[:10].replace("-", "")
+    filename = f"invoice_{number_safe}_{date_str}{ext}" if date_str else f"invoice_{number_safe}{ext}"
+
+    person_id = inv["recipient_personnel_id"]
+    if person_id:
+        person = conn.execute("SELECT * FROM personnel WHERE id=?", (person_id,)).fetchone()
+        if person:
+            # імпортуємо хелпер з personnel routes
+            from modules.personnel.routes import _person_folder_name
+            folder = get_storage_path() / "personnel" / _person_folder_name(person) / "scans"
+            folder.mkdir(parents=True, exist_ok=True)
+            rel = f"personnel/{_person_folder_name(person)}/scans/{filename}"
+            return folder / filename, rel
+
+    # Загальна папка якщо без конкретної особи
+    folder = get_storage_path() / "scans" / "invoices"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / filename, f"scans/invoices/{filename}"
+
+
 @bp.route("/<int:inv_id>/scan", methods=["POST"])
 @login_required
 def scan_upload(inv_id):
@@ -817,16 +853,9 @@ def scan_upload(inv_id):
         conn.close()
         return jsonify({"ok": False, "error": "Дозволені формати: PDF, JPG, PNG"}), 400
 
-    from core.db import get_db_path
-    storage_dir = os.path.join(os.path.dirname(get_db_path()), "storage", "scans", "invoices")
-    os.makedirs(storage_dir, exist_ok=True)
-
-    filename = f"invoice_{inv_id}{ext}"
-    filepath = os.path.join(storage_dir, filename)
-    f.save(filepath)
-
-    rel_path = f"scans/invoices/{filename}"
+    filepath, rel_path = _invoice_scan_storage(conn, inv_id, ext)
     original_name = secure_filename(f.filename)
+    f.save(str(filepath))
 
     conn.execute(
         "UPDATE invoices SET scan_path=?, scan_original_name=?, updated_at=datetime('now','localtime') WHERE id=?",
@@ -846,9 +875,10 @@ def scan_delete(inv_id):
     conn = get_connection()
     inv = conn.execute("SELECT scan_path FROM invoices WHERE id=?", (inv_id,)).fetchone()
     if inv and inv["scan_path"]:
-        full = os.path.join(os.path.dirname(get_db_path()), "storage", inv["scan_path"])
+        from core.settings import get_storage_path
+        full = get_storage_path() / inv["scan_path"]
         try:
-            os.remove(full)
+            full.unlink(missing_ok=True)
         except OSError:
             pass
         conn.execute(
@@ -930,6 +960,8 @@ def process(inv_id):
 
             # Записати на картку о/с або підрозділу
             if inv["direction"] == "issue":
+                # Категорія I при видачі стає II (майно введено в експлуатацію)
+                issued_category = "II" if item["category"] == "I" else item["category"]
                 if inv["recipient_type"] == "personnel" and inv["recipient_personnel_id"]:
                     conn.execute("""
                         INSERT INTO personnel_items
@@ -940,7 +972,7 @@ def process(inv_id):
                                 'active', datetime('now','localtime'), datetime('now','localtime'))
                     """, (
                         inv["recipient_personnel_id"],
-                        item["item_id"], qty, item["price"], item["category"],
+                        item["item_id"], qty, item["price"], issued_category,
                         inv_id, today, today,
                     ))
                     emit("item.issued",
@@ -957,7 +989,7 @@ def process(inv_id):
                                 'active', datetime('now','localtime'), datetime('now','localtime'))
                     """, (
                         inv["recipient_unit_id"],
-                        item["item_id"], qty, item["price"], item["category"],
+                        item["item_id"], qty, item["price"], issued_category,
                         inv_id, today,
                     ))
 

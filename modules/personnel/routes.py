@@ -4,9 +4,10 @@ Author: White
 """
 import json
 from datetime import datetime
+from pathlib import Path
 from flask import (
     Blueprint, render_template, request, redirect,
-    url_for, jsonify, session, flash
+    url_for, jsonify, session, flash, current_app
 )
 from core.auth import login_required
 from core.db import get_connection
@@ -309,17 +310,17 @@ def add():
                 battalion_id, unit_id, platoon_id, group_id,
                 ipn, card_number, phone,
                 size_head, size_height, size_underwear, size_suit,
-                size_jacket, size_pants, size_shoes,
+                size_jacket, size_pants, size_shoes, size_vest,
                 enroll_date, enroll_order, dismiss_date, dismiss_order,
                 draft_date, draft_by, norm_id)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 data["last_name"], data["first_name"], data["middle_name"],
                 data["rank"], data["position"], data["category"],
                 data["battalion_id"], data["unit_id"], data["platoon_id"], data["group_id"],
                 data["ipn"], data["card_number"], data["phone"],
                 data["size_head"], data["size_height"], data["size_underwear"], data["size_suit"],
-                data["size_jacket"], data["size_pants"], data["size_shoes"],
+                data["size_jacket"], data["size_pants"], data["size_shoes"], data["size_vest"],
                 data["enroll_date"], data["enroll_order"],
                 data["dismiss_date"], data["dismiss_order"],
                 data["draft_date"], data["draft_by"], data["norm_id"],
@@ -522,13 +523,24 @@ def _build_property_card(conn, person_id: int) -> dict:
                     }
         else:
             src = r["source_type"] or "manual"
-            key = f"manual_{r['id']}"
-            docs_map[key] = {
-                "key": key, "id": None,
-                "label": r["issue_date"] or src,
-                "date": r["issue_date"] or "",
-                "type": src,
-            }
+            if src == "attestat_import":
+                # Всі записи з атестату — одна фіксована колонка
+                key = "attestat"
+                if key not in docs_map:
+                    docs_map[key] = {
+                        "key": key, "id": None,
+                        "label": "Атестат",
+                        "date": "",
+                        "type": "attestat_import",
+                    }
+            else:
+                key = f"manual_{r['id']}"
+                docs_map[key] = {
+                    "key": key, "id": None,
+                    "label": r["issue_date"] or src,
+                    "date": r["issue_date"] or "",
+                    "type": src,
+                }
 
     docs = sorted(docs_map.values(), key=lambda d: d["date"] or "")
 
@@ -572,6 +584,8 @@ def _build_property_card(conn, person_id: int) -> dict:
             doc_key = f"inv_{r['invoice_id']}"
         elif r["sheet_id"] and f"rv_{r['sheet_id']}" in docs_map:
             doc_key = f"rv_{r['sheet_id']}"
+        elif (r["source_type"] or "") == "attestat_import":
+            doc_key = "attestat"
         else:
             doc_key = f"manual_{r['id']}"
 
@@ -636,6 +650,77 @@ def _build_property_card(conn, person_id: int) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────
+#  Картка речового майна (друк)
+# ─────────────────────────────────────────────────────────────
+
+def _count_words(n: int) -> str:
+    """Ціле число від 0 до 999 прописом (українська, називний відмінок)."""
+    if n == 0:
+        return ''
+    ones  = ['', 'одне', 'два', 'три', 'чотири', "п'ять", 'шість', 'сім',
+             'вісім', "дев'ять", 'десять', 'одинадцять', 'дванадцять',
+             'тринадцять', 'чотирнадцять', "п'ятнадцять", 'шістнадцять',
+             'сімнадцять', 'вісімнадцять', "дев'ятнадцять"]
+    tens  = ['', '', 'двадцять', 'тридцять', 'сорок', "п'ятдесят",
+             'шістдесят', 'сімдесят', 'вісімдесят', "дев'яносто"]
+    hunds = ['', 'сто', 'двісті', 'триста', 'чотириста', "п'ятсот",
+             'шістсот', 'сімсот', 'вісімсот', "дев'ятсот"]
+    parts = []
+    if n >= 100:
+        parts.append(hunds[n // 100])
+        n %= 100
+    if n >= 20:
+        parts.append(tens[n // 10])
+        n %= 10
+    if n > 0:
+        parts.append(ones[n])
+    return ' '.join(parts)
+
+
+@bp.route("/<int:person_id>/property-card")
+@login_required
+def property_card_print(person_id):
+    """Окрема сторінка-друк картки обліку речового майна."""
+    conn = get_connection()
+
+    person = conn.execute(
+        """SELECT p.*,
+                  b.name  AS battalion_name,
+                  u.name  AS unit_name,
+                  pl.name AS platoon_name,
+                  sn.name AS norm_name
+           FROM personnel p
+           LEFT JOIN battalions   b  ON p.battalion_id = b.id
+           LEFT JOIN units        u  ON p.unit_id      = u.id
+           LEFT JOIN platoons     pl ON p.platoon_id   = pl.id
+           LEFT JOIN supply_norms sn ON p.norm_id      = sn.id
+           WHERE p.id = ?""",
+        (person_id,)
+    ).fetchone()
+
+    if not person:
+        conn.close()
+        return "Особу не знайдено", 404
+
+    property_card = _build_property_card(conn, person_id)
+    from core.settings import get_setting
+    company_name = get_setting("company_name", "")
+    conn.close()
+
+    active_items = len([r for r in property_card["rows"] if r.get("color") == "green"])
+    active_items_words = _count_words(active_items)
+
+    return render_template(
+        "personnel/property_card_print.html",
+        person=dict(person),
+        property_card=property_card,
+        company_name=company_name,
+        active_items=active_items,
+        active_items_words=active_items_words,
+    )
+
+
+# ─────────────────────────────────────────────────────────────
 #  Редагування
 # ─────────────────────────────────────────────────────────────
 
@@ -683,7 +768,7 @@ def edit(person_id):
                battalion_id=?, unit_id=?, platoon_id=?, group_id=?,
                ipn=?, card_number=?, phone=?,
                size_head=?, size_height=?, size_underwear=?, size_suit=?,
-               size_jacket=?, size_pants=?, size_shoes=?,
+               size_jacket=?, size_pants=?, size_shoes=?, size_vest=?,
                enroll_date=?, enroll_order=?, dismiss_date=?, dismiss_order=?,
                draft_date=?, draft_by=?, norm_id=?,
                updated_at=datetime('now','localtime')
@@ -694,7 +779,7 @@ def edit(person_id):
                 data["battalion_id"], data["unit_id"], data["platoon_id"], data["group_id"],
                 data["ipn"], data["card_number"], data["phone"],
                 data["size_head"], data["size_height"], data["size_underwear"], data["size_suit"],
-                data["size_jacket"], data["size_pants"], data["size_shoes"],
+                data["size_jacket"], data["size_pants"], data["size_shoes"], data["size_vest"],
                 data["enroll_date"], data["enroll_order"],
                 data["dismiss_date"], data["dismiss_order"],
                 data["draft_date"], data["draft_by"], data["norm_id"],
@@ -994,6 +1079,33 @@ def api_list():
 #  Фото
 # ─────────────────────────────────────────────────────────────
 
+def _person_folder_name(person) -> str:
+    """Формує ім'я папки для особи: прізвище_і_б_номеркартки (або id якщо немає картки).
+    Тільки ASCII-безпечні символи — кирилиця дозволена, пробіли замінюються на _."""
+    import re
+    last  = (person["last_name"]   or "").strip().lower()
+    first = (person["first_name"]  or "").strip()
+    mid   = (person["middle_name"] or "").strip()
+    card  = str(person["card_number"] or person["id"])
+
+    # ініціали
+    f_i = first[0].upper()  if first  else ""
+    m_i = mid[0].upper()    if mid    else ""
+
+    # прізвище_І_Б_номер
+    parts = [last]
+    if f_i:
+        parts.append(f_i)
+    if m_i:
+        parts.append(m_i)
+    parts.append(card)
+
+    folder = "_".join(parts)
+    # Прибрати символи що небезпечні для шляху
+    folder = re.sub(r'[<>:"/\\|?*]', "", folder)
+    return folder or f"person_{person['id']}"
+
+
 @bp.route("/<int:person_id>/photo", methods=["POST"])
 @login_required
 def upload_photo(person_id):
@@ -1003,7 +1115,7 @@ def upload_photo(person_id):
     from flask import current_app
 
     conn = get_connection()
-    person = conn.execute("SELECT id, last_name, first_name FROM personnel WHERE id=?", (person_id,)).fetchone()
+    person = conn.execute("SELECT * FROM personnel WHERE id=?", (person_id,)).fetchone()
     if not person:
         conn.close()
         return jsonify({"error": "Особу не знайдено"}), 404
@@ -1018,24 +1130,24 @@ def upload_photo(person_id):
         conn.close()
         return jsonify({"error": "Дозволені формати: jpg, jpeg, png"}), 400
 
-    # Зберігаємо поруч з exe / в папці проекту
-    from pathlib import Path
-    storage = Path(current_app.root_path) / "storage" / "photos"
+    from core.settings import get_storage_path
+    folder_name = _person_folder_name(person)
+    storage = get_storage_path() / "personnel" / folder_name / "photos"
     storage.mkdir(parents=True, exist_ok=True)
 
-    filename = f"personnel_{person_id}{ext}"
+    filename = f"photo{ext}"
     filepath = storage / filename
 
     # Видалити старе фото якщо інший ext
     for old_ext in (".jpg", ".jpeg", ".png"):
-        old = storage / f"personnel_{person_id}{old_ext}"
+        old = storage / f"photo{old_ext}"
         if old.exists() and old != filepath:
             old.unlink(missing_ok=True)
 
     file.save(str(filepath))
 
     # Зберігаємо відносний шлях
-    rel_path = f"/storage/photos/{filename}"
+    rel_path = f"/storage/personnel/{folder_name}/photos/{filename}"
     conn.execute(
         "UPDATE personnel SET photo_path=?, updated_at=datetime('now','localtime') WHERE id=?",
         (rel_path, person_id)
@@ -1060,7 +1172,12 @@ def delete_photo(person_id):
         return jsonify({"error": "Особу не знайдено"}), 404
 
     if person["photo_path"]:
-        full = Path(current_app.root_path) / person["photo_path"].lstrip("/")
+        from core.settings import get_storage_path
+        rel = person["photo_path"].lstrip("/")
+        # відрізати "storage/" prefix якщо є
+        if rel.startswith("storage/"):
+            rel = rel[len("storage/"):]
+        full = get_storage_path() / rel
         if full.exists():
             full.unlink(missing_ok=True)
 
@@ -1071,6 +1188,110 @@ def delete_photo(person_id):
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
+
+
+# ─────────────────────────────────────────────────────────────
+#  Файли наказів (зарахування / вибуття)
+# ─────────────────────────────────────────────────────────────
+
+def _order_file_upload(person_id: int, field: str):
+    """Спільна логіка завантаження файлу наказу. field = 'enroll' або 'dismiss'."""
+    conn = get_connection()
+    person = conn.execute("SELECT * FROM personnel WHERE id=?", (person_id,)).fetchone()
+    if not person:
+        conn.close()
+        return jsonify({"error": "Особу не знайдено"}), 404
+
+    file = request.files.get("file")
+    if not file or not file.filename:
+        conn.close()
+        return jsonify({"error": "Файл не вибрано"}), 400
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in (".pdf", ".jpg", ".jpeg", ".png"):
+        conn.close()
+        return jsonify({"error": "Дозволені формати: PDF, JPG, PNG"}), 400
+
+    from core.settings import get_storage_path
+    folder_name = _person_folder_name(person)
+    storage = get_storage_path() / "personnel" / folder_name / "orders"
+    storage.mkdir(parents=True, exist_ok=True)
+
+    db_field = f"{field}_order_file"
+    filename  = f"{field}_order{ext}"
+    filepath  = storage / filename
+
+    # Видалити старий файл якщо є
+    old_val = person[db_field]
+    if old_val:
+        rel_old = old_val.lstrip("/")
+        if rel_old.startswith("storage/"):
+            rel_old = rel_old[len("storage/"):]
+        old_path = get_storage_path() / rel_old
+        if old_path.exists():
+            old_path.unlink()
+
+    file.save(str(filepath))
+    rel = f"/storage/personnel/{folder_name}/orders/{filename}"
+
+    conn.execute(
+        f"UPDATE personnel SET {db_field}=?, updated_at=datetime('now','localtime') WHERE id=?",
+        (rel, person_id)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "url": rel})
+
+
+def _order_file_delete(person_id: int, field: str):
+    """Спільна логіка видалення файлу наказу."""
+    conn = get_connection()
+    person = conn.execute("SELECT * FROM personnel WHERE id=?", (person_id,)).fetchone()
+    if not person:
+        conn.close()
+        return jsonify({"error": "Особу не знайдено"}), 404
+
+    db_field = f"{field}_order_file"
+    old_val  = person[db_field]
+    if old_val:
+        from core.settings import get_storage_path
+        rel_old = old_val.lstrip("/")
+        if rel_old.startswith("storage/"):
+            rel_old = rel_old[len("storage/"):]
+        old_path = get_storage_path() / rel_old
+        if old_path.exists():
+            old_path.unlink()
+    conn.execute(
+        f"UPDATE personnel SET {db_field}=NULL, updated_at=datetime('now','localtime') WHERE id=?",
+        (person_id,)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@bp.route("/<int:person_id>/enroll-order-file", methods=["POST"])
+@login_required
+def upload_enroll_order(person_id):
+    return _order_file_upload(person_id, "enroll")
+
+
+@bp.route("/<int:person_id>/enroll-order-file/delete", methods=["POST"])
+@login_required
+def delete_enroll_order(person_id):
+    return _order_file_delete(person_id, "enroll")
+
+
+@bp.route("/<int:person_id>/dismiss-order-file", methods=["POST"])
+@login_required
+def upload_dismiss_order(person_id):
+    return _order_file_upload(person_id, "dismiss")
+
+
+@bp.route("/<int:person_id>/dismiss-order-file/delete", methods=["POST"])
+@login_required
+def delete_dismiss_order(person_id):
+    return _order_file_delete(person_id, "dismiss")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1159,7 +1380,7 @@ def attestat(person_id):
         norm_rows = conn.execute(
             """SELECT sni.norm_dict_id AS nd_id, sni.quantity AS norm_qty,
                       nd.name AS norm_name, nd.sort_order AS nd_order,
-                      nd.unit_of_measure AS nd_uom,
+                      nd.unit AS nd_uom,
                       ndg.name AS group_name, ndg.sort_order AS g_order
                FROM supply_norm_items sni
                JOIN norm_dictionary nd ON nd.id = sni.norm_dict_id
@@ -1351,6 +1572,7 @@ def attestat_import(person_id):
 
     # GET — форма
     from datetime import date
+    from modules.warehouse.routes import _get_norm_groups
     item_dict = conn.execute("""
         SELECT id, name, unit_of_measure,
                norm_dict_id,
@@ -1358,6 +1580,8 @@ def attestat_import(person_id):
         FROM item_dictionary
         ORDER BY name
     """).fetchall()
+
+    norm_groups = _get_norm_groups(conn)
 
     # Вже внесені записи з атестату (для відображення і редагування)
     existing = conn.execute("""
@@ -1378,7 +1602,7 @@ def attestat_import(person_id):
 
     return render_template("personnel/attestat_import.html",
                            person=person, item_dict=item_dict,
-                           existing=existing,
+                           existing=existing, norm_groups=norm_groups,
                            today=date.today().isoformat())
 
 
@@ -1435,6 +1659,7 @@ def _collect_form() -> dict:
         "size_jacket":    _str("size_jacket"),
         "size_pants":     _str("size_pants"),
         "size_shoes":     _str("size_shoes"),
+        "size_vest":      _str("size_vest"),
         "enroll_date":    _str("enroll_date"),
         "enroll_order":   _str("enroll_order"),
         "dismiss_date":   _str("dismiss_date"),

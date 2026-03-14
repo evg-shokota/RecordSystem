@@ -208,7 +208,30 @@
                 <input type="text" name="enroll_order" class="form-control form-control-sm"
                        value="{{ person.enroll_order or '' }}" placeholder="№ і дата наказу">
             </div>
+            {% if is_edit %}
+            <div class="col-md-5">
+                <label class="form-label form-label-sm">Файл наказу зарахування</label>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    {% if person.enroll_order_file %}
+                    <a href="{{ person.enroll_order_file }}" target="_blank"
+                       class="btn btn-sm btn-outline-success">
+                        <i class="bi bi-file-earmark-pdf me-1"></i>Відкрити
+                    </a>
+                    <button type="button" class="btn btn-sm btn-outline-danger"
+                            onclick="deleteOrderFile('enroll')">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                    {% else %}
+                    <input type="file" id="enrollOrderFile" accept=".pdf,.jpg,.jpeg,.png"
+                           class="form-control form-control-sm" style="max-width:260px;"
+                           onchange="uploadOrderFile(this, 'enroll')">
+                    <span class="text-muted" style="font-size:11px;">PDF або зображення</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
             <div class="col-md-5"></div>
+            {% endif %}
 
             <div class="col-md-3">
                 <label class="form-label form-label-sm">Дата вибуття</label>
@@ -220,6 +243,28 @@
                 <input type="text" name="dismiss_order" class="form-control form-control-sm"
                        value="{{ person.dismiss_order or '' }}" placeholder="№ і дата наказу">
             </div>
+            {% if is_edit %}
+            <div class="col-md-5">
+                <label class="form-label form-label-sm">Файл наказу вибуття</label>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    {% if person.dismiss_order_file %}
+                    <a href="{{ person.dismiss_order_file }}" target="_blank"
+                       class="btn btn-sm btn-outline-success">
+                        <i class="bi bi-file-earmark-pdf me-1"></i>Відкрити
+                    </a>
+                    <button type="button" class="btn btn-sm btn-outline-danger"
+                            onclick="deleteOrderFile('dismiss')">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                    {% else %}
+                    <input type="file" id="dismissOrderFile" accept=".pdf,.jpg,.jpeg,.png"
+                           class="form-control form-control-sm" style="max-width:260px;"
+                           onchange="uploadOrderFile(this, 'dismiss')">
+                    <span class="text-muted" style="font-size:11px;">PDF або зображення</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -267,6 +312,11 @@
                 <label class="form-label form-label-sm">Взуття</label>
                 <input type="text" name="size_shoes" class="form-control form-control-sm"
                        value="{{ person.size_shoes or '' }}" placeholder="напр. 42">
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm">Бронежилет</label>
+                <input type="text" name="size_vest" class="form-control form-control-sm"
+                       value="{{ person.size_vest or '' }}" placeholder="напр. 3 або M">
             </div>
         </div>
     </div>
@@ -324,6 +374,44 @@
 
 {% block scripts %}
 <script>
+{% if is_edit %}
+const PERSON_ID = {{ person_id }};
+
+async function uploadOrderFile(input, kind) {
+    if (!input.files || !input.files[0]) return;
+    const fd = new FormData();
+    fd.append('file', input.files[0]);
+    const url = `/personnel/${PERSON_ID}/${kind}-order-file`;
+    try {
+        const resp = await fetch(url, { method: 'POST', body: fd });
+        const data = await resp.json();
+        if (data.ok) {
+            location.reload();
+        } else {
+            alert('Помилка: ' + (data.error || 'невідома'));
+        }
+    } catch(e) {
+        alert('Помилка завантаження');
+    }
+}
+
+async function deleteOrderFile(kind) {
+    if (!confirm('Видалити файл наказу?')) return;
+    const url = `/personnel/${PERSON_ID}/${kind}-order-file/delete`;
+    try {
+        const resp = await fetch(url, { method: 'POST' });
+        const data = await resp.json();
+        if (data.ok) {
+            location.reload();
+        } else {
+            alert('Помилка: ' + (data.error || 'невідома'));
+        }
+    } catch(e) {
+        alert('Помилка видалення');
+    }
+}
+{% endif %}
+
 // ── Автовизначення категорії по званню ──
 function onRankChange(rankName) {
     if (!rankName) return;

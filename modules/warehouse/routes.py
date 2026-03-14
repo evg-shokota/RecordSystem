@@ -19,18 +19,25 @@ from core.warehouse import get_stock as _get_stock
 
 ALLOWED_SCAN_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tiff", ".tif"}
 
-def _save_scan_file(file) -> tuple[str, str] | tuple[None, None]:
-    """Зберегти завантажений файл скану. Повертає (path, original_name) або (None, None)."""
+def _save_scan_file(file, doc_number: str = "", doc_date: str = "") -> tuple[str, str] | tuple[None, None]:
+    """Зберегти завантажений файл скану приходу. Повертає (path, original_name) або (None, None)."""
     if not file or not file.filename:
         return None, None
     original_name = file.filename
     ext = Path(original_name).suffix.lower()
     if ext not in ALLOWED_SCAN_EXTENSIONS:
         return None, None
-    # Зберігаємо в storage/scans/ поруч з додатком
-    scans_dir = Path(current_app.root_path) / "storage" / "scans"
+    from core.settings import get_storage_path
+    scans_dir = get_storage_path() / "scans" / "income"
     scans_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"scan_{uuid.uuid4().hex}{ext}"
+    # Осмислене ім'я: income_<номер>_<дата>.<ext> або з uuid якщо немає даних
+    num_safe  = (doc_number or "").replace("/", "-").replace(" ", "_")
+    date_safe = (doc_date  or "")[:10].replace("-", "")
+    if num_safe or date_safe:
+        parts = [p for p in ["income", num_safe, date_safe] if p]
+        filename = "_".join(parts) + ext
+    else:
+        filename = f"income_{uuid.uuid4().hex}{ext}"
     save_path = scans_dir / filename
     file.save(str(save_path))
     return str(save_path), original_name
@@ -242,7 +249,9 @@ def income_new():
                 items=items, doc_types=doc_types, categories=CATEGORIES,
                 norm_groups=norm_groups, errors=errors, form=request.form)
 
-        scan_path, scan_original_name = _save_scan_file(request.files.get("scan_file"))
+        scan_path, scan_original_name = _save_scan_file(
+            request.files.get("scan_file"), doc_number, date
+        )
 
         if save_as_draft:
             # Зберігаємо в income_docs
@@ -355,7 +364,9 @@ def income_draft_edit(doc_id):
 
         scan_path     = doc["scan_path"]
         scan_orig     = doc["scan_original_name"]
-        new_scan, new_orig = _save_scan_file(request.files.get("scan_file"))
+        new_scan, new_orig = _save_scan_file(
+            request.files.get("scan_file"), doc_number, date
+        )
         if new_scan:
             scan_path, scan_orig = new_scan, new_orig
 
@@ -523,7 +534,9 @@ def income_edit(income_id):
 
         scan_path  = head["scan_path"]
         scan_orig  = head["scan_original_name"]
-        new_scan, new_orig = _save_scan_file(request.files.get("scan_file"))
+        new_scan, new_orig = _save_scan_file(
+            request.files.get("scan_file"), doc_number, date
+        )
         if new_scan:
             scan_path, scan_orig = new_scan, new_orig
 

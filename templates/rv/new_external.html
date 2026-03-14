@@ -137,6 +137,9 @@
                                 <td>
                                     <input type="hidden" name="item_id[]" class="item-sel" required>
                                     <div class="item-ss-wrap"></div>
+                                    <a href="#" class="btn-show-add-dict small mt-1 d-inline-block" style="font-size:11px">
+                                        <i class="bi bi-plus-circle me-1"></i>Немає в списку — додати до словника
+                                    </a>
                                 </td>
                                 <td>
                                     <select name="category[]" class="form-select form-select-sm">
@@ -252,6 +255,15 @@ function updateCount() {
     document.getElementById('selectedCount').textContent = n;
 }
 
+// ── Норми для DictItemAdder ────────────────────────────────────
+DictItemAdder.setNormOptions([
+    {% for group in norm_groups %}
+    {% for nd in group.norms %}
+    { value: '{{ nd.id }}', label: {{ nd.name|tojson }}, group: {{ group.name|tojson }}, meta: { unit: {{ (nd.unit or 'шт')|tojson }} } },
+    {% endfor %}
+    {% endfor %}
+]);
+
 // ── Дані товарів для SearchableSelect ─────────────────────────
 const EXT_ITEMS = [
     {% for item in all_items %}
@@ -267,6 +279,7 @@ function addRow() {
     const clone = tpl.cloneNode(true);
     clone.id    = 'extrow_' + (++rowCount);
     clone.style.display = '';
+    clone.dataset.rowNum = rowCount;
 
     clone.querySelectorAll('input[type=number]').forEach(i => {
         i.value = '';
@@ -278,8 +291,9 @@ function addRow() {
     const ssWrap    = clone.querySelector('.item-ss-wrap');
     const unitSpan  = clone.querySelector('.unit-label');
 
+    let ss = null;
     if (hiddenInp && ssWrap) {
-        new SearchableSelect({
+        ss = new SearchableSelect({
             container:   ssWrap,
             hiddenInput: hiddenInp,
             options:     EXT_ITEMS,
@@ -293,17 +307,41 @@ function addRow() {
         });
     }
 
+    const tbody = document.getElementById('itemRows');
+    tbody.appendChild(clone);
+
+    // Inline блок додавання до словника
+    const addTr = DictItemAdder.buildTr(6);
+    tbody.appendChild(addTr);
+
+    clone.querySelector('.btn-show-add-dict').addEventListener('click', e => {
+        e.preventDefault();
+        const searchVal = ssWrap?.querySelector('input')?.value?.trim() || '';
+        DictItemAdder.toggle(addTr, searchVal || undefined);
+    });
+
+    DictItemAdder.init(addTr, {
+        allSsWraps: () => document.querySelectorAll('.item-ss-wrap'),
+        onSaved(newOpt) {
+            if (!EXT_ITEMS.find(o => o.value === newOpt.value)) {
+                EXT_ITEMS.push(newOpt);
+            }
+            ss?.setValue(newOpt.value);
+            if (unitSpan && newOpt.meta?.unit) unitSpan.textContent = newOpt.meta.unit;
+        },
+    });
+
     clone.querySelector('.btn-del').addEventListener('click', () => {
         clone.remove();
+        addTr.remove();
         renum();
     });
 
-    document.getElementById('itemRows').appendChild(clone);
     renum();
 }
 
 function renum() {
-    document.querySelectorAll('#itemRows tr:not(#rowTemplate)').forEach((tr, i) => {
+    document.querySelectorAll('#itemRows tr[data-row-num]').forEach((tr, i) => {
         const n = tr.querySelector('.row-num');
         if (n) n.textContent = i + 1;
     });

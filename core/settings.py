@@ -2,6 +2,7 @@
 core/settings.py — читання та запис налаштувань системи
 Author: White
 """
+from pathlib import Path
 from core.db import get_connection
 
 
@@ -23,6 +24,25 @@ def set_setting(key: str, value: str) -> None:
     )
     conn.commit()
     conn.close()
+
+
+def get_storage_path() -> Path:
+    """Повертає абсолютний шлях до папки зберігання файлів.
+    Читає storage_path з налаштувань, або дефолт: поруч з database.db."""
+    from core.db import get_db_path
+    configured = get_setting("storage_path", "")
+    if configured:
+        p = Path(configured)
+        if p.exists():
+            return p
+        # Спробувати створити
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        except OSError:
+            pass
+    # Дефолт: поруч з database.db
+    return Path(get_db_path()).parent / "storage"
 
 
 def get_all_settings() -> dict:
