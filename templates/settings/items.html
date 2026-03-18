@@ -305,16 +305,17 @@ document.getElementById('btnSaveItem').addEventListener('click', async () => {
         itemModal.hide();
         showToast('Збережено', 'success');
         setTimeout(() => location.reload(), 600);
-    } else showToast(data.error, 'danger');
+    } else showToast(data.msg || data.error, 'danger');
 });
 
 document.querySelectorAll('.btn-del-item').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        if (!confirm(`Видалити "${btn.dataset.name}"?`)) return;
-        const res = await fetch(`/settings/items/${btn.dataset.id}/delete`, { method: 'POST' });
+    btn.addEventListener('click', () => {
+        showConfirm(`Видалити "${btn.dataset.name}"?`, async () => {
+        const res = await fetch(`/settings/items/${btn.dataset.id}/delete`, { method: 'POST'        });
+    });
         const data = await res.json();
         if (data.ok) { btn.closest('tr').remove(); showToast('Видалено', 'success'); }
-        else showToast(data.error, 'danger');
+        else showToast(data.msg || data.error, 'danger');
     });
 });
 </script>

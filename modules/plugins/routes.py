@@ -151,7 +151,7 @@ def upload():
     """
     f = request.files.get("plugin_zip")
     if not f or not f.filename.endswith(".zip"):
-        return jsonify({"error": "Потрібен .zip файл"}), 400
+        return jsonify({"ok": False, "msg": "Потрібен .zip файл"}), 400
 
     # Розпакувати в тимчасову папку, перевірити структуру
     import tempfile
@@ -165,12 +165,12 @@ def upload():
                 # Знайти plugin.py
                 plugin_files = [n for n in names if n.endswith("plugin.py")]
                 if not plugin_files:
-                    return jsonify({"error": "Файл plugin.py не знайдено в архіві"}), 400
+                    return jsonify({"ok": False, "msg": "Файл plugin.py не знайдено в архіві"}), 400
 
                 # Визначити slug (перша папка)
                 slug = plugin_files[0].split("/")[0]
                 if not slug or slug == "plugin.py":
-                    return jsonify({"error": "Архів має містити папку плагіна"}), 400
+                    return jsonify({"ok": False, "msg": "Архів має містити папку плагіна"}), 400
 
                 target = PLUGINS_DIR / slug
                 if target.exists():
@@ -180,7 +180,7 @@ def upload():
                 shutil.copytree(Path(tmpdir) / slug, target)
 
         except zipfile.BadZipFile:
-            return jsonify({"error": "Пошкоджений ZIP файл"}), 400
+            return jsonify({"ok": False, "msg": "Пошкоджений ZIP файл"}), 400
 
     # Оновити реєстр
     found = plugin_manager.scan_plugins()

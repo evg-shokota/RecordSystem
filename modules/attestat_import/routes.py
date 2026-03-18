@@ -18,6 +18,7 @@ from flask import (
 from core.auth import login_required
 from core.db import get_connection
 from core.audit import log_action
+from core.military_logic import get_next_issue_date as _next_issue
 
 bp = Blueprint("attestat_import", __name__, url_prefix="/personnel/<int:person_id>/attestat-import")
 
@@ -93,31 +94,68 @@ def _confirm_attestat_import(conn, doc_id, person_id):
 
     today = date.today().isoformat()
     created_by = session.get("user_id")
+    issue_date = doc["date"] or today
+
+    # Дані особи для розрахунку циклів
+    p = conn.execute("SELECT service_type, enroll_date FROM personnel WHERE id=?", (person_id,)).fetchone()
+    service_type = (p["service_type"] if p else None) or "mobilized"
+    norm_date    = p["enroll_date"] if p else None
+
+    # Wear_months по item_id з норми особи
+    wear_cache: dict[int, dict] = {}
 
     for item in items:
         category = item["category"] or "II"
         # Категорія I → II (нова → в користуванні)
         issued_cat = "II" if category == "I" else category
 
+        item_id = item["item_id"]
+
+        # Розрахунок wear_months і norm_qty
+        if item_id not in wear_cache:
+            w = conn.execute("""
+                SELECT sniw.wear_months, COALESCE(sniw.qty, sni.quantity) AS quantity
+                FROM personnel p2
+                JOIN personnel_norms pn ON pn.personnel_id = p2.id
+                JOIN supply_norm_items sni ON sni.norm_id = pn.norm_id AND sni.item_id = ?
+                LEFT JOIN supply_norm_item_wear sniw
+                       ON sniw.norm_item_id = sni.id AND sniw.personnel_cat = p2.personnel_cat
+                WHERE p2.id = ?
+                LIMIT 1
+            """, (item_id, person_id)).fetchone()
+            wear_cache[item_id] = {
+                "wear_months": int(w["wear_months"] or 0) if w else 0,
+                "norm_qty":    float(w["quantity"] or 0)  if w else 0.0,
+            }
+
+        wdata       = wear_cache[item_id]
+        wear_months = wdata["wear_months"]
+        norm_qty    = wdata["norm_qty"]
+
+        # cycle_start = дата атестату (дата першої видачі циклу)
+        cycle_start = issue_date
+        next_dt = _next_issue(service_type, cycle_start, norm_date, wear_months)
+        next_issue = next_dt.isoformat() if next_dt else None
+
         conn.execute("""
             INSERT INTO personnel_items
                 (personnel_id, item_id, quantity, price, category,
                  source_type, income_doc_id,
                  issue_date, wear_started_date, status,
+                 cycle_start_date, norm_qty_at_issue,
+                 wear_months_at_issue, next_issue_date,
                  notes, created_at, updated_at)
             VALUES (?,?,?,?,?,
                     'attestat_import',?,
                     ?,?, 'active',
+                    ?,?,?,?,
                     ?,datetime('now','localtime'),datetime('now','localtime'))
         """, (
-            person_id,
-            item["item_id"],
-            item["quantity"],
-            item["price"],
-            issued_cat,
+            person_id, item_id,
+            item["quantity"], item["price"], issued_cat,
             doc_id,
-            doc["date"] or today,
-            doc["date"] or today,
+            issue_date, issue_date,
+            cycle_start, norm_qty, wear_months, next_issue,
             None,
         ))
 
@@ -303,7 +341,7 @@ def edit(person_id, doc_id):
     doc = _get_doc_or_404(conn, doc_id, person_id)
     doc_items = _get_doc_items(conn, doc_id)
 
-    from modules.warehouse.routes import _get_norm_groups
+    from core.warehouse import get_norm_groups as _get_norm_groups
     item_dict = conn.execute(
         "SELECT id, name, unit_of_measure, is_inventory FROM item_dictionary ORDER BY name"
     ).fetchall()

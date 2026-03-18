@@ -137,14 +137,18 @@ def personnel_import():
             position = str(col(["посада", "position"]) or "").strip()
             ipn_raw  = col(["іпн", "інн", "ipn", "ідентиф"])
             ipn      = str(int(ipn_raw)) if ipn_raw and str(ipn_raw).replace(".0", "").isdigit() else str(ipn_raw or "").strip()
+            svc_raw  = str(col(["тип служби", "service_type", "тип_служби"]) or "").strip().lower()
+            svc      = "contract" if "контракт" in svc_raw or svc_raw == "contract" else (
+                       "mobilized" if "мобіл" in svc_raw or svc_raw == "mobilized" else None)
 
             rows_data.append({
-                "last_name":   last_name,
-                "first_name":  first_name,
-                "middle_name": middle_name,
-                "rank":        rank,
-                "position":    position,
-                "ipn":         ipn or None,
+                "last_name":    last_name,
+                "first_name":   first_name,
+                "middle_name":  middle_name,
+                "rank":         rank,
+                "position":     position,
+                "ipn":          ipn or None,
+                "service_type": svc,
             })
 
         wb.close()
@@ -210,6 +214,8 @@ def personnel_import_confirm():
 
     conn = get_connection()
     default_group_id = _get_default_group_id(conn)
+    svc_row = conn.execute("SELECT value FROM settings WHERE key='default_service_type'").fetchone()
+    default_service_type = svc_row["value"] if svc_row else "mobilized"
 
     # Перевірити існуючі ще раз (між завантаженням і підтвердженням міг хтось додати)
     existing_set_ipn = {
@@ -230,17 +236,19 @@ def personnel_import_confirm():
             continue
 
         try:
+            row_svc = row.get("service_type") or default_service_type
             conn.execute("""
                 INSERT INTO personnel
                     (last_name, first_name, middle_name, rank, position,
-                     category, group_id, is_active)
-                VALUES (?,?,?,?,?,?,?,?)
+                     category, group_id, is_active, service_type)
+                VALUES (?,?,?,?,?,?,?,?,?)
             """, (
                 row["last_name"], row["first_name"], row["middle_name"] or None,
                 row["rank"] or None, row["position"] or None,
                 "soldier",
                 default_group_id,
                 1,
+                row_svc,
             ))
             if row["ipn"]:
                 pid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]

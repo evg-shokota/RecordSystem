@@ -27,7 +27,7 @@
                 {% for n in norms %}
                 <tr class="{{ 'text-muted' if not n.is_active }}">
                     <td>
-                        <a href="{{ url_for('supply_norms.edit', norm_id=n.id) }}"
+                        <a href="{{ url_for('supply_norms.view', norm_id=n.id) }}"
                            class="fw-medium text-decoration-none">
                             {{ n.name }}
                         </a>
@@ -63,7 +63,7 @@
                         <form method="POST"
                               action="{{ url_for('supply_norms.delete', norm_id=n.id) }}"
                               class="d-inline"
-                              onsubmit="return confirm('Видалити норму «{{ n.name }}»?')">
+                              data-confirm="Видалити норму «{{ n.name }}»?">
                             <button type="submit" class="btn btn-sm btn-outline-danger py-0">
                                 <i class="bi bi-trash"></i>
                             </button>

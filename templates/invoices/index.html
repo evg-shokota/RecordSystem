@@ -66,11 +66,11 @@
                     {% set expired = r.valid_until and r.valid_until < today_str and r.status in ('created','issued') %}
                     <tr class="{{ 'table-danger' if expired else '' }}">
                         <td>
-                            <a href="{{ url_for('invoices.view', inv_id=r.id) }}" class="fw-medium">
+                            <a href="{{ url_for('invoices.view', inv_id=r.id) }}?back={{ request.url | urlencode }}" class="fw-medium">
                                 {{ r.number }}
                             </a>
                         </td>
-                        <td class="text-muted">{{ r.created_at[:10] }}</td>
+                        <td class="text-muted">{{ r.created_at | fdate }}</td>
                         <td>
                             {% if r.recipient_type == 'personnel' %}
                             <i class="bi bi-person text-muted me-1"></i>
@@ -91,7 +91,7 @@
                         </td>
                         <td class="text-end">{{ "%.2f"|format(r.total_sum) }}</td>
                         <td class="text-muted {{ 'text-danger fw-bold' if expired }}">
-                            {{ r.valid_until or '—' }}
+                            {{ r.valid_until | fdate }}
                         </td>
                         <td>
                             {% if r.status == 'draft' %}

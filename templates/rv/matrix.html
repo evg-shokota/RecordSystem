@@ -7,7 +7,7 @@
 {% block topbar_actions %}
 {% if sheet.status == 'draft' %}
 <form method="POST" action="{{ url_for('rv.assign_number', sid=sheet.id) }}" class="d-inline"
-      onsubmit="return confirm('Присвоїти номер РВ?')">
+      data-confirm="Присвоїти номер РВ?">
     <button type="submit" class="btn btn-sm btn-success">
         <i class="bi bi-hash me-1"></i>Присвоїти номер
     </button>
@@ -15,7 +15,7 @@
 {% endif %}
 {% if sheet.status == 'active' %}
 <form method="POST" action="{{ url_for('rv.close', sid=sheet.id) }}" class="d-inline"
-      onsubmit="return confirm('Закрити РВ? Після цього редагування недоступне.')">
+      data-confirm="Закрити РВ? Після цього редагування недоступне.">
     <button type="submit" class="btn btn-sm btn-success">
         <i class="bi bi-check2-all me-1"></i>Закрити РВ
     </button>
@@ -31,7 +31,7 @@
 {% endif %}
 {% if sheet.status in ('draft', 'active') %}
 <form method="POST" action="{{ url_for('rv.cancel', sid=sheet.id) }}" class="d-inline"
-      onsubmit="return confirm('Скасувати РВ?')">
+      data-confirm="Скасувати РВ?">
     <button type="submit" class="btn btn-sm btn-outline-danger">
         <i class="bi bi-x-lg me-1"></i>Скасувати
     </button>
@@ -50,7 +50,7 @@
     <strong>{{ status_labels.get(sheet.status) }}</strong>
     {% if sheet.unit_name %} — {{ sheet.unit_name }}
     {% elif sheet.unit_text %} — {{ sheet.unit_text }}{% endif %}
-    {% if sheet.doc_date %} | {{ sheet.doc_date }}{% endif %}
+    {% if sheet.doc_date %} | {{ sheet.doc_date | fdate }}{% endif %}
     {% if sheet.total_sum %} | Сума: <strong id="totalSum">{{ "%.2f"|format(sheet.total_sum) }}</strong> грн{% endif %}
 </div>
 
@@ -62,6 +62,9 @@
     </button>
     <button class="btn btn-sm btn-outline-secondary" id="btnOpenAddItem">
         <i class="bi bi-plus-square me-1"></i>Додати майно
+    </button>
+    <button class="btn btn-sm btn-outline-info" id="btnFillByNorm" title="Заповнити порожні комірки по нормах видачі">
+        <i class="bi bi-lightning-charge me-1"></i>По нормі
     </button>
     <span class="text-muted small ms-auto align-self-center">
         <i class="bi bi-info-circle me-1"></i>Клікніть на комірку для введення кількості
@@ -156,7 +159,7 @@
                 <tbody>
                     {% for row in matrix.rows %}
                     {% set row_sum = namespace(val=0) %}
-                    <tr data-row-id="{{ row.id }}" id="row-{{ row.id }}">
+                    <tr data-row-id="{{ row.id }}" data-personnel-id="{{ row.personnel_id }}" id="row-{{ row.id }}">
                         <td style="position:sticky;left:0;background:var(--card-bg,#fff);z-index:1">
                             <div class="fw-medium">{{ row.last_name }} {{ row.first_name[0] }}.{% if row.middle_name %} {{ row.middle_name[0] }}.{% endif %}</div>
                             <div class="text-muted small">{{ row.rank or '' }}{% if row.position %} | {{ row.position }}{% endif %}</div>
@@ -342,8 +345,23 @@
 
 {% block scripts %}
 <script>
+// ── Відновлення позиції скролу після reload ──
+document.addEventListener('DOMContentLoaded', () => {
+    const sy = sessionStorage.getItem('rv_scroll_y');
+    if (sy) { window.scrollTo(0, parseInt(sy)); sessionStorage.removeItem('rv_scroll_y'); }
+});
+
 const SID = {{ sheet.id }};
 const EDITABLE = {{ 'true' if sheet.status in ('draft', 'active') else 'false' }};
+
+// ── Норми для осіб в матриці ──
+const NORM_DATA = {{ norm_data | tojson }};
+
+function getNormQty(personnelId, itemId) {
+    const norms = NORM_DATA[String(personnelId)] || [];
+    const found = norms.find(n => n.item_id === itemId);
+    return found ? found.qty : null;
+}
 
 // ── Дані для SearchableSelect ──
 const ALL_PERSONNEL_DATA = [
@@ -366,6 +384,29 @@ const RV_STOCK_IDX = {};
 for (const s of RV_STOCK) {
     if (!RV_STOCK_IDX[s.item_id]) RV_STOCK_IDX[s.item_id] = [];
     RV_STOCK_IDX[s.item_id].push(s);
+}
+
+// ── Live залишки: base_free[item_id] = qty_free з сервера (без поточної РВ) ──
+// При зміні комірок перераховується локально без запиту до сервера
+const BASE_FREE = {}; // item_id → сума qty_free по всіх партіях
+for (const s of RV_STOCK) {
+    BASE_FREE[s.item_id] = (BASE_FREE[s.item_id] || 0) + (s.qty_free || 0);
+}
+
+function getCurrentRvQty(itemId) {
+    // Сума всіх комірок поточної РВ для цього item_id (з DOM)
+    let total = 0;
+    document.querySelectorAll(`.qty-cell[data-item-id="${itemId}"]`).forEach(inp => {
+        total += parseFloat(inp.value) || 0;
+    });
+    return total;
+}
+
+function getLiveFree(itemId) {
+    // Реальний залишок = base_free - вже введено в цій РВ
+    const base = BASE_FREE[itemId] !== undefined ? BASE_FREE[itemId] : null;
+    if (base === null) return null; // не на складі взагалі
+    return base - getCurrentRvQty(itemId);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -394,16 +435,16 @@ document.getElementById('btnCloseAddPersonnel')?.addEventListener('click', () =>
 
 document.getElementById('btnDoAddPersonnel')?.addEventListener('click', () => {
     const val = personnelSsInstance?.getValue();
-    if (!val) { alert('Оберіть військовослужбовця'); return; }
+    if (!val) { showToast('Оберіть військовослужбовця', 'warning'); return; }
     const pid = parseInt(val);
 
     const fd = new FormData();
     fd.append('personnel_id[]', pid);
     fetch(`/rv/${SID}/row/add`, { method: 'POST', body: fd })
         .then(r => r.json()).then(d => {
-            if (d.ok) location.reload();
-            else alert(d.error || 'Помилка');
-        });
+            if (d.ok) { sessionStorage.setItem('rv_scroll_y', window.scrollY); location.reload(); }
+            else alert(d.msg || d.error || 'Помилка');
+        }).catch(e => { console.error('row/add error:', e); alert('Помилка зв\'язку з сервером'); });
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -473,16 +514,16 @@ document.getElementById('itemStockSelect').addEventListener('change', function()
 
 document.getElementById('btnDoAddItem')?.addEventListener('click', () => {
     const itemId = document.getElementById('itemSelectedId').value || itemSs?.getValue();
-    if (!itemId) { alert('Оберіть позицію майна'); return; }
+    if (!itemId) { showToast('Оберіть позицію майна', 'warning'); return; }
     const fd = new FormData();
     fd.append('item_id',  itemId);
     fd.append('price',    document.getElementById('itemPrice').value.replace(',', '.'));
     fd.append('category', document.getElementById('itemCategory').value);
     fetch(`/rv/${SID}/item/add`, { method: 'POST', body: fd })
         .then(r => r.json()).then(d => {
-            if (d.ok) location.reload();
-            else alert(d.error || 'Помилка');
-        });
+            if (d.ok) { sessionStorage.setItem('rv_scroll_y', window.scrollY); location.reload(); }
+            else alert(d.msg || d.error || 'Помилка');
+        }).catch(e => { console.error('item/add error:', e); alert('Помилка зв\'язку з сервером'); });
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -490,29 +531,30 @@ document.getElementById('btnDoAddItem')?.addEventListener('click', () => {
 // ═══════════════════════════════════════════════════════════════
 document.querySelectorAll('.btn-del-item').forEach(btn => {
     btn.addEventListener('click', () => {
-        if (!confirm(`Прибрати "${btn.dataset.name}" з РВ?`)) return;
-        fetch(`/rv/${SID}/item/${btn.dataset.colId}/delete`, { method: 'POST' })
-            .then(r => r.json()).then(d => {
-                if (d.ok) location.reload();
-                else alert(d.error);
-            });
+        showConfirm(`Прибрати "${btn.dataset.name}" з РВ?`, () => {
+            fetch(`/rv/${SID}/item/${btn.dataset.colId}/delete`, { method: 'POST' })
+                .then(r => r.json()).then(d => {
+                    if (d.ok) location.reload();
+                    else showToast(d.msg || d.error, 'danger');
+                });
+        });
     });
 });
 
 document.querySelectorAll('.btn-del-row').forEach(btn => {
     btn.addEventListener('click', () => {
-        if (!confirm('Видалити цей рядок з РВ?')) return;
-        fetch(`/rv/${SID}/row/${btn.dataset.rowId}/delete`, { method: 'POST' })
-            .then(r => r.json()).then(d => {
-                if (d.ok) {
-                    const tr = document.getElementById('row-' + btn.dataset.rowId);
-                    if (tr) tr.remove();
-                    // Якщо рядків не залишилось — reload щоб показати порожній стан
-                    if (!document.querySelector('tr[data-row-id]')) location.reload();
-                } else {
-                    alert(d.error);
-                }
-            });
+        showConfirm('Видалити цей рядок з РВ?', () => {
+            fetch(`/rv/${SID}/row/${btn.dataset.rowId}/delete`, { method: 'POST' })
+                .then(r => r.json()).then(d => {
+                    if (d.ok) {
+                        const tr = document.getElementById('row-' + btn.dataset.rowId);
+                        if (tr) tr.remove();
+                        if (!document.querySelector('tr[data-row-id]')) location.reload();
+                    } else {
+                        showToast(d.msg || d.error, 'danger');
+                    }
+                });
+        });
     });
 });
 
@@ -558,8 +600,106 @@ function flushCells() {
     });
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  Підсвічування комірок за LIVE залишками
+// ═══════════════════════════════════════════════════════════════
+function updateCellWarnings() {
+    // Кешуємо live-залишок по item_id (щоб не рахувати N разів для N рядків)
+    const liveFreeCache = {};
+
+    document.querySelectorAll('.qty-cell').forEach(inp => {
+        const iid = parseInt(inp.dataset.itemId);
+        const td = inp.closest('td');
+        if (!td) return;
+
+        if (!(iid in liveFreeCache)) liveFreeCache[iid] = getLiveFree(iid);
+        const liveFree = liveFreeCache[iid];
+        const cellQty = parseFloat(inp.value) || 0;
+
+        td.classList.remove('table-danger', 'table-warning');
+        if (liveFree === null) {
+            // Товару немає на складі взагалі — підсвічуємо тільки якщо введено кількість
+            if (cellQty > 0) td.classList.add('table-danger');
+        } else if (liveFree < 0 && cellQty > 0) {
+            // Введено більше ніж є — підсвічуємо тільки заповнені комірки
+            td.classList.add('table-danger');
+        } else if (liveFree === 0 && cellQty > 0) {
+            // Залишок вичерпано, але щось введено — попередження
+            td.classList.add('table-warning');
+        }
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Підсвічування заголовків стовпців за LIVE залишками
+// ═══════════════════════════════════════════════════════════════
+function updateHeaderWarnings() {
+    document.querySelectorAll('th[data-item-id]').forEach(th => {
+        const iid = parseInt(th.dataset.itemId);
+        const liveFree = getLiveFree(iid);
+        const stockRows = RV_STOCK_IDX[iid] || [];
+
+        th.classList.remove('table-danger', 'table-warning');
+        th.querySelectorAll('.rv-stock-warn-icon').forEach(el => el.remove());
+        const nameDiv = th.querySelector('.fw-semibold') || th.querySelector('div');
+
+        if (stockRows.length === 0) {
+            // Товар відсутній на складі взагалі
+            th.classList.add('table-danger');
+            if (nameDiv) nameDiv.insertAdjacentHTML('beforeend',
+                ' <i class="bi bi-exclamation-triangle-fill text-danger rv-stock-warn-icon" title="Немає на складі"></i>');
+        } else if (liveFree !== null && liveFree < 0) {
+            // Перевищення залишку
+            th.classList.add('table-danger');
+            if (nameDiv) nameDiv.insertAdjacentHTML('beforeend',
+                ` <i class="bi bi-exclamation-triangle-fill text-danger rv-stock-warn-icon" title="Перевищення залишку на ${Math.abs(liveFree).toFixed(1)}"></i>`);
+        } else if (liveFree !== null && liveFree === 0) {
+            // Залишок вичерпано
+            th.classList.add('table-warning');
+            if (nameDiv) nameDiv.insertAdjacentHTML('beforeend',
+                ' <i class="bi bi-exclamation-circle text-warning rv-stock-warn-icon" title="Залишок вичерпано"></i>');
+        }
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Оновлення суми рядка (без reload)
+// ═══════════════════════════════════════════════════════════════
+// Ціни по item_id (беремо з заголовка таблиці або з stock)
+const ITEM_PRICES = {};
+{% for item in matrix.cols %}
+ITEM_PRICES[{{ item.item_id }}] = {{ item.price or 0 }};
+{% endfor %}
+
+function updateRowSum(rowId) {
+    let sum = 0;
+    document.querySelectorAll(`.qty-cell[data-row-id="${rowId}"]`).forEach(inp => {
+        const iid = parseInt(inp.dataset.itemId);
+        sum += (parseFloat(inp.value) || 0) * (ITEM_PRICES[iid] || 0);
+    });
+    const sumCell = document.querySelector(`.row-sum[data-row-id="${rowId}"]`);
+    if (sumCell) sumCell.textContent = sum.toFixed(2);
+}
+
 if (EDITABLE) {
     document.querySelectorAll('.qty-cell').forEach(inp => {
+        // Норма як placeholder у порожніх комірках
+        if (!inp.value) {
+            const rowEl = inp.closest('tr[data-row-id]');
+            const pid = rowEl ? parseInt(rowEl.dataset.personnelId) : null;
+            if (pid) {
+                const normQty = getNormQty(pid, parseInt(inp.dataset.itemId));
+                if (normQty) inp.placeholder = 'норма: ' + normQty;
+            }
+        }
+
+        inp.addEventListener('input', () => {
+            // Live: одразу оновити підсвічування і суму рядка
+            updateCellWarnings();
+            updateHeaderWarnings();
+            updateRowSum(inp.dataset.rowId);
+        });
+
         inp.addEventListener('change', () => {
             const key = `${inp.dataset.rowId}-${inp.dataset.itemId}`;
             pendingCells[key] = {
@@ -570,6 +710,7 @@ if (EDITABLE) {
             clearTimeout(saveTimer);
             saveTimer = setTimeout(flushCells, 800);
         });
+
         inp.addEventListener('keydown', e => {
             if (e.key === 'Enter' || e.key === 'Tab') {
                 e.preventDefault();
@@ -580,7 +721,51 @@ if (EDITABLE) {
             }
         });
     });
+
+    // ── Кнопка "По нормі": заповнити порожні комірки по нормах ──
+    document.getElementById('btnFillByNorm')?.addEventListener('click', () => {
+        let filled = 0;
+        document.querySelectorAll('tr[data-personnel-id]').forEach(tr => {
+            const pid = parseInt(tr.dataset.personnelId);
+            const rowId = tr.dataset.rowId;
+            if (!pid || !rowId) return;
+
+            tr.querySelectorAll('.qty-cell').forEach(inp => {
+                if (inp.value) return; // не перезаписувати вже введене
+                const iid = parseInt(inp.dataset.itemId);
+                const normQty = getNormQty(pid, iid);
+                if (!normQty) return;
+
+                inp.value = normQty;
+                inp.placeholder = '';
+                filled++;
+
+                // Додаємо в чергу збереження
+                const key = `${rowId}-${iid}`;
+                pendingCells[key] = {
+                    row_id: parseInt(rowId),
+                    item_id: iid,
+                    quantity: normQty,
+                };
+            });
+            if (filled > 0) updateRowSum(rowId);
+        });
+
+        if (filled === 0) {
+            showToast('Немає порожніх комірок з нормами для заповнення', 'info');
+            return;
+        }
+
+        updateCellWarnings();
+        updateHeaderWarnings();
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(flushCells, 500);
+    });
 }
+
+// Початкове підсвічування після завантаження
+updateCellWarnings();
+updateHeaderWarnings();
 
 // ═══════════════════════════════════════════════════════════════
 //  Підрозділ autocomplete в headerModal
@@ -666,7 +851,7 @@ document.getElementById('btnSaveHeader')?.addEventListener('click', () => {
             if (d.ok) {
                 bootstrap.Modal.getInstance(document.getElementById('headerModal'))?.hide();
                 location.reload();
-            } else alert(d.error);
+            } else alert(d.msg || d.error);
         });
 });
 </script>

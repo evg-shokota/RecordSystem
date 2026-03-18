@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Інвентаризація {{ inv.date }} — {{ unit_name }}{% endblock %}
-{% block page_title %}Інвентаризація від {{ inv.date }}{% endblock %}
+{% block title %}Інвентаризація {{ inv.date | fdate }} — {{ unit_name }}{% endblock %}
+{% block page_title %}Інвентаризація від {{ inv.date | fdate }}{% endblock %}
 
 {% block topbar_actions %}
 <a href="{{ url_for('warehouse.inventory_print', inv_id=inv.id) }}"
@@ -23,7 +23,7 @@
         <div class="row g-2">
             <div class="col-md-2">
                 <span class="text-muted small">Дата:</span><br>
-                <strong>{{ inv.date }}</strong>
+                <strong>{{ inv.date | fdate }}</strong>
             </div>
             <div class="col-md-5">
                 <span class="text-muted small">Члени комісії:</span><br>

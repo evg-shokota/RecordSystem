@@ -315,7 +315,7 @@ document.getElementById('btnSaveGroup').addEventListener('click', async () => {
     const url = id ? `/settings/norm-dict/group/${id}/edit` : '/settings/norm-dict/group/add';
     const res  = await fetch(url, { method: 'POST', body: fd });
     const data = await res.json();
-    if (!data.ok) { showToast(data.error, 'danger'); return; }
+    if (!data.ok) { showToast(data.msg || data.error, 'danger'); return; }
     modalGroup.hide();
     showToast('Збережено', 'success');
     setTimeout(() => location.reload(), 400);
@@ -323,12 +323,13 @@ document.getElementById('btnSaveGroup').addEventListener('click', async () => {
 
 // ── Видалити групу ──
 document.querySelectorAll('.btn-del-group').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        if (!confirm(`Видалити групу "${btn.dataset.name}"? Це видалить усі позиції в ній!`)) return;
-        const res  = await fetch(`/settings/norm-dict/group/${btn.dataset.id}/delete`, { method: 'POST' });
+    btn.addEventListener('click', () => {
+        showConfirm(`Видалити групу "${btn.dataset.name}"? Це видалить усі позиції в ній!`, async () => {
+        const res  = await fetch(`/settings/norm-dict/group/${btn.dataset.id}/delete`, { method: 'POST'        });
+    });
         const data = await res.json();
         if (data.ok) { showToast('Видалено', 'success'); setTimeout(() => location.reload(), 400); }
-        else showToast(data.error, 'danger');
+        else showToast(data.msg || data.error, 'danger');
     });
 });
 
@@ -367,7 +368,7 @@ document.getElementById('btnSaveItem').addEventListener('click', async () => {
     const url = id ? `/settings/norm-dict/item/${id}/edit` : '/settings/norm-dict/item/add';
     const res  = await fetch(url, { method: 'POST', body: fd });
     const data = await res.json();
-    if (!data.ok) { showToast(data.error, 'danger'); return; }
+    if (!data.ok) { showToast(data.msg || data.error, 'danger'); return; }
     modalItem.hide();
     showToast('Збережено', 'success');
     setTimeout(() => location.reload(), 400);
@@ -375,12 +376,13 @@ document.getElementById('btnSaveItem').addEventListener('click', async () => {
 
 // ── Видалити позицію ──
 document.querySelectorAll('.btn-del-item').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        if (!confirm(`Видалити "${btn.dataset.name}"?`)) return;
-        const res  = await fetch(`/settings/norm-dict/item/${btn.dataset.id}/delete`, { method: 'POST' });
+    btn.addEventListener('click', () => {
+        showConfirm(`Видалити "${btn.dataset.name}"?`, async () => {
+        const res  = await fetch(`/settings/norm-dict/item/${btn.dataset.id}/delete`, { method: 'POST'        });
+    });
         const data = await res.json();
         if (data.ok) { btn.closest('tr').remove(); showToast('Видалено', 'success'); }
-        else showToast(data.error, 'danger');
+        else showToast(data.msg || data.error, 'danger');
     });
 });
 
@@ -450,19 +452,20 @@ function renderCompRow(panelRow, c) {
         });
         const data = await res.json();
         if (data.ok) { c.qty = qty; showToast('Збережено', 'success'); }
-        else showToast(data.error, 'danger');
+        else showToast(data.msg || data.error, 'danger');
     });
 
-    tr.querySelector('.btn-del-comp').addEventListener('click', async () => {
-        if (!confirm('Видалити складову?')) return;
-        const res  = await fetch(`/settings/norm-dict/component/${c.id}/delete`, { method: 'POST' });
-        const data = await res.json();
-        if (data.ok) {
-            tr.remove();
-            refreshEmptyRow(panelRow);
-            refreshParentBadge(panelRow);
-            showToast('Видалено', 'success');
-        } else showToast(data.error, 'danger');
+    tr.querySelector('.btn-del-comp').addEventListener('click', () => {
+        showConfirm('Видалити складову?', async () => {
+            const res  = await fetch(`/settings/norm-dict/component/${c.id}/delete`, { method: 'POST' });
+            const data = await res.json();
+            if (data.ok) {
+                tr.remove();
+                refreshEmptyRow(panelRow);
+                refreshParentBadge(panelRow);
+                showToast('Видалено', 'success');
+            } else showToast(data.msg || data.error, 'danger');
+        });
     });
 
     tbody.insertBefore(tr, emptyRow);
@@ -567,7 +570,7 @@ document.querySelectorAll('.btn-add-comp').forEach(btn => {
             body: JSON.stringify({ child_id: childId, qty })
         });
         const data = await res.json();
-        if (!data.ok) { showToast(data.error, 'danger'); return; }
+        if (!data.ok) { showToast(data.msg || data.error, 'danger'); return; }
 
         // Перезавантажити список
         const res2  = await fetch(`/settings/norm-dict/item/${parentId}/components`);

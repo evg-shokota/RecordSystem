@@ -20,7 +20,7 @@
                 <tbody>
                     {% for r in rows %}
                     <tr>
-                        <td class="text-muted small">{{ r.created_at }}</td>
+                        <td class="text-muted small">{{ r.created_at | fdatetime }}</td>
                         <td class="small">{{ r.user_full_name or r.username or '—' }}</td>
                         <td>
                             {% set action_labels = {

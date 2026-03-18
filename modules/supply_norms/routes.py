@@ -9,41 +9,9 @@ from flask import Blueprint, render_template, request, redirect, url_for, jsonif
 from core.auth import login_required
 from core.db import get_connection
 from core.audit import log_action
+from core.warehouse import get_norm_groups as _get_norm_groups
 
 bp = Blueprint("supply_norms", __name__, url_prefix="/supply-norms")
-
-
-def _get_norm_groups(conn):
-    """Повертає список груп з позиціями словника норм."""
-    groups_raw = conn.execute(
-        "SELECT id, name FROM norm_dict_groups ORDER BY sort_order, name"
-    ).fetchall()
-    try:
-        items_rows = conn.execute(
-            "SELECT id, name, unit, group_id FROM norm_dictionary ORDER BY name"
-        ).fetchall()
-        items_raw = [{"id": r["id"], "name": r["name"], "unit": r["unit"] or "шт",
-                      "group_id": r["group_id"]}
-                     for r in items_rows]
-    except Exception:
-        items_rows = conn.execute(
-            "SELECT id, name, '' AS unit, group_id FROM norm_dictionary ORDER BY name"
-        ).fetchall()
-        items_raw = [{"id": r["id"], "name": r["name"], "unit": "шт",
-                      "group_id": r["group_id"]}
-                     for r in items_rows]
-    groups = []
-    for g in groups_raw:
-        groups.append({
-            "id": g["id"],
-            "name": g["name"],
-            "norms": [i for i in items_raw if i["group_id"] == g["id"]],
-        })
-    # Позиції без групи
-    ungrouped = [i for i in items_raw if i["group_id"] is None]
-    if ungrouped:
-        groups.append({"id": None, "name": "Без групи", "norms": ungrouped})
-    return groups
 
 
 # ─────────────────────────────────────────────────────────────
@@ -57,10 +25,11 @@ def index():
     norms = conn.execute("""
         SELECT sn.*,
                COUNT(DISTINCT sni.id)  AS items_count,
-               COUNT(DISTINCT p.id)    AS assigned_count
+               COUNT(DISTINCT pn.personnel_id) AS assigned_count
         FROM supply_norms sn
         LEFT JOIN supply_norm_items sni ON sni.norm_id = sn.id
-        LEFT JOIN personnel p ON p.norm_id = sn.id AND p.is_active = 1
+        LEFT JOIN personnel_norms pn ON pn.norm_id = sn.id
+        LEFT JOIN personnel p ON p.id = pn.personnel_id AND p.is_active = 1
         GROUP BY sn.id
         ORDER BY sn.is_active DESC, sn.name
     """).fetchall()
@@ -76,8 +45,9 @@ def index():
 @login_required
 def new():
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        description = request.form.get("description", "").strip()
+        name         = request.form.get("name", "").strip()
+        description  = request.form.get("description", "").strip()
+        service_type = request.form.get("service_type", "all").strip()
         if not name:
             flash("Назва норми обов'язкова", "error")
             conn = get_connection()
@@ -88,9 +58,9 @@ def new():
         conn = get_connection()
         try:
             cur = conn.execute(
-                """INSERT INTO supply_norms (name, description)
-                   VALUES (?, ?)""",
-                (name, description or None)
+                """INSERT INTO supply_norms (name, description, service_type)
+                   VALUES (?, ?, ?)""",
+                (name, description or None, service_type)
             )
             norm_id = cur.lastrowid
             conn.commit()
@@ -118,6 +88,61 @@ def new():
 
 
 # ─────────────────────────────────────────────────────────────
+#  Перегляд норми (read-only)
+# ─────────────────────────────────────────────────────────────
+
+@bp.route("/<int:norm_id>/")
+@login_required
+def view(norm_id):
+    conn = get_connection()
+    norm = conn.execute("""
+        SELECT sn.*,
+               COUNT(DISTINCT pn.personnel_id) AS assigned_count
+        FROM supply_norms sn
+        LEFT JOIN personnel_norms pn ON pn.norm_id = sn.id
+        LEFT JOIN personnel p ON p.id = pn.personnel_id AND p.is_active = 1
+        WHERE sn.id = ?
+        GROUP BY sn.id
+    """, (norm_id,)).fetchone()
+    if not norm:
+        conn.close()
+        flash("Норму не знайдено", "error")
+        return redirect(url_for("supply_norms.index"))
+
+    items = conn.execute("""
+        SELECT sni.*, nd.name AS item_name, nd.unit AS unit_of_measure,
+               ndg.name AS group_name
+        FROM supply_norm_items sni
+        JOIN norm_dictionary nd ON sni.norm_dict_id = nd.id
+        LEFT JOIN norm_dict_groups ndg ON nd.group_id = ndg.id
+        WHERE sni.norm_id = ?
+        ORDER BY sni.sort_order, sni.id
+    """, (norm_id,)).fetchall()
+
+    item_ids = [i["id"] for i in items]
+    wear_map = {}
+    if item_ids:
+        placeholders = ",".join("?" * len(item_ids))
+        wear_rows = conn.execute(
+            f"SELECT norm_item_id, personnel_cat, wear_months, qty FROM supply_norm_item_wear WHERE norm_item_id IN ({placeholders})",
+            item_ids
+        ).fetchall()
+        for w in wear_rows:
+            wear_map.setdefault(w["norm_item_id"], {})[w["personnel_cat"]] = {
+                "months": w["wear_months"], "qty": w["qty"]}
+
+    items_out = []
+    for item in items:
+        d = dict(item)
+        d["wear_by_cat"] = {cat: wear_map.get(item["id"], {}).get(cat, {"months": 0, "qty": None}) for cat in range(1, 6)}
+        items_out.append(d)
+
+    conn.close()
+    return render_template("supply_norms/view.html",
+                           norm=dict(norm), items=items_out)
+
+
+# ─────────────────────────────────────────────────────────────
 #  Редагувати норму
 # ─────────────────────────────────────────────────────────────
 
@@ -132,8 +157,9 @@ def edit(norm_id):
         return redirect(url_for("supply_norms.index"))
 
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        description = request.form.get("description", "").strip()
+        name         = request.form.get("name", "").strip()
+        description  = request.form.get("description", "").strip()
+        service_type = request.form.get("service_type", "all").strip()
         is_active = 1 if request.form.get("is_active") else 0
         if not name:
             flash("Назва норми обов'язкова", "error")
@@ -141,15 +167,15 @@ def edit(norm_id):
             try:
                 conn.execute(
                     """UPDATE supply_norms
-                       SET name=?, description=?, is_active=?,
+                       SET name=?, description=?, service_type=?, is_active=?,
                            updated_at=datetime('now','localtime')
                        WHERE id=?""",
-                    (name, description or None, is_active, norm_id)
+                    (name, description or None, service_type, is_active, norm_id)
                 )
                 conn.commit()
                 log_action("edit", "supply_norms", norm_id,
                            old_data=dict(norm),
-                           new_data={"name": name, "is_active": is_active})
+                           new_data={"name": name, "service_type": service_type, "is_active": is_active})
                 flash("Збережено", "success")
             except Exception as e:
                 if "UNIQUE" in str(e):
@@ -168,11 +194,31 @@ def edit(norm_id):
         ORDER BY sni.sort_order, sni.id
     """, (norm_id,)).fetchall()
 
+    # Підвантажуємо wear по категоріях для кожної позиції
+    item_ids = [i["id"] for i in items]
+    wear_map = {}  # {norm_item_id: {cat: months}}
+    if item_ids:
+        placeholders = ",".join("?" * len(item_ids))
+        wear_rows = conn.execute(
+            f"SELECT norm_item_id, personnel_cat, wear_months, qty FROM supply_norm_item_wear WHERE norm_item_id IN ({placeholders})",
+            item_ids
+        ).fetchall()
+        for w in wear_rows:
+            wear_map.setdefault(w["norm_item_id"], {})[w["personnel_cat"]] = {
+                "months": w["wear_months"], "qty": w["qty"]}
+
+    # Конвертуємо items у dict і додаємо wear
+    items_with_wear = []
+    for item in items:
+        d = dict(item)
+        d["wear_by_cat"] = {cat: wear_map.get(item["id"], {}).get(cat, {"months": 0, "qty": None}) for cat in range(1, 6)}
+        items_with_wear.append(d)
+
     norm_groups = _get_norm_groups(conn)
     conn.close()
 
     return render_template("supply_norms/form.html",
-                           norm=norm, items=items, norm_groups=norm_groups)
+                           norm=norm, items=items_with_wear, norm_groups=norm_groups)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -235,7 +281,7 @@ def item_add(norm_id):
 
     data = request.get_json(silent=True) or {}
     norm_dict_id = data.get("norm_dict_id")
-    quantity     = float(data.get("quantity") or 1)
+    quantity     = max(1, int(float(data.get("quantity") or 1)))
     wear_years   = float(data.get("wear_years") or 0)
     category     = data.get("category", "I")
     notes        = (data.get("notes") or "").strip() or None
@@ -278,7 +324,7 @@ def item_add(norm_id):
 def item_edit(norm_id, item_row_id):
     conn = get_connection()
     data = request.get_json(silent=True) or {}
-    quantity   = float(data.get("quantity") or 1)
+    quantity   = max(1, int(float(data.get("quantity") or 1)))
     wear_years = float(data.get("wear_years") or 0)
     category   = data.get("category", "I")
     notes      = (data.get("notes") or "").strip() or None
@@ -300,6 +346,41 @@ def item_delete(norm_id, item_row_id):
     conn.execute(
         "DELETE FROM supply_norm_items WHERE id=? AND norm_id=?", (item_row_id, norm_id)
     )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@bp.route("/<int:norm_id>/items/<int:item_row_id>/wear", methods=["POST"])
+@login_required
+def item_wear(norm_id, item_row_id):
+    """Зберегти строк носіння для конкретної категорії персоналу."""
+    conn = get_connection()
+    data = request.get_json(silent=True) or {}
+    personnel_cat = int(data.get("personnel_cat") or 0)
+    wear_months   = int(data.get("wear_months") or 0)
+    qty_raw       = data.get("qty")
+    qty           = max(1, int(float(qty_raw))) if qty_raw is not None and qty_raw != "" else None
+
+    if not (1 <= personnel_cat <= 5):
+        conn.close()
+        return jsonify({"ok": False, "error": "Категорія 1–5"}), 400
+
+    # Перевірити що позиція належить цій нормі
+    row = conn.execute(
+        "SELECT id FROM supply_norm_items WHERE id=? AND norm_id=?",
+        (item_row_id, norm_id)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"ok": False, "error": "Позицію не знайдено"}), 404
+
+    conn.execute("""
+        INSERT INTO supply_norm_item_wear (norm_item_id, personnel_cat, wear_months, qty)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(norm_item_id, personnel_cat) DO UPDATE
+            SET wear_months=excluded.wear_months, qty=excluded.qty
+    """, (item_row_id, personnel_cat, wear_months, qty))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})

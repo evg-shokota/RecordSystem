@@ -50,3 +50,9 @@
 }
 
 a { color: var(--link-color); }
+
+/* Активний пункт сайдбару — акцентна ліска зліва */
+.sidebar-nav .nav-link.active {
+    border-left: 3px solid rgba(255,255,255,.8);
+    padding-left: 13px !important;
+}

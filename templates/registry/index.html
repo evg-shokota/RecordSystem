@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block title %}Реєстр документів — {{ unit_name }}{% endblock %}
+
+{% block page_title %}Реєстр документів{% endblock %}
+
+{% block topbar_actions %}
+<button type="button" class="btn btn-sm btn-outline-secondary"
+        onclick="document.getElementById('filterPanel').classList.toggle('d-none')">
+    <i class="bi bi-funnel"></i> Фільтри
+    {% if filters.doc_type or filters.status or filters.direction or filters.unit_id or filters.date_from or filters.date_to or filters.q %}
+    <span class="badge bg-primary ms-1">!</span>
+    {% endif %}
+</button>
+<button class="btn btn-sm btn-outline-secondary js-create-doc-btn"
+        data-back="{{ request.url }}">
+    <i class="bi bi-plus-lg me-1"></i>Створити
+</button>
+{% endblock %}
+
+{% block content %}
+
+{# ── Панель фільтрів ────────────────────────────────────────────────────── #}
+<div id="filterPanel" class="card mb-3
+    {% if not (filters.doc_type or filters.status or filters.direction or filters.unit_id or filters.date_from or filters.date_to or filters.q) %}d-none{% endif %}">
+    <div class="card-body py-2">
+        <form method="get" action="{{ url_for('registry.index') }}" class="row g-2 align-items-end">
+
+            <div class="col-auto">
+                <label class="form-label form-label-sm mb-1">Тип</label>
+                <select name="doc_type" class="form-select form-select-sm" style="min-width:130px">
+                    <option value="">Всі типи</option>
+                    <option value="invoice" {% if filters.doc_type == 'invoice' %}selected{% endif %}>Накладні</option>
+                    <option value="rv"      {% if filters.doc_type == 'rv'      %}selected{% endif %}>Роздавальні відомості</option>
+                </select>
+            </div>
+
+            <div class="col-auto">
+                <label class="form-label form-label-sm mb-1">Статус</label>
+                <select name="status" class="form-select form-select-sm" style="min-width:130px">
+                    <option value="">Будь-який</option>
+                    {% for key, label in status_labels.items() %}
+                    <option value="{{ key }}" {% if filters.status == key %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-auto">
+                <label class="form-label form-label-sm mb-1">Напрям</label>
+                <select name="direction" class="form-select form-select-sm" style="min-width:120px">
+                    <option value="">Будь-який</option>
+                    {% for key, label in direction_labels.items() %}
+                    <option value="{{ key }}" {% if filters.direction == key %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-auto">
+                <label class="form-label form-label-sm mb-1">Підрозділ</label>
+                <select name="unit_id" class="form-select form-select-sm" style="min-width:160px">
+                    <option value="">Всі підрозділи</option>
+                    {% for u in units %}
+                    <option value="{{ u.id }}" {% if filters.unit_id == u.id|string %}selected{% endif %}>{{ u.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-auto">
+                <label class="form-label form-label-sm mb-1">Від</label>
+                <input type="date" name="date_from" class="form-control form-control-sm"
+                       value="{{ filters.date_from }}" style="min-width:130px">
+            </div>
+
+            <div class="col-auto">
+                <label class="form-label form-label-sm mb-1">До</label>
+                <input type="date" name="date_to" class="form-control form-control-sm"
+                       value="{{ filters.date_to }}" style="min-width:130px">
+            </div>
+
+            <div class="col">
+                <label class="form-label form-label-sm mb-1">Пошук</label>
+                <input type="text" name="q" class="form-control form-control-sm"
+                       placeholder="Номер, ПІБ, підрозділ…"
+                       value="{{ filters.q }}">
+            </div>
+
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="bi bi-search me-1"></i>Пошук
+                </button>
+                {% if filters.doc_type or filters.status or filters.direction or filters.unit_id or filters.date_from or filters.date_to or filters.q %}
+                <a href="{{ url_for('registry.index') }}" class="btn btn-outline-secondary btn-sm ms-1">
+                    <i class="bi bi-x"></i> Скинути
+                </a>
+                {% endif %}
+            </div>
+
+        </form>
+    </div>
+</div>
+
+{# ── Таблиця ─────────────────────────────────────────────────────────────── #}
+<div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between">
+        <span>
+            {% if rows %}
+                {{ rows | length }} документ{% if rows|length == 1 %}{% elif rows|length < 5 %}и{% else %}ів{% endif %}
+                {% if rows|length == 500 %}(показано перші 500){% endif %}
+            {% else %}
+                Документів не знайдено
+            {% endif %}
+        </span>
+    </div>
+
+    {% if rows %}
+    <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:80px">Тип</th>
+                    <th style="width:110px">Номер</th>
+                    <th style="width:105px">Дата</th>
+                    <th>Підрозділ / Отримувач</th>
+                    <th style="width:120px">Напрям</th>
+                    <th style="width:110px">Статус</th>
+                    <th class="text-end" style="width:80px">Позицій</th>
+                    <th class="text-end" style="width:110px">Сума</th>
+                    <th style="width:40px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr class="cursor-pointer" onclick="location.href='{{ (url_for('invoices.view', inv_id=row.id) if row.doc_type == 'invoice' else url_for('rv.view', sid=row.id)) + '?back=' + (request.url | urlencode) }}'">
+
+                    {# Тип #}
+                    <td>
+                        {% if row.doc_type == 'invoice' %}
+                        <span class="badge bg-secondary-subtle text-secondary border">
+                            <i class="bi bi-receipt me-1"></i>Накладна
+                        </span>
+                        {% else %}
+                        <span class="badge bg-info-subtle text-info border">
+                            <i class="bi bi-table me-1"></i>РВ
+                        </span>
+                        {% endif %}
+                    </td>
+
+                    {# Номер #}
+                    <td class="font-monospace fw-semibold text-nowrap">
+                        {{ row.number or '—' }}
+                        {% if row.is_external %}
+                        <i class="bi bi-printer text-muted ms-1" title="Зовнішній документ"></i>
+                        {% endif %}
+                        {% if not row.scan_path %}
+                        <i class="bi bi-paperclip text-warning ms-1" title="Без скану"></i>
+                        {% endif %}
+                    </td>
+
+                    {# Дата #}
+                    <td class="text-nowrap text-muted small">
+                        {{ row.doc_date | fdate }}
+                    </td>
+
+                    {# Підрозділ / Отримувач #}
+                    <td>
+                        <div class="text-truncate" style="max-width:220px">
+                            {% if row.recipient_name %}
+                            <span>{{ row.recipient_name }}</span>
+                            {% if row.unit_name %}
+                            <span class="text-muted small ms-1">({{ row.unit_name }})</span>
+                            {% endif %}
+                            {% else %}
+                            {{ row.unit_name or '—' }}
+                            {% endif %}
+                        </div>
+                    </td>
+
+                    {# Напрям #}
+                    <td class="text-nowrap">
+                        {% if row.direction %}
+                        {% if row.direction == 'issue' %}
+                        <i class="bi bi-arrow-up-right text-success me-1"></i>
+                        {% else %}
+                        <i class="bi bi-arrow-down-left text-warning me-1"></i>
+                        {% endif %}
+                        {{ direction_labels.get(row.direction, row.direction) }}
+                        {% else %}—{% endif %}
+                    </td>
+
+                    {# Статус #}
+                    <td>
+                        <span class="badge bg-{{ status_colors.get(row.status, 'secondary') }}">
+                            {{ status_labels.get(row.status, row.status) }}
+                        </span>
+                    </td>
+
+                    {# Позицій #}
+                    <td class="text-end text-muted small">{{ row.items_count or 0 }}</td>
+
+                    {# Сума #}
+                    <td class="text-end text-muted small">
+                        {% if row.total_sum %}
+                        {{ "%.2f"|format(row.total_sum) }}
+                        {% else %}—{% endif %}
+                    </td>
+
+                    {# Дія #}
+                    <td>
+                        <a href="{{ (url_for('invoices.view', inv_id=row.id) if row.doc_type == 'invoice' else url_for('rv.view', sid=row.id)) + '?back=' + (request.url | urlencode) }}"
+                           class="btn btn-outline-secondary btn-sm py-0 px-1"
+                           onclick="event.stopPropagation()"
+                           title="Відкрити">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <i class="bi bi-journal-text"></i>
+        <h5>Документів не знайдено</h5>
+        <p class="text-muted">
+            {% if filters.doc_type or filters.status or filters.direction or filters.unit_id or filters.date_from or filters.date_to or filters.q %}
+            Спробуйте змінити фільтри або
+            <a href="{{ url_for('registry.index') }}">скинути їх</a>.
+            {% else %}
+            Жодного документа ще не створено.
+            {% endif %}
+        </p>
+        <button class="btn btn-primary btn-sm js-create-doc-btn" data-back="{{ request.url }}">
+            <i class="bi bi-plus-lg me-1"></i>Створити документ
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

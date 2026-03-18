@@ -77,6 +77,7 @@
                         <th>Звання</th>
                         <th>Посада</th>
                         <th>ІПН</th>
+                        <th>Тип служби</th>
                         <th>Статус</th>
                     </tr>
                 </thead>
@@ -90,6 +91,15 @@
                         <td class="small">{{ row.rank or '—' }}</td>
                         <td class="small">{{ row.position or '—' }}</td>
                         <td class="small text-muted font-monospace">{{ row.ipn or '—' }}</td>
+                        <td class="small">
+                            {%- if row.service_type == 'contract' %}
+                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Контракт</span>
+                            {%- elif row.service_type == 'mobilized' %}
+                            <span class="badge bg-warning-subtle text-warning border border-warning-subtle">Мобілізований</span>
+                            {%- else %}
+                            <span class="text-muted small">за замовч.</span>
+                            {%- endif %}
+                        </td>
                         <td>
                             {% if row.is_duplicate_ipn %}
                             <span class="badge bg-warning text-dark">

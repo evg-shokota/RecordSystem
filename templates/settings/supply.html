@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Речове забезпечення — Налаштування{% endblock %}
+{% block page_title %}Налаштування речового забезпечення{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('settings.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>До налаштувань
+</a>
+{% endblock %}
+
+{% block content %}
+
+<form method="POST">
+<div class="row g-3">
+
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent fw-medium">
+                <i class="bi bi-person-badge me-2 text-primary"></i>Тип служби за замовчуванням
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label form-label-sm">Тип служби для нових осіб</label>
+                        <select name="default_service_type" class="form-select form-select-sm">
+                            <option value="mobilized" {{ 'selected' if default_service_type == 'mobilized' }}>Мобілізований (кат. 5)</option>
+                            <option value="contract"  {{ 'selected' if default_service_type == 'contract'  }}>Контрактник (кат. 1–4)</option>
+                        </select>
+                        <div class="form-text">Використовується при додаванні нової особи, якщо не вказано вручну</div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="alert alert-info py-2 small mb-0">
+                        <i class="bi bi-info-circle me-1"></i>
+                        <strong>Мобілізований:</strong> строк носки від дати першої видачі; борг згорає після закінчення циклу.<br>
+                        <strong>Контрактник:</strong> строк носки від дати зарахування на норму; борг не згорає.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent fw-medium">
+                <i class="bi bi-calendar-warning me-2 text-warning"></i>Попередження про закінчення строку носки
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label form-label-sm">За скільки днів попереджати</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" name="wear_warning_days" class="form-control form-control-sm"
+                                   value="{{ wear_warning_days }}" min="0" max="365">
+                            <span class="input-group-text">днів</span>
+                        </div>
+                        <div class="form-text">Позиція підсвічується жовтим якщо до наступної видачі залишилось менше вказаної кількості днів</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-floppy me-1"></i>Зберегти
+        </button>
+    </div>
+
+</div>
+</form>
+
+{% endblock %}

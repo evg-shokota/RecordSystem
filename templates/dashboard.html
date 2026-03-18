@@ -4,7 +4,7 @@
 
 {% block content %}
 
-<!-- Нагадування про бекап -->
+{# ── Нагадування про бекап ── #}
 {% if backup_reminder %}
 <div class="alert alert-warning alert-dismissible fade show d-flex align-items-center gap-2" role="alert">
     <i class="bi bi-exclamation-triangle-fill fs-5"></i>
@@ -16,67 +16,31 @@
 </div>
 {% endif %}
 
-<!-- Прострочені накладні -->
+{# ── Прострочені накладні ── #}
 {% if overdue_invoices %}
-<div class="alert alert-danger alert-dismissible fade show" role="alert">
-    <div class="d-flex align-items-center gap-2 mb-1">
-        <i class="bi bi-alarm-fill fs-5"></i>
+<div class="alert alert-danger alert-dismissible fade show d-flex align-items-start gap-2" role="alert">
+    <i class="bi bi-alarm-fill fs-5 mt-1"></i>
+    <div class="flex-grow-1">
         <strong>Прострочені накладні: {{ overdue_invoices|length }}</strong>
+        <div class="mt-1">
+        {% for inv in overdue_invoices %}
+            <a href="/invoices/{{ inv.id }}" class="alert-link me-3">
+                <i class="bi bi-arrow-right-short"></i>{{ inv.number }}
+                <span class="text-muted fw-normal">— до {{ inv.valid_until | fdate }}</span>
+            </a>
+        {% endfor %}
+        </div>
     </div>
-    {% for inv in overdue_invoices %}
-    <div class="overdue-item">
-        <i class="bi bi-arrow-right-short"></i>
-        <a href="/invoices/{{ inv.id }}" class="alert-link">{{ inv.number }}</a>
-        <span class="text-muted">— дійсна до {{ inv.valid_until }}</span>
-    </div>
-    {% endfor %}
     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
 </div>
 {% endif %}
 
-<!-- Документи без скану -->
-{% set total_no_scan = (invoices_no_scan|length) + (rv_no_scan|length) %}
-{% if total_no_scan > 0 %}
-<div class="alert alert-warning alert-dismissible fade show" role="alert">
-    <div class="d-flex align-items-center gap-2 mb-2">
-        <i class="bi bi-file-earmark-x-fill fs-5"></i>
-        <strong>Документи без скану: {{ total_no_scan }}</strong>
-    </div>
-    {% if invoices_no_scan %}
-    <div class="mb-1 fw-medium text-warning-emphasis">
-        <i class="bi bi-receipt me-1"></i>Накладні ({{ invoices_no_scan|length }}):
-    </div>
-    {% for inv in invoices_no_scan %}
-    <div class="ms-3">
-        <i class="bi bi-arrow-right-short"></i>
-        <a href="/invoices/{{ inv.id }}" class="alert-link">{{ inv.number or ('Накладна #' ~ inv.id) }}</a>
-        {% if inv.created_at %}
-        <span class="text-muted">— {{ inv.created_at[:10] }}</span>
-        {% endif %}
-    </div>
-    {% endfor %}
-    {% endif %}
-    {% if rv_no_scan %}
-    <div class="mb-1 fw-medium text-warning-emphasis {% if invoices_no_scan %}mt-2{% endif %}">
-        <i class="bi bi-card-list me-1"></i>Роздавальні відомості ({{ rv_no_scan|length }}):
-    </div>
-    {% for rv in rv_no_scan %}
-    <div class="ms-3">
-        <i class="bi bi-arrow-right-short"></i>
-        <a href="/rv/{{ rv.id }}" class="alert-link">{{ rv.number or ('РВ #' ~ rv.id) }}</a>
-        {% if rv.created_at %}
-        <span class="text-muted">— {{ rv.created_at[:10] }}</span>
-        {% endif %}
-    </div>
-    {% endfor %}
-    {% endif %}
-    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-</div>
-{% endif %}
-
-<!-- Статистика -->
+{# ── Статистика (плашки) ── #}
 <div class="row g-3 mb-4">
+
+    {# Особовий склад #}
     <div class="col-sm-6 col-xl-3">
+        <a href="{{ url_for('personnel.index') }}" class="text-decoration-none">
         <div class="card stat-card h-100 border-0 shadow-sm">
             <div class="card-body">
                 <div class="d-flex align-items-center gap-3">
@@ -90,9 +54,12 @@
                 </div>
             </div>
         </div>
+        </a>
     </div>
 
+    {# Непроведені накладні #}
     <div class="col-sm-6 col-xl-3">
+        <a href="{{ url_for('invoices.index', status='created') }}" class="text-decoration-none">
         <div class="card stat-card h-100 border-0 shadow-sm {% if pending_invoices > 0 %}border-start border-warning border-3{% endif %}">
             <div class="card-body">
                 <div class="d-flex align-items-center gap-3">
@@ -100,56 +67,259 @@
                         <i class="bi bi-receipt text-warning fs-4"></i>
                     </div>
                     <div>
-                        <div class="stat-value {% if pending_invoices > 0 %}text-warning{% endif %}">
-                            {{ pending_invoices }}
-                        </div>
+                        <div class="stat-value {% if pending_invoices > 0 %}text-warning{% endif %}">{{ pending_invoices }}</div>
                         <div class="stat-label">Непроведені накладні</div>
                     </div>
                 </div>
             </div>
         </div>
+        </a>
     </div>
 
+    {# Залишки складу — інтерактивна плашка #}
     <div class="col-sm-6 col-xl-3">
-        <a href="{{ url_for('reports.stock') }}" class="text-decoration-none">
-        <div class="card stat-card h-100 border-0 shadow-sm">
-            <div class="card-body">
-                <div class="d-flex align-items-center gap-3">
-                    <div class="bg-success bg-opacity-10 rounded-3 p-3">
-                        <i class="bi bi-box-seam text-success fs-4"></i>
+        <div class="card stat-card h-100 border-0 shadow-sm" id="stockCard">
+            <div class="card-body d-flex flex-column gap-2">
+                {# Рядок пошуку #}
+                <div id="stockSearchRow">
+                    <div id="stockSS"></div>
+                    <input type="hidden" id="stockNdId" value="">
+                </div>
+                {# Результат #}
+                <div id="stockResult">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="bg-success bg-opacity-10 rounded-3 p-3 flex-shrink-0">
+                            <i class="bi bi-box-seam text-success fs-4"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <div class="stat-value text-success" id="stockValue">
+                                {{ "{:,.0f}".format(stock_total) }}<small class="fs-6 fw-normal"> грн</small>
+                            </div>
+                            <div class="stat-label" id="stockLabel">Залишки на складі</div>
+                        </div>
                     </div>
-                    <div>
-                        <div class="stat-value text-success">{{ "{:,.0f}".format(stock_total) }} грн</div>
-                        <div class="stat-label">Залишки на складі</div>
+                    <div id="stockDetail" class="d-none mt-1">
+                        <table class="table table-sm mb-0 small" id="stockBatchTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Кат.</th>
+                                    <th class="text-end">Ціна</th>
+                                    <th class="text-end">К-сть</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stockBatchBody"></tbody>
+                        </table>
+                        <a href="{{ url_for('reports.stock') }}" class="btn btn-sm btn-outline-secondary w-100 mt-2">
+                            <i class="bi bi-box-arrow-up-right me-1"></i>Детальніше
+                        </a>
                     </div>
                 </div>
             </div>
         </div>
-        </a>
     </div>
 
+    {# Дані для JS #}
+    <script>
+    window._stockTotalText = '{{ "{:,.0f}".format(stock_total) }} грн';
+    window._normDictOptions = [
+        {% for nd in norm_dict_options %}
+        { value: '{{ nd.id }}', label: {{ nd.name | tojson }}, group: {{ (nd.group_name or 'Без групи') | tojson }} },
+        {% endfor %}
+    ];
+    </script>
+
+    {# До видачі #}
     <div class="col-sm-6 col-xl-3">
         <a href="{{ url_for('planning.index', only_needs=1) }}" class="text-decoration-none">
-        <div class="card stat-card h-100 border-0 shadow-sm {% if needs_count > 0 %}border-start border-info border-3{% endif %}">
+        <div class="card stat-card h-100 border-0 shadow-sm {% if personnel_needs_count > 0 %}border-start border-info border-3{% endif %}">
             <div class="card-body">
                 <div class="d-flex align-items-center gap-3">
                     <div class="bg-info bg-opacity-10 rounded-3 p-3">
-                        <i class="bi bi-calendar-check text-info fs-4"></i>
+                        <i class="bi bi-person-exclamation text-info fs-4"></i>
                     </div>
                     <div>
-                        <div class="stat-value {% if needs_count > 0 %}text-info{% endif %}">{{ needs_count }}</div>
-                        <div class="stat-label">Позицій до видачі</div>
+                        <div class="stat-value {% if personnel_needs_count > 0 %}text-info{% endif %}">{{ personnel_needs_count }}</div>
+                        <div class="stat-label">В/с потребують видачі</div>
                     </div>
                 </div>
             </div>
         </div>
         </a>
     </div>
+
 </div>
 
 {{ slot('dashboard.widgets') | safe }}
 
-<!-- Номенклатурне майно в архіві -->
+{# ── Графіки ── #}
+<div class="row g-3 mb-4">
+
+    {# Видачі за 6 місяців #}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent py-2 fw-medium">
+                <i class="bi bi-bar-chart-fill me-2 text-primary"></i>Видачі майна (останні 6 міс.)
+            </div>
+            <div class="card-body" style="height:180px; position:relative">
+                <canvas id="chartPast"></canvas>
+            </div>
+        </div>
+    </div>
+
+    {# Потреби на наступні 6 місяців #}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent py-2 fw-medium">
+                <i class="bi bi-bar-chart me-2 text-warning"></i>Потреби у видачі (наступні 6 міс.)
+            </div>
+            <div class="card-body" style="height:180px; position:relative">
+                <canvas id="chartFuture"></canvas>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+window._chartPastData  = {{ chart_past  | tojson }};
+window._chartFutureData = {{ chart_future | tojson }};
+window._urlInvoices = {{ url_for('invoices.index', status='issued') | tojson }};
+window._urlPlanning = {{ url_for('planning.index', view='calendar') | tojson }};
+</script>
+
+{# ── Блок: документи без скану ── #}
+{% set total_no_scan = invoices_no_scan_total + rv_no_scan_total %}
+{% if total_no_scan > 0 %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-transparent d-flex align-items-center gap-2 py-2">
+        <i class="bi bi-file-earmark-x text-warning"></i>
+        <strong>Документи без скану</strong>
+        <span class="badge bg-warning text-dark ms-1">{{ total_no_scan }}</span>
+        <a href="{{ url_for('registry.index', no_scan=1) }}" class="btn btn-sm btn-outline-secondary ms-auto">
+            <i class="bi bi-list me-1"></i>Показати всі
+        </a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:90px">Тип</th>
+                        <th>Номер / Ідентифікатор</th>
+                        <th style="width:120px">Дата</th>
+                        <th style="width:60px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for inv in invoices_no_scan %}
+                    <tr class="cursor-pointer" onclick="location.href='/invoices/{{ inv.id }}'">
+                        <td><span class="badge bg-secondary-subtle text-secondary border"><i class="bi bi-receipt me-1"></i>Накладна</span></td>
+                        <td class="fw-medium">{{ inv.number or ('Накладна #' ~ inv.id) }}</td>
+                        <td class="text-muted small">{{ inv.created_at | fdate }}</td>
+                        <td>
+                            <a href="/invoices/{{ inv.id }}" class="btn btn-sm btn-outline-warning py-0 px-1" onclick="event.stopPropagation()" title="Додати скан">
+                                <i class="bi bi-upload"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% for rv in rv_no_scan %}
+                    <tr class="cursor-pointer" onclick="location.href='{{ url_for('rv.view', sid=rv.id) }}'">
+                        <td><span class="badge bg-info-subtle text-info border"><i class="bi bi-table me-1"></i>РВ</span></td>
+                        <td class="fw-medium">{{ rv.number or ('РВ #' ~ rv.id) }}</td>
+                        <td class="text-muted small">{{ rv.created_at | fdate }}</td>
+                        <td>
+                            <a href="{{ url_for('rv.view', sid=rv.id) }}" class="btn btn-sm btn-outline-warning py-0 px-1" onclick="event.stopPropagation()" title="Додати скан">
+                                <i class="bi bi-upload"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if total_no_scan > 10 %}
+        <div class="px-3 py-2 text-muted small border-top">
+            Показано 10 з {{ total_no_scan }}.
+            <a href="{{ url_for('registry.index', no_scan=1) }}">Переглянути всі →</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{# ── Два блоки рядком: Склад топ-10 + Останні видачі ── #}
+<div class="row g-3 mb-4">
+
+    {# Склад: топ-10 позицій #}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent d-flex align-items-center gap-2 py-2">
+                <i class="bi bi-boxes text-success"></i>
+                <strong>Склад — топ за кількістю</strong>
+                <a href="{{ url_for('reports.stock') }}" class="btn btn-sm btn-outline-secondary ms-auto">
+                    <i class="bi bi-arrow-right"></i>
+                </a>
+            </div>
+            <div class="card-body p-0" style="max-height:320px;overflow-y:auto">
+                {% if stock_top10 %}
+                <table class="table table-sm mb-0 align-middle">
+                    <tbody>
+                        {% for s in stock_top10 %}
+                        <tr class="cursor-pointer" onclick="location.href='{{ url_for('reports.stock') }}?item_id={{ s.item_id }}'">
+                            <td class="ps-3">{{ s.item_name }}</td>
+                            <td class="text-muted small">{{ s.category }}</td>
+                            <td class="text-end pe-3 fw-medium text-success">{{ s.qty_balance or s.qty_free or 0 }} {{ s.unit_of_measure }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="text-muted text-center py-4 small">Склад порожній</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# Останні видачі #}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent d-flex align-items-center gap-2 py-2">
+                <i class="bi bi-send-check text-primary"></i>
+                <strong>Останні видачі</strong>
+                <a href="{{ url_for('invoices.index', status='issued') }}" class="btn btn-sm btn-outline-secondary ms-auto">
+                    <i class="bi bi-arrow-right"></i>
+                </a>
+            </div>
+            <div class="card-body p-0" style="max-height:320px;overflow-y:auto">
+                {% if recent_issues %}
+                <table class="table table-sm mb-0 align-middle">
+                    <tbody>
+                        {% for r in recent_issues %}
+                        <tr class="cursor-pointer" onclick="location.href='/invoices/{{ r.id }}'">
+                            <td class="ps-3 font-monospace small">{{ r.number or ('№' ~ r.id) }}</td>
+                            <td class="text-muted small">
+                                {% if r.last_name %}
+                                {{ r.rank or '' }} {{ r.last_name }} {{ r.first_name }}
+                                {% elif r.unit_name %}
+                                {{ r.unit_name }}
+                                {% else %}—{% endif %}
+                            </td>
+                            <td class="text-muted small text-end pe-3">{{ r.created_at | fdate }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="text-muted text-center py-4 small">Немає виданих накладних</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{# ── Номенклатурне майно в архіві ── #}
 {% if nomenclature_archive %}
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-danger bg-opacity-10 border-0 d-flex align-items-center gap-2">
@@ -173,19 +343,12 @@
                 <tbody>
                     {% for item in nomenclature_archive %}
                     <tr>
-                        <td class="fw-medium">
-                            {{ item.last_name }} {{ item.first_name }}
-                            {% if item.middle_name %} {{ item.middle_name }}{% endif %}
-                        </td>
-                        <td>
-                            <span class="badge bg-secondary">{{ item.group_name }}</span>
-                        </td>
+                        <td class="fw-medium">{{ item.last_name }} {{ item.first_name }}{% if item.middle_name %} {{ item.middle_name }}{% endif %}</td>
+                        <td><span class="badge bg-secondary">{{ item.group_name }}</span></td>
                         <td>{{ item.item_name }}</td>
                         <td class="text-center">{{ item.quantity }}</td>
                         <td class="text-end">{{ item.price }}</td>
-                        <td class="text-center">
-                            <span class="badge bg-light text-dark border">{{ item.category }}</span>
-                        </td>
+                        <td class="text-center"><span class="badge bg-light text-dark border">{{ item.category }}</span></td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -195,27 +358,126 @@
 </div>
 {% endif %}
 
-<!-- Непроведені накладні -->
-<div class="card border-0 shadow-sm">
-    <div class="card-header bg-white border-0 d-flex align-items-center gap-2 pt-3">
-        <i class="bi bi-receipt text-warning"></i>
-        <strong>Непроведені накладні</strong>
-        {% if pending_invoices > 0 %}
-        <span class="badge bg-warning text-dark ms-1">{{ pending_invoices }}</span>
-        {% endif %}
-        <a href="{{ url_for('invoices.index', status='created') }}" class="btn btn-sm btn-outline-secondary ms-auto">
-            <i class="bi bi-arrow-right me-1"></i>Переглянути всі
-        </a>
-    </div>
-    <div class="card-body">
-        {% if pending_invoices == 0 %}
-        <p class="text-muted mb-0 text-center py-2">
-            <i class="bi bi-check-circle text-success me-1"></i>Всі накладні проведені
-        </p>
-        {% else %}
-        <p class="text-muted mb-0">Є непроведені накладні. Перейдіть до розділу для обробки.</p>
-        {% endif %}
-    </div>
-</div>
+{% endblock %}
 
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
+<script>
+// ── Пошук залишків на складі (плашка) ────────────────────────
+(function() {
+    const ssContainer = document.getElementById('stockSS');
+    const ssHidden    = document.getElementById('stockNdId');
+    if (!ssContainer || typeof SearchableSelect === 'undefined') return;
+
+    new SearchableSelect({
+        container:   ssContainer,
+        hiddenInput: ssHidden,
+        options:     window._normDictOptions || [],
+        placeholder: 'Знайти майно на складі...',
+        allowClear:  true,
+        size:        'sm',
+        onChange: async (val) => {
+            const valueEl  = document.getElementById('stockValue');
+            const labelEl  = document.getElementById('stockLabel');
+            const detailEl = document.getElementById('stockDetail');
+            const bodyEl   = document.getElementById('stockBatchBody');
+
+            if (!val) {
+                valueEl.innerHTML = `${window._stockTotalText}<small class="fs-6 fw-normal"> грн</small>`;
+                labelEl.textContent = 'Залишки на складі';
+                detailEl.classList.add('d-none');
+                return;
+            }
+
+            valueEl.innerHTML = '<span class="spinner-border spinner-border-sm text-success"></span>';
+            labelEl.textContent = 'Завантаження...';
+            detailEl.classList.add('d-none');
+
+            try {
+                const resp = await fetch(`/api/stock-lookup?norm_dict_id=${val}`);
+                const d = await resp.json();
+                if (!d.ok) { labelEl.textContent = 'Помилка'; return; }
+
+                const qty = d.qty_balance;
+                if (qty > 0) {
+                    valueEl.innerHTML = `<span class="text-success">${qty.toLocaleString('uk-UA')}</span><small class="fs-6 fw-normal text-muted"> ${d.unit}</small>`;
+                } else {
+                    valueEl.innerHTML = `<span class="text-danger">0</span><small class="fs-6 fw-normal text-muted"> ${d.unit}</small>`;
+                }
+                labelEl.textContent = d.name;
+
+                // Таблиця партій
+                if (d.batches && d.batches.length > 0) {
+                    bodyEl.innerHTML = d.batches.map(b => `
+                        <tr>
+                            <td><span class="badge bg-light text-dark border">${b.category||'—'}</span></td>
+                            <td class="text-end text-muted">${b.price ? Number(b.price).toLocaleString('uk-UA') + ' грн' : '—'}</td>
+                            <td class="text-end fw-semibold ${b.qty_balance>0?'text-success':'text-danger'}">${b.qty_balance.toLocaleString('uk-UA')}</td>
+                        </tr>
+                    `).join('');
+                    detailEl.classList.remove('d-none');
+                }
+            } catch(e) {
+                labelEl.textContent = 'Помилка мережі';
+            }
+        }
+    });
+})();
+</script>
+<script>
+(function() {
+    // Зчитати CSS-змінні ПІСЛЯ завантаження теми
+    const st = getComputedStyle(document.documentElement);
+    const colorText   = st.getPropertyValue('--text-muted').trim()    || '#6c757d';
+    const colorGrid   = st.getPropertyValue('--card-border').trim()   || '#dee2e6';
+    const colorBody   = st.getPropertyValue('--body-bg').trim()       || '#ffffff';
+
+    // Глобальні дефолти Chart.js — колір підписів і сітки
+    Chart.defaults.color = colorText;
+    Chart.defaults.borderColor = colorGrid;
+
+    function buildChart(canvasId, data, color, clickUrl) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        canvas.dataset.clickUrl = clickUrl;
+        new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: data.map(d => d.label),
+                datasets: [{
+                    data: data.map(d => d.value),
+                    backgroundColor: color + 'b3',
+                    borderColor: color,
+                    borderWidth: 1,
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => ' ' + ctx.parsed.y + ' осіб' } }
+                },
+                scales: {
+                    x: {
+                        grid: { color: colorGrid },
+                        ticks: { color: colorText, font: { size: 11 } }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: colorGrid },
+                        ticks: { color: colorText, font: { size: 11 }, stepSize: 1, precision: 0 }
+                    }
+                },
+                onClick: (evt, elements, chart) => { if (chart.canvas.dataset.clickUrl) location.href = chart.canvas.dataset.clickUrl; },
+                onHover: (evt, elements) => { evt.native.target.style.cursor = elements.length ? 'pointer' : 'default'; }
+            }
+        });
+    }
+
+    buildChart('chartPast',   window._chartPastData,   '#0d6efd', window._urlInvoices);
+    buildChart('chartFuture', window._chartFutureData, '#ffc107', window._urlPlanning);
+})();
+</script>
 {% endblock %}

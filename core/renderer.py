@@ -374,6 +374,77 @@ def _rv_context(data: dict, conn) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────
+#  КОНТЕКСТ ДЛЯ ПЕРСОНАЛУ / АТЕСТАТУ
+# ─────────────────────────────────────────────────────────────
+
+def _personnel_context(data: dict, conn) -> dict:
+    """
+    data: dict з ключами:
+      person   — dict (рядок personnel)
+      groups   — OrderedDict {gname: [pos, ...]}  (з attestat())
+      total_sum — float
+    """
+    ctx = _base_context()
+    person = data.get("person", {})
+    groups = data.get("groups", {})
+
+    full_name = f"{person.get('last_name','')} {person.get('first_name','')} {person.get('middle_name','') or ''}".strip()
+    ctx["person_name"]        = full_name
+    ctx["person_rank"]        = person.get("rank") or ""
+    ctx["person_unit"]        = person.get("unit_name") or ""
+    ctx["person_card_number"] = str(person.get("card_number") or person.get("id") or "")
+    ctx["person_enroll_date"] = ""
+    if person.get("enroll_date"):
+        try:
+            d = date.fromisoformat(str(person["enroll_date"])[:10])
+            ctx["person_enroll_date"] = d.strftime("%d.%m.%Y")
+        except ValueError:
+            pass
+    stype = person.get("service_type") or "mobilized"
+    ctx["person_service_type"] = "Мобілізований" if stype == "mobilized" else "Контрактник"
+
+    # Таблиця майна (атестат)
+    rows_html = ""
+    row_num = 0
+    total_sum = float(data.get("total_sum") or 0)
+    for gname, positions in groups.items():
+        for pos in positions:
+            if not pos.get("att_show", True):
+                continue
+            row_num += 1
+            qty   = pos.get("att_qty") or pos.get("total_qty") or 0
+            date_lbl = pos.get("att_date_label") or ""
+            price = pos["issuances"][0]["price"] if pos.get("issuances") else 0
+            summ  = pos.get("total_sum") or 0
+            partial_note = " (неповна)" if pos.get("att_is_partial") else ""
+            rows_html += (
+                f'<tr><td style="text-align:center">{row_num}</td>'
+                f'<td>{pos["name"]}{partial_note}</td>'
+                f'<td style="text-align:center">{pos.get("unit","шт")}</td>'
+                f'<td style="text-align:center">{_fmt_qty(qty)}</td>'
+                f'<td style="text-align:right">{_fmt_money(price) if price else ""}</td>'
+                f'<td style="text-align:right">{_fmt_money(summ) if summ else ""}</td>'
+                f'<td style="text-align:center">{date_lbl}</td></tr>'
+            )
+    ctx["table:property_card"] = (
+        '<table border="1" cellpadding="4" cellspacing="0" '
+        'style="width:100%;border-collapse:collapse;font-size:inherit">'
+        '<tr style="background:#f0f0f0;font-weight:bold">'
+        '<th style="width:28px">№</th><th>Найменування</th>'
+        '<th style="width:38px">Од.</th><th style="width:44px">К-сть</th>'
+        '<th style="width:70px">Ціна, грн</th><th style="width:70px">Сума, грн</th>'
+        '<th style="width:60px">Дата видачі</th></tr>'
+        + rows_html
+        + f'<tr><td colspan="5" style="text-align:right;font-weight:bold">Разом:</td>'
+        f'<td style="text-align:right;font-weight:bold">{_fmt_money(total_sum)}</td>'
+        f'<td></td></tr></table>'
+    )
+    ctx["total_sum"]       = _fmt_money(total_sum)
+    ctx["total_sum_words"] = amount_words(total_sum)
+    return ctx
+
+
+# ─────────────────────────────────────────────────────────────
 #  ДЕМО-КОНТЕКСТ (для попереднього перегляду шаблонів)
 # ─────────────────────────────────────────────────────────────
 
@@ -405,6 +476,20 @@ def _demo_context() -> dict:
     ctx.setdefault("clerk_rank",     "ст. солдат")
     ctx.setdefault("unit_name",      "")
     ctx.setdefault("service_name",   "")
+    ctx.setdefault("person_name",         "Петренко Петро Петрович")
+    ctx.setdefault("person_rank",         "солдат")
+    ctx.setdefault("person_unit",         "1 рота")
+    ctx.setdefault("person_card_number",  "001")
+    ctx.setdefault("person_enroll_date",  date.today().strftime("%d.%m.%Y"))
+    ctx.setdefault("person_service_type", "Мобілізований")
+    ctx.setdefault("table:property_card", (
+        '<table border="1" cellpadding="4" cellspacing="0" style="width:100%;border-collapse:collapse">'
+        '<tr style="background:#f0f0f0"><th>№</th><th>Найменування</th><th>Од.</th>'
+        '<th>К-сть</th><th>Ціна, грн</th><th>Сума, грн</th><th>Дата видачі</th></tr>'
+        '<tr><td>1</td><td>Берці літні</td><td>пара</td><td>1</td>'
+        '<td>2 500,00</td><td>2 500,00</td><td>01.03.2026</td></tr>'
+        '</table>'
+    ))
 
     ctx["table:items_list"] = (
         '<table border="1" cellpadding="4" cellspacing="0" style="width:100%;border-collapse:collapse">'
@@ -460,6 +545,8 @@ def render_doc(doc_type: str, data: dict, conn=None) -> str:
         ctx = _invoice_context(data, conn)
     elif doc_type == "rv":
         ctx = _rv_context(data, conn)
+    elif doc_type in ("personnel", "attestat"):
+        ctx = _personnel_context(data, conn)
     else:
         # Для нереалізованих типів — базовий контекст
         ctx = _base_context()

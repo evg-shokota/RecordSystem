@@ -25,6 +25,7 @@ from core.auth import login_required
 from core.db import get_connection
 from core.audit import log_action
 from core.settings import get_all_settings, get_setting
+from core.military_logic import get_next_issue_date
 
 bp = Blueprint("rv", __name__, url_prefix="/rv")
 
@@ -198,7 +199,7 @@ def new():
         all_items = conn.execute(
             "SELECT id, name, unit_of_measure FROM item_dictionary ORDER BY name"
         ).fetchall()
-        from modules.warehouse.routes import _get_norm_groups
+        from core.warehouse import get_norm_groups as _get_norm_groups
         norm_groups = _get_norm_groups(conn)
 
         if request.method == "POST":
@@ -447,9 +448,22 @@ def edit_matrix(sid):
     ).fetchall()
     added_iids = {r["item_id"] for r in matrix["cols"]}
 
-    # Залишки складу (для StockItemRow в модалі)
-    from core.warehouse import get_stock
-    stock = get_stock(conn)
+    # Залишки складу (для StockItemRow в модалі, з урахуванням поточного РВ)
+    from core.warehouse import get_stock_for_rv
+    stock = get_stock_for_rv(conn, exclude_sheet_id=sid)
+
+    # Норми для осіб в матриці (для автопідстановки)
+    norm_data = {}
+    for row in matrix["rows"]:
+        pid = int(row["personnel_id"])
+        norms = conn.execute("""
+            SELECT sni.item_id, sni.quantity, sni.category
+            FROM supply_norm_items sni
+            JOIN personnel_norms pn ON pn.norm_id = sni.norm_id AND pn.personnel_id = ?
+            WHERE sni.item_id IS NOT NULL
+        """, (pid,)).fetchall()
+        if norms:
+            norm_data[pid] = [{"item_id": int(r["item_id"]), "qty": float(r["quantity"]), "cat": r["category"]} for r in norms]
 
     conn.close()
     return render_template(
@@ -464,6 +478,7 @@ def edit_matrix(sid):
         status_labels=STATUS_LABELS,
         status_colors=STATUS_COLORS,
         stock=stock,
+        norm_data=norm_data,
     )
 
 
@@ -571,21 +586,44 @@ def close(sid):
         return redirect(url_for("rv.view", sid=sid))
 
     matrix = _build_matrix(conn, sid)
-    today = date.today().isoformat()
+    today     = date.today().isoformat()
+    today_dt  = date.today()
+
+    # Кешуємо service_type та enroll_date для кожної особи в цьому РВ
+    person_cache: dict[int, dict] = {}
+    for row in matrix["rows"]:
+        pid = row["personnel_id"]
+        if pid not in person_cache:
+            p = conn.execute(
+                "SELECT service_type, enroll_date FROM personnel WHERE id=?", (pid,)
+            ).fetchone()
+            person_cache[pid] = {
+                "service_type": (p["service_type"] if p else None) or "mobilized",
+                "norm_date":    p["enroll_date"] if p else None,
+            }
+
+    # Кешуємо wear_months по (person_cat, item_id) через norm_dict
+    # Ключ: (norm_item_id) → wear по cat
+    wear_cache: dict[tuple, int] = {}
 
     try:
         for row in matrix["rows"]:
             # Записуємо тільки тих хто отримав (received=1)
             if not row.get("received"):
                 continue
-            pid = row["personnel_id"]
+            pid    = row["personnel_id"]
             row_id = row["id"]
+            pc     = person_cache[pid]
+            service_type = pc["service_type"]
+            norm_date    = pc["norm_date"]
+
             for col in matrix["cols"]:
                 item_id = col["item_id"]
-                cell = matrix["qty"].get((row_id, item_id), {})
-                qty = cell.get("quantity") or 0
+                cell    = matrix["qty"].get((row_id, item_id), {})
+                qty     = cell.get("quantity") or 0
                 if qty <= 0:
                     continue
+
                 # Перевіряємо чи вже записано (уникаємо дублів при повторному закритті)
                 exists = conn.execute(
                     """SELECT id FROM personnel_items
@@ -594,18 +632,64 @@ def close(sid):
                 ).fetchone()
                 if exists:
                     continue
+
+                # Розраховуємо wear_months і norm_qty зі норми особи
+                wear_key = (pid, item_id)
+                if wear_key not in wear_cache:
+                    w_row = conn.execute("""
+                        SELECT sniw.wear_months,
+                               COALESCE(sniw.qty, sni.quantity) AS quantity,
+                               p.personnel_cat
+                        FROM personnel p
+                        JOIN personnel_norms pn ON pn.personnel_id = p.id
+                        JOIN supply_norm_items sni ON sni.norm_id = pn.norm_id AND sni.item_id = ?
+                        LEFT JOIN supply_norm_item_wear sniw
+                               ON sniw.norm_item_id = sni.id
+                              AND sniw.personnel_cat = p.personnel_cat
+                        WHERE p.id = ?
+                        LIMIT 1
+                    """, (item_id, pid)).fetchone()
+                    if w_row:
+                        wear_cache[wear_key] = {
+                            "wear_months": int(w_row["wear_months"] or 0),
+                            "norm_qty":    float(w_row["quantity"] or 0),
+                        }
+                    else:
+                        wear_cache[wear_key] = {"wear_months": 0, "norm_qty": 0.0}
+
+                wdata        = wear_cache[wear_key]
+                wear_months  = wdata["wear_months"]
+                norm_qty_val = wdata["norm_qty"]
+
+                # cycle_start_date = сьогодні (дата видачі)
+                cycle_start = today
+
+                # next_issue_date через military_logic
+                next_dt = get_next_issue_date(
+                    service_type     = service_type,
+                    cycle_start_date = cycle_start,
+                    norm_date        = norm_date,
+                    wear_months      = wear_months,
+                )
+                next_issue = next_dt.isoformat() if next_dt else None
+
                 conn.execute("""
                     INSERT INTO personnel_items
                         (personnel_id, item_id, quantity, price, category,
                          sheet_id, source_type, issue_date,
-                         wear_started_date, status, created_at, updated_at)
+                         wear_started_date, status,
+                         cycle_start_date, norm_qty_at_issue,
+                         wear_months_at_issue, next_issue_date,
+                         created_at, updated_at)
                     VALUES (?,?,?,?,?,?,'rv',?,?,
-                            'active', datetime('now','localtime'), datetime('now','localtime'))
+                            'active', ?,?,?,?,
+                            datetime('now','localtime'), datetime('now','localtime'))
                 """, (
                     pid, item_id,
                     cell.get("actual_qty") or qty,
                     col["price"], col["category"],
                     sid, today, today,
+                    cycle_start, norm_qty_val, wear_months, next_issue,
                 ))
 
         conn.execute(
@@ -673,13 +757,13 @@ def row_add(sid):
         if pid:
             pids = [pid]
     if not pids:
-        return jsonify({"error": "Оберіть військовослужбовця"}), 400
+        return jsonify({"ok": False, "msg": "Оберіть військовослужбовця"}), 400
 
     conn = get_connection()
     sheet = conn.execute("SELECT status FROM distribution_sheets WHERE id=?", (sid,)).fetchone()
     if not sheet or sheet["status"] not in ("draft", "active"):
         conn.close()
-        return jsonify({"error": "РВ недоступна для редагування"}), 400
+        return jsonify({"ok": False, "msg": "РВ недоступна для редагування"}), 400
 
     added = []
     for pid in pids:
@@ -743,7 +827,7 @@ def row_toggle(sid, rid):
     r = conn.execute("SELECT received FROM distribution_sheet_rows WHERE id=?", (rid,)).fetchone()
     if not r:
         conn.close()
-        return jsonify({"error": "not found"}), 404
+        return jsonify({"ok": False, "msg": "not found"}), 404
     new_val = 0 if r["received"] else 1
     rec_date = date.today().isoformat() if new_val else None
     conn.execute(
@@ -767,13 +851,13 @@ def item_add(sid):
     category = request.form.get("category", "I")
 
     if not item_id:
-        return jsonify({"error": "Оберіть позицію майна"}), 400
+        return jsonify({"ok": False, "msg": "Оберіть позицію майна"}), 400
 
     conn = get_connection()
     sheet = conn.execute("SELECT status FROM distribution_sheets WHERE id=?", (sid,)).fetchone()
     if not sheet or sheet["status"] not in ("draft", "active"):
         conn.close()
-        return jsonify({"error": "РВ недоступна для редагування"}), 400
+        return jsonify({"ok": False, "msg": "РВ недоступна для редагування"}), 400
 
     dup = conn.execute(
         "SELECT id FROM distribution_sheet_items WHERE sheet_id=? AND item_id=?",
@@ -781,7 +865,7 @@ def item_add(sid):
     ).fetchone()
     if dup:
         conn.close()
-        return jsonify({"error": "Ця позиція вже є в РВ"}), 400
+        return jsonify({"ok": False, "msg": "Ця позиція вже є в РВ"}), 400
 
     max_order = conn.execute(
         "SELECT COALESCE(MAX(sort_order),0) FROM distribution_sheet_items WHERE sheet_id=?",
@@ -831,7 +915,7 @@ def item_delete(sid, col_id):
     col = conn.execute("SELECT item_id FROM distribution_sheet_items WHERE id=? AND sheet_id=?", (col_id, sid)).fetchone()
     if not col:
         conn.close()
-        return jsonify({"error": "not found"}), 404
+        return jsonify({"ok": False, "msg": "not found"}), 404
     conn.execute("DELETE FROM distribution_sheet_quantities WHERE sheet_id=? AND item_id=?", (sid, col["item_id"]))
     conn.execute("DELETE FROM distribution_sheet_items WHERE id=?", (col_id,))
     conn.commit()
@@ -852,7 +936,7 @@ def qty_save(sid):
     """
     data = request.get_json(silent=True)
     if not data:
-        return jsonify({"error": "no data"}), 400
+        return jsonify({"ok": False, "msg": "no data"}), 400
     if isinstance(data, dict):
         data = [data]
 
@@ -860,7 +944,7 @@ def qty_save(sid):
     sheet = conn.execute("SELECT status FROM distribution_sheets WHERE id=?", (sid,)).fetchone()
     if not sheet or sheet["status"] not in ("draft", "active"):
         conn.close()
-        return jsonify({"error": "РВ недоступна для редагування"}), 400
+        return jsonify({"ok": False, "msg": "РВ недоступна для редагування"}), 400
 
     for cell in data:
         row_id  = cell.get("row_id")
@@ -998,3 +1082,51 @@ def render_rv(sid):
         tpl=dict(tpl) if tpl else {},
         doc_title=f"РВ {sheet['number'] or 'б/н'}",
     )
+
+
+# ─────────────────────────────────────────────────────────────
+#  API — норми для особи
+# ─────────────────────────────────────────────────────────────
+
+@bp.route("/api/norm/<int:personnel_id>")
+@login_required
+def api_norm(personnel_id):
+    """
+    GET /rv/api/norm/<personnel_id>
+    Повертає список позицій норми для особи.
+    """
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT sni.item_id, sni.norm_dict_id, sni.quantity, sni.category,
+               COALESCE(id_direct.name, nd.name) AS item_name
+        FROM supply_norm_items sni
+        JOIN personnel_norms pn ON pn.norm_id = sni.norm_id AND pn.personnel_id = ?
+        LEFT JOIN item_dictionary id_direct ON sni.item_id = id_direct.id
+        LEFT JOIN norm_dictionary nd ON sni.norm_dict_id = nd.id
+        WHERE sni.item_id IS NOT NULL
+    """, (personnel_id,)).fetchall()
+    conn.close()
+    items = [
+        {"item_id": r["item_id"], "item_name": r["item_name"],
+         "qty": r["quantity"], "category": r["category"]}
+        for r in rows
+    ]
+    return jsonify({"items": items})
+
+
+# ─────────────────────────────────────────────────────────────
+#  API — актуальні залишки складу для РВ
+# ─────────────────────────────────────────────────────────────
+
+@bp.route("/<int:sid>/api/stock")
+@login_required
+def api_stock(sid):
+    """
+    GET /rv/<sid>/api/stock
+    Повертає залишки складу з урахуванням виключення поточного РВ.
+    """
+    from core.warehouse import get_stock_for_rv
+    conn = get_connection()
+    stock = get_stock_for_rv(conn, exclude_sheet_id=sid)
+    conn.close()
+    return jsonify(stock)

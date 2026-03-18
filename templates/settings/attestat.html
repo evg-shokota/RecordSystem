@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Налаштування атестату{% endblock %}
+{% block page_title %}Налаштування атестату{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('settings.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Налаштування
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+    {# ── Служба ── #}
+    <div class="col-12 col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header"><strong>Служба (поле "Служба")</strong></div>
+            <div class="card-body">
+                <p class="text-muted small mb-2">Значення за замовченням у полі "Служба" реєстраційної таблиці атестату.</p>
+                <div class="input-group input-group-sm">
+                    <input type="text" id="serviceInput" class="form-control form-control-sm"
+                           value="{{ service }}" maxlength="50">
+                    <button class="btn btn-primary" onclick="saveService()">Зберегти</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Підстави ── #}
+    <div class="col-12 col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <strong>Підстави (мета) операції</strong>
+                <span class="badge bg-secondary" id="basisCount">{{ basis_list | length }}</span>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-2">Варіанти для вибору в полі "Підстава" при друці атестату.</p>
+                <ul class="list-group list-group-flush mb-3" id="basisList">
+                    {% for item in basis_list %}
+                    <li class="list-group-item d-flex align-items-center justify-content-between px-0 py-1">
+                        <span style="font-size:13px;">{{ item }}</span>
+                        <button class="btn btn-link text-danger p-0 ms-2" style="font-size:12px;"
+                                onclick="deleteBasis('{{ item | e }}')">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </li>
+                    {% else %}
+                    <li class="list-group-item text-muted px-0 py-1" id="basisEmpty" style="font-size:13px;">Список порожній</li>
+                    {% endfor %}
+                </ul>
+                <div class="input-group input-group-sm">
+                    <input type="text" id="basisInput" class="form-control form-control-sm"
+                           placeholder="Нова підстава..." maxlength="200">
+                    <button class="btn btn-outline-primary" onclick="addBasis()">
+                        <i class="bi bi-plus-lg"></i> Додати
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Отримувачі ── #}
+    <div class="col-12 col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <strong>Отримувачі (військові частини)</strong>
+                <span class="badge bg-secondary" id="recipientCount">{{ recipient_list | length }}</span>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-2">Варіанти для вибору в полі "Отримувач" при друці атестату.</p>
+                <ul class="list-group list-group-flush mb-3" id="recipientList">
+                    {% for item in recipient_list %}
+                    <li class="list-group-item d-flex align-items-center justify-content-between px-0 py-1">
+                        <span style="font-size:13px;">{{ item }}</span>
+                        <button class="btn btn-link text-danger p-0 ms-2" style="font-size:12px;"
+                                onclick="deleteRecipient('{{ item | e }}')">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </li>
+                    {% else %}
+                    <li class="list-group-item text-muted px-0 py-1" id="recipientEmpty" style="font-size:13px;">Список порожній</li>
+                    {% endfor %}
+                </ul>
+                <div class="input-group input-group-sm">
+                    <input type="text" id="recipientInput" class="form-control form-control-sm"
+                           placeholder="Нова в/ч або підрозділ..." maxlength="200">
+                    <button class="btn btn-outline-primary" onclick="addRecipient()">
+                        <i class="bi bi-plus-lg"></i> Додати
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function saveService() {
+    const val = document.getElementById('serviceInput').value.trim();
+    const fd = new FormData();
+    fd.append('service', val);
+    const r = await fetch('/settings/attestat/save', { method: 'POST', body: fd });
+    const d = await r.json();
+    showToast(d.ok ? 'Збережено' : (d.msg || 'Помилка'), d.ok ? 'success' : 'danger');
+}
+
+function renderList(ulId, countId, emptyId, list, deleteFn) {
+    const ul = document.getElementById(ulId);
+    const cnt = document.getElementById(countId);
+    cnt.textContent = list.length;
+    if (!list.length) {
+        ul.innerHTML = `<li class="list-group-item text-muted px-0 py-1" style="font-size:13px;">Список порожній</li>`;
+        return;
+    }
+    ul.innerHTML = list.map(item => `
+        <li class="list-group-item d-flex align-items-center justify-content-between px-0 py-1">
+            <span style="font-size:13px;">${item}</span>
+            <button class="btn btn-link text-danger p-0 ms-2" style="font-size:12px;"
+                    onclick="${deleteFn}('${item.replace(/'/g,"\\'")}')">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </li>`).join('');
+}
+
+async function addBasis() {
+    const inp = document.getElementById('basisInput');
+    const text = inp.value.trim();
+    if (!text) return;
+    const d = await apiPost('/settings/attestat/basis/add', { text });
+    if (!d) return;
+    if (!d.ok) { showToast(d.msg || 'Помилка', 'danger'); return; }
+    inp.value = '';
+    renderList('basisList', 'basisCount', 'basisEmpty', d.list, 'deleteBasis');
+}
+
+async function deleteBasis(text) {
+    const d = await apiPost('/settings/attestat/basis/delete', { text });
+    if (!d) return;
+    renderList('basisList', 'basisCount', 'basisEmpty', d.list, 'deleteBasis');
+}
+
+async function addRecipient() {
+    const inp = document.getElementById('recipientInput');
+    const text = inp.value.trim();
+    if (!text) return;
+    const d = await apiPost('/settings/attestat/recipient/add', { text });
+    if (!d) return;
+    if (!d.ok) { showToast(d.msg || 'Помилка', 'danger'); return; }
+    inp.value = '';
+    renderList('recipientList', 'recipientCount', 'recipientEmpty', d.list, 'deleteRecipient');
+}
+
+async function deleteRecipient(text) {
+    const d = await apiPost('/settings/attestat/recipient/delete', { text });
+    if (!d) return;
+    renderList('recipientList', 'recipientCount', 'recipientEmpty', d.list, 'deleteRecipient');
+}
+
+document.getElementById('basisInput').addEventListener('keydown', e => { if (e.key === 'Enter') addBasis(); });
+document.getElementById('recipientInput').addEventListener('keydown', e => { if (e.key === 'Enter') addRecipient(); });
+</script>
+{% endblock %}

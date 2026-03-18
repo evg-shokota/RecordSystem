@@ -82,7 +82,7 @@
                         {% if not t.is_system %}
                         <form method="POST" action="{{ url_for('doc_templates.delete', tpl_id=t.id) }}"
                               class="d-inline ms-auto"
-                              onsubmit="return confirm('Видалити шаблон «{{ t.name }}»?')">
+                              data-confirm="Видалити шаблон «{{ t.name }}»?">
                             <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2">
                                 <i class="bi bi-trash"></i>
                             </button>
@@ -108,7 +108,7 @@ document.querySelectorAll('.btn-set-default').forEach(btn => {
         fetch(`/doc-templates/${btn.dataset.id}/set-default`, { method: 'POST' })
             .then(r => r.json()).then(d => {
                 if (d.ok) location.reload();
-                else alert(d.error || 'Помилка');
+                else alert(d.msg || d.error || 'Помилка');
             });
     });
 });

@@ -116,9 +116,13 @@ def battalion_add():
         conn.commit()
         log_action("add", "battalions", new_data={"name": name})
         flash(f'Батальйон "{name}" додано', "success")
-    except Exception:
-        flash("Батальйон з такою назвою вже існує", "danger")
-    conn.close()
+    except Exception as e:
+        if "UNIQUE" in str(e):
+            flash("Батальйон з такою назвою вже існує", "danger")
+        else:
+            flash(f"Помилка: {e}", "danger")
+    finally:
+        conn.close()
     return redirect(url_for("settings.units"))
 
 
@@ -127,7 +131,7 @@ def battalion_add():
 def battalion_edit(bid):
     name = request.form.get("name", "").strip()
     if not name:
-        return jsonify({"error": "Порожня назва"}), 400
+        return jsonify({"ok": False, "msg": "Порожня назва"}), 400
     conn = get_connection()
     old = conn.execute("SELECT name FROM battalions WHERE id=?", (bid,)).fetchone()
     conn.execute("UPDATE battalions SET name=? WHERE id=?", (name, bid))
@@ -146,7 +150,7 @@ def battalion_delete(bid):
     ).fetchone()[0]
     if cnt > 0:
         conn.close()
-        return jsonify({"error": f"Спочатку видаліть {cnt} підрозділ(ів)"}), 400
+        return jsonify({"ok": False, "msg": f"Спочатку видаліть {cnt} підрозділ(ів)"}), 400
     old = conn.execute("SELECT name FROM battalions WHERE id=?", (bid,)).fetchone()
     conn.execute("DELETE FROM battalions WHERE id=?", (bid,))
     conn.commit()
@@ -179,7 +183,7 @@ def unit_add():
 def unit_edit(uid):
     name = request.form.get("name", "").strip()
     if not name:
-        return jsonify({"error": "Порожня назва"}), 400
+        return jsonify({"ok": False, "msg": "Порожня назва"}), 400
     conn = get_connection()
     old = conn.execute("SELECT name FROM units WHERE id=?", (uid,)).fetchone()
     conn.execute("UPDATE units SET name=? WHERE id=?", (name, uid))
@@ -198,7 +202,7 @@ def unit_delete(uid):
     ).fetchone()[0]
     if cnt > 0:
         conn.close()
-        return jsonify({"error": f"В підрозділі є {cnt} військовослужбовець(ів). Спочатку перемістіть їх."}), 400
+        return jsonify({"ok": False, "msg": f"В підрозділі є {cnt} військовослужбовець(ів). Спочатку перемістіть їх."}), 400
     old = conn.execute("SELECT name FROM units WHERE id=?", (uid,)).fetchone()
     conn.execute("DELETE FROM platoons WHERE unit_id=?", (uid,))
     conn.execute("DELETE FROM units WHERE id=?", (uid,))
@@ -232,7 +236,7 @@ def platoon_add():
 def platoon_edit(pid):
     name = request.form.get("name", "").strip()
     if not name:
-        return jsonify({"error": "Порожня назва"}), 400
+        return jsonify({"ok": False, "msg": "Порожня назва"}), 400
     conn = get_connection()
     old = conn.execute("SELECT name FROM platoons WHERE id=?", (pid,)).fetchone()
     conn.execute("UPDATE platoons SET name=? WHERE id=?", (name, pid))
@@ -251,7 +255,7 @@ def platoon_delete(pid):
     ).fetchone()[0]
     if cnt > 0:
         conn.close()
-        return jsonify({"error": f"У взводі є {cnt} військовослужбовець(ів)"}), 400
+        return jsonify({"ok": False, "msg": f"У взводі є {cnt} військовослужбовець(ів)"}), 400
     old = conn.execute("SELECT name FROM platoons WHERE id=?", (pid,)).fetchone()
     conn.execute("DELETE FROM platoons WHERE id=?", (pid,))
     conn.commit()
@@ -284,18 +288,20 @@ def groups():
 def group_add():
     name = request.form.get("name", "").strip()
     if not name:
-        return jsonify({"error": "Порожня назва"}), 400
+        return jsonify({"ok": False, "msg": "Порожня назва"}), 400
     conn = get_connection()
     try:
         conn.execute("INSERT INTO groups (name, type) VALUES (?, 'custom')", (name,))
         conn.commit()
         gid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         log_action("add", "groups", new_data={"name": name})
-        conn.close()
         return jsonify({"ok": True, "id": gid, "name": name})
-    except Exception:
+    except Exception as e:
+        if "UNIQUE" in str(e):
+            return jsonify({"ok": False, "msg": "Група з такою назвою вже існує"}), 400
+        return jsonify({"ok": False, "msg": f"Помилка: {e}"}), 500
+    finally:
         conn.close()
-        return jsonify({"error": "Група з такою назвою вже існує"}), 400
 
 
 @bp.route("/groups/<int:gid>/edit", methods=["POST"])
@@ -303,12 +309,12 @@ def group_add():
 def group_edit(gid):
     name = request.form.get("name", "").strip()
     if not name:
-        return jsonify({"error": "Порожня назва"}), 400
+        return jsonify({"ok": False, "msg": "Порожня назва"}), 400
     conn = get_connection()
     old = conn.execute("SELECT name, type FROM groups WHERE id=?", (gid,)).fetchone()
     if old["type"] != "custom":
         conn.close()
-        return jsonify({"error": "Системну групу не можна перейменувати"}), 400
+        return jsonify({"ok": False, "msg": "Системну групу не можна перейменувати"}), 400
     conn.execute("UPDATE groups SET name=? WHERE id=?", (name, gid))
     conn.commit()
     log_action("edit", "groups", gid, {"name": old["name"]}, {"name": name})
@@ -323,16 +329,16 @@ def group_delete(gid):
     grp = conn.execute("SELECT name, type FROM groups WHERE id=?", (gid,)).fetchone()
     if not grp:
         conn.close()
-        return jsonify({"error": "Групу не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Групу не знайдено"}), 404
     if grp["type"] != "custom":
         conn.close()
-        return jsonify({"error": "Системну групу не можна видалити"}), 400
+        return jsonify({"ok": False, "msg": "Системну групу не можна видалити"}), 400
     cnt = conn.execute(
         "SELECT COUNT(*) FROM personnel WHERE group_id=?", (gid,)
     ).fetchone()[0]
     if cnt > 0:
         conn.close()
-        return jsonify({"error": f"В групі є {cnt} військовослужбовець(ів)"}), 400
+        return jsonify({"ok": False, "msg": f"В групі є {cnt} військовослужбовець(ів)"}), 400
     conn.execute("DELETE FROM groups WHERE id=?", (gid,))
     conn.commit()
     log_action("delete", "groups", gid, {"name": grp["name"]})
@@ -378,19 +384,21 @@ def norm_dict():
 def norm_dict_group_add():
     name = request.form.get("name", "").strip()
     if not name:
-        return jsonify({"error": "Назва не може бути порожньою"}), 400
+        return jsonify({"ok": False, "msg": "Назва не може бути порожньою"}), 400
     conn = get_connection()
-    max_order = conn.execute("SELECT COALESCE(MAX(sort_order),0) FROM norm_dict_groups").fetchone()[0]
     try:
+        max_order = conn.execute("SELECT COALESCE(MAX(sort_order),0) FROM norm_dict_groups").fetchone()[0]
         conn.execute("INSERT INTO norm_dict_groups (name, sort_order) VALUES (?,?)",
                      (name, max_order + 10))
         conn.commit()
         gid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        conn.close()
         return jsonify({"ok": True, "id": gid, "name": name})
-    except Exception:
+    except Exception as e:
+        if "UNIQUE" in str(e):
+            return jsonify({"ok": False, "msg": "Група з такою назвою вже існує"}), 400
+        return jsonify({"ok": False, "msg": f"Помилка: {e}"}), 500
+    finally:
         conn.close()
-        return jsonify({"error": "Група з такою назвою вже існує"}), 400
 
 
 @bp.route("/norm-dict/group/<int:gid>/edit", methods=["POST"])
@@ -398,7 +406,7 @@ def norm_dict_group_add():
 def norm_dict_group_edit(gid):
     name = request.form.get("name", "").strip()
     if not name:
-        return jsonify({"error": "Порожня назва"}), 400
+        return jsonify({"ok": False, "msg": "Порожня назва"}), 400
     conn = get_connection()
     conn.execute("UPDATE norm_dict_groups SET name=? WHERE id=?", (name, gid))
     conn.commit()
@@ -413,7 +421,7 @@ def norm_dict_group_delete(gid):
     cnt = conn.execute("SELECT COUNT(*) FROM norm_dictionary WHERE group_id=?", (gid,)).fetchone()[0]
     if cnt > 0:
         conn.close()
-        return jsonify({"error": f"Спочатку видаліть або перемістіть {cnt} позицій у цій групі"}), 400
+        return jsonify({"ok": False, "msg": f"Спочатку видаліть або перемістіть {cnt} позицій у цій групі"}), 400
     conn.execute("DELETE FROM norm_dict_groups WHERE id=?", (gid,))
     conn.commit()
     conn.close()
@@ -423,16 +431,20 @@ def norm_dict_group_delete(gid):
 @bp.route("/norm-dict/item/<int:iid>/api", methods=["GET"])
 @login_required
 def norm_dict_item_api(iid):
-    """API: повернути дані однієї позиції словника норм (unit)."""
+    """API: повернути дані однієї позиції словника норм (unit).
+    Returns: {"ok": bool, "data": {id, name, unit, note_refs}, "msg": str}
+    """
     conn = get_connection()
-    row = conn.execute(
-        "SELECT id, name, unit, note_refs FROM norm_dictionary WHERE id=?",
-        (iid,)
-    ).fetchone()
-    conn.close()
+    try:
+        row = conn.execute(
+            "SELECT id, name, unit, note_refs FROM norm_dictionary WHERE id=?",
+            (iid,)
+        ).fetchone()
+    finally:
+        conn.close()
     if not row:
-        return jsonify({"error": "Не знайдено"}), 404
-    return jsonify(dict(row))
+        return jsonify({"ok": False, "data": None, "msg": "Не знайдено"}), 404
+    return jsonify({"ok": True, "data": dict(row), "msg": ""})
 
 
 @bp.route("/norm-dict/item/add", methods=["POST"])
@@ -442,11 +454,11 @@ def norm_dict_item_add():
     group_id   = request.form.get("group_id", type=int)
     unit       = request.form.get("unit", "шт").strip() or "шт"
     if not name or not group_id:
-        return jsonify({"error": "Заповніть всі поля"}), 400
+        return jsonify({"ok": False, "msg": "Заповніть всі поля"}), 400
     conn = get_connection()
-    max_order = conn.execute("SELECT COALESCE(MAX(sort_order),0) FROM norm_dictionary WHERE group_id=?",
-                             (group_id,)).fetchone()[0]
     try:
+        max_order = conn.execute("SELECT COALESCE(MAX(sort_order),0) FROM norm_dictionary WHERE group_id=?",
+                                 (group_id,)).fetchone()[0]
         conn.execute(
             """INSERT INTO norm_dictionary (group_id, name, unit, sort_order)
                VALUES (?,?,?,?)""",
@@ -454,11 +466,13 @@ def norm_dict_item_add():
         conn.commit()
         iid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         group_name = conn.execute("SELECT name FROM norm_dict_groups WHERE id=?", (group_id,)).fetchone()["name"]
-        conn.close()
         return jsonify({"ok": True, "id": iid, "name": name, "unit": unit, "group_id": group_id, "group_name": group_name})
-    except Exception:
+    except Exception as e:
+        if "UNIQUE" in str(e):
+            return jsonify({"ok": False, "msg": "Позиція з такою назвою вже існує"}), 400
+        return jsonify({"ok": False, "msg": f"Помилка: {e}"}), 500
+    finally:
         conn.close()
-        return jsonify({"error": "Позиція з такою назвою вже існує"}), 400
 
 
 @bp.route("/norm-dict/item/<int:iid>/edit", methods=["POST"])
@@ -468,18 +482,20 @@ def norm_dict_item_edit(iid):
     group_id   = request.form.get("group_id", type=int)
     unit       = request.form.get("unit", "шт").strip() or "шт"
     if not name or not group_id:
-        return jsonify({"error": "Заповніть всі поля"}), 400
+        return jsonify({"ok": False, "msg": "Заповніть всі поля"}), 400
     conn = get_connection()
     try:
         conn.execute(
             "UPDATE norm_dictionary SET name=?, group_id=?, unit=? WHERE id=?",
             (name, group_id, unit, iid))
         conn.commit()
-        conn.close()
         return jsonify({"ok": True, "name": name, "unit": unit, "group_id": group_id})
-    except Exception:
+    except Exception as e:
+        if "UNIQUE" in str(e):
+            return jsonify({"ok": False, "msg": "Позиція з такою назвою вже існує"}), 400
+        return jsonify({"ok": False, "msg": f"Помилка: {e}"}), 500
+    finally:
         conn.close()
-        return jsonify({"error": "Позиція з такою назвою вже існує"}), 400
 
 
 @bp.route("/norm-dict/item/<int:iid>/delete", methods=["POST"])
@@ -489,7 +505,7 @@ def norm_dict_item_delete(iid):
     linked = conn.execute("SELECT COUNT(*) FROM item_dictionary WHERE norm_dict_id=?", (iid,)).fetchone()[0]
     if linked > 0:
         conn.close()
-        return jsonify({"error": f"Прив'язано {linked} позицій у словнику майна — спочатку відв'яжіть"}), 400
+        return jsonify({"ok": False, "msg": f"Прив'язано {linked} позицій у словнику майна — спочатку відв'яжіть"}), 400
     conn.execute("DELETE FROM norm_dictionary WHERE id=?", (iid,))
     conn.commit()
     conn.close()
@@ -523,10 +539,13 @@ def norm_dict_components_get(iid):
 def norm_dict_components_add(iid):
     """Додати складову до комплекту."""
     data = request.get_json(silent=True) or {}
-    child_id = int(data.get("child_id", 0))
-    qty      = float(data.get("qty", 1))
+    try:
+        child_id = int(data.get("child_id", 0))
+        qty      = float(data.get("qty", 1))
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "msg": "Невірний формат даних"}), 400
     if not child_id or child_id == iid:
-        return jsonify({"error": "Невірна складова"}), 400
+        return jsonify({"ok": False, "msg": "Невірна складова"}), 400
     conn = get_connection()
     try:
         max_order = conn.execute(
@@ -541,7 +560,7 @@ def norm_dict_components_add(iid):
         conn.commit()
     except Exception as e:
         conn.close()
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"ok": False, "msg": str(e)}), 400
     conn.close()
     return jsonify({"ok": True})
 
@@ -551,7 +570,10 @@ def norm_dict_components_add(iid):
 def norm_dict_component_edit(cid):
     """Оновити кількість складової."""
     data = request.get_json(silent=True) or {}
-    qty  = float(data.get("qty", 1))
+    try:
+        qty = float(data.get("qty", 1))
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "msg": "Невірний формат кількості"}), 400
     conn = get_connection()
     conn.execute("UPDATE norm_dict_components SET qty=? WHERE id=?", (qty, cid))
     conn.commit()
@@ -569,7 +591,7 @@ def norm_dict_component_delete(cid):
     ).fetchone()
     if not parent:
         conn.close()
-        return jsonify({"error": "Не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Не знайдено"}), 404
     parent_id = parent["parent_id"]
     conn.execute("DELETE FROM norm_dict_components WHERE id=?", (cid,))
     remaining = conn.execute(
@@ -645,7 +667,7 @@ def items_search():
 def item_add():
     data = _item_from_form(request.form)
     if not data["name"]:
-        return jsonify({"error": "Назва не може бути порожньою"}), 400
+        return jsonify({"ok": False, "msg": "Назва не може бути порожньою"}), 400
     conn = get_connection()
     try:
         conn.execute("""
@@ -664,11 +686,13 @@ def item_add():
         conn.commit()
         iid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         log_action("add", "item_dictionary", new_data=data)
-        conn.close()
         return jsonify({"ok": True, "id": iid})
-    except Exception:
+    except Exception as e:
+        if "UNIQUE" in str(e):
+            return jsonify({"ok": False, "msg": "Позиція з такою назвою вже існує"}), 400
+        return jsonify({"ok": False, "msg": f"Помилка: {e}"}), 500
+    finally:
         conn.close()
-        return jsonify({"error": "Позиція з такою назвою вже існує"}), 400
 
 
 @bp.route("/items/<int:iid>/edit", methods=["POST"])
@@ -676,7 +700,7 @@ def item_add():
 def item_edit(iid):
     data = _item_from_form(request.form)
     if not data["name"]:
-        return jsonify({"error": "Назва не може бути порожньою"}), 400
+        return jsonify({"ok": False, "msg": "Назва не може бути порожньою"}), 400
     conn = get_connection()
     old = dict(conn.execute("SELECT * FROM item_dictionary WHERE id=?", (iid,)).fetchone())
     conn.execute("""
@@ -709,7 +733,7 @@ def item_delete(iid):
     ).fetchone()[0]
     if cnt > 0:
         conn.close()
-        return jsonify({"error": f"Позиція використовується в {cnt} картках — видалити неможливо"}), 400
+        return jsonify({"ok": False, "msg": f"Позиція використовується в {cnt} картках — видалити неможливо"}), 400
     old = dict(conn.execute("SELECT * FROM item_dictionary WHERE id=?", (iid,)).fetchone())
     conn.execute("DELETE FROM item_dictionary WHERE id=?", (iid,))
     conn.commit()
@@ -756,18 +780,20 @@ def doctype_add():
     name = request.form.get("name", "").strip()
     short = request.form.get("short_name", "").strip()
     if not name:
-        return jsonify({"error": "Назва не може бути порожньою"}), 400
+        return jsonify({"ok": False, "msg": "Назва не може бути порожньою"}), 400
     conn = get_connection()
     try:
         conn.execute("INSERT INTO document_types (name, short_name) VALUES (?,?)", (name, short))
         conn.commit()
         did = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         log_action("add", "document_types", new_data={"name": name})
-        conn.close()
         return jsonify({"ok": True, "id": did, "name": name, "short_name": short})
-    except Exception:
+    except Exception as e:
+        if "UNIQUE" in str(e):
+            return jsonify({"ok": False, "msg": "Тип з такою назвою вже існує"}), 400
+        return jsonify({"ok": False, "msg": f"Помилка: {e}"}), 500
+    finally:
         conn.close()
-        return jsonify({"error": "Тип з такою назвою вже існує"}), 400
 
 
 @bp.route("/doctypes/<int:did>/edit", methods=["POST"])
@@ -779,7 +805,7 @@ def doctype_edit(did):
     dt = conn.execute("SELECT * FROM document_types WHERE id=?", (did,)).fetchone()
     if dt["is_system"]:
         conn.close()
-        return jsonify({"error": "Системний тип не можна редагувати"}), 400
+        return jsonify({"ok": False, "msg": "Системний тип не можна редагувати"}), 400
     conn.execute("UPDATE document_types SET name=?, short_name=? WHERE id=?", (name, short, did))
     conn.commit()
     log_action("edit", "document_types", did, dict(dt), {"name": name, "short_name": short})
@@ -794,7 +820,7 @@ def doctype_delete(did):
     dt = conn.execute("SELECT * FROM document_types WHERE id=?", (did,)).fetchone()
     if dt["is_system"]:
         conn.close()
-        return jsonify({"error": "Системний тип не можна видалити"}), 400
+        return jsonify({"ok": False, "msg": "Системний тип не можна видалити"}), 400
     conn.execute("DELETE FROM document_types WHERE id=?", (did,))
     conn.commit()
     log_action("delete", "document_types", did, dict(dt))
@@ -935,14 +961,14 @@ def unit_responsible_add(uid):
     unit = conn.execute("SELECT id FROM units WHERE id=?", (uid,)).fetchone()
     if not unit:
         conn.close()
-        return jsonify({"error": "Підрозділ не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Підрозділ не знайдено"}), 404
 
     role_name    = request.form.get("role_name", "other")
     personnel_id = request.form.get("personnel_id", type=int)
 
     if not personnel_id:
         conn.close()
-        return jsonify({"error": "Оберіть військовослужбовця з картотеки"}), 400
+        return jsonify({"ok": False, "msg": "Оберіть військовослужбовця з картотеки"}), 400
 
     p = conn.execute(
         "SELECT id, last_name, first_name, middle_name, rank, position, phone FROM personnel WHERE id=?",
@@ -950,7 +976,7 @@ def unit_responsible_add(uid):
     ).fetchone()
     if not p:
         conn.close()
-        return jsonify({"error": "Військовослужбовця не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Військовослужбовця не знайдено"}), 404
 
     # Перевірка дублів у цьому підрозділі
     dup = conn.execute(
@@ -959,7 +985,7 @@ def unit_responsible_add(uid):
     ).fetchone()
     if dup:
         conn.close()
-        return jsonify({"error": "Цей військовослужбовець вже є відповідальною особою підрозділу"}), 400
+        return jsonify({"ok": False, "msg": "Цей військовослужбовець вже є відповідальною особою підрозділу"}), 400
 
     full_name = f"{p['last_name']} {p['first_name']} {p['middle_name'] or ''}".strip()
     rank = p["rank"] or ""
@@ -995,7 +1021,7 @@ def unit_responsible_edit(rid):
     old = conn.execute("SELECT * FROM unit_responsible WHERE id=?", (rid,)).fetchone()
     if not old:
         conn.close()
-        return jsonify({"error": "not found"}), 404
+        return jsonify({"ok": False, "msg": "not found"}), 404
     conn.execute(
         "UPDATE unit_responsible SET role_name=? WHERE id=?",
         (role_name, rid)
@@ -1013,7 +1039,7 @@ def unit_responsible_toggle(rid):
     r = conn.execute("SELECT is_active FROM unit_responsible WHERE id=?", (rid,)).fetchone()
     if not r:
         conn.close()
-        return jsonify({"error": "not found"}), 404
+        return jsonify({"ok": False, "msg": "not found"}), 404
     new_val = 0 if r["is_active"] else 1
     conn.execute("UPDATE unit_responsible SET is_active=? WHERE id=?", (new_val, rid))
     conn.commit()
@@ -1028,7 +1054,7 @@ def unit_responsible_delete(rid):
     old = conn.execute("SELECT * FROM unit_responsible WHERE id=?", (rid,)).fetchone()
     if not old:
         conn.close()
-        return jsonify({"error": "not found"}), 404
+        return jsonify({"ok": False, "msg": "not found"}), 404
     conn.execute("DELETE FROM unit_responsible WHERE id=?", (rid,))
     conn.commit()
     log_action("delete", "unit_responsible", rid, dict(old))
@@ -1083,7 +1109,7 @@ def ranks():
 def ranks_set_mode():
     mode = request.form.get("mode", "army")
     if mode not in ("army", "navy", "nato"):
-        return jsonify({"error": "Невідомий режим"}), 400
+        return jsonify({"ok": False, "msg": "Невідомий режим"}), 400
     from core.settings import update_settings
     update_settings({"rank_mode": mode})
     return jsonify({"ok": True})
@@ -1094,7 +1120,7 @@ def ranks_set_mode():
 def rank_add():
     name = request.form.get("name", "").strip()
     if not name:
-        return jsonify({"error": "Назва не може бути порожньою"}), 400
+        return jsonify({"ok": False, "msg": "Назва не може бути порожньою"}), 400
     short_name = request.form.get("short_name", "").strip()
     category   = request.form.get("category", "enlisted")
     subcategory= request.form.get("subcategory", "")
@@ -1125,7 +1151,7 @@ def rank_edit(rid):
     rank = conn.execute("SELECT * FROM rank_presets WHERE id=?", (rid,)).fetchone()
     if not rank:
         conn.close()
-        return jsonify({"error": "not found"}), 404
+        return jsonify({"ok": False, "msg": "not found"}), 404
     name       = request.form.get("name", "").strip() or rank["name"]
     short_name = request.form.get("short_name", "").strip()
     category   = request.form.get("category", rank["category"])
@@ -1148,7 +1174,7 @@ def rank_toggle(rid):
     r = conn.execute("SELECT is_active FROM rank_presets WHERE id=?", (rid,)).fetchone()
     if not r:
         conn.close()
-        return jsonify({"error": "not found"}), 404
+        return jsonify({"ok": False, "msg": "not found"}), 404
     new_val = 0 if r["is_active"] else 1
     conn.execute("UPDATE rank_presets SET is_active=? WHERE id=?", (new_val, rid))
     conn.commit()
@@ -1163,10 +1189,10 @@ def rank_delete(rid):
     r = conn.execute("SELECT * FROM rank_presets WHERE id=?", (rid,)).fetchone()
     if not r:
         conn.close()
-        return jsonify({"error": "not found"}), 404
+        return jsonify({"ok": False, "msg": "not found"}), 404
     if not r["is_custom"]:
         conn.close()
-        return jsonify({"error": "Системне звання не можна видалити. Можна лише вимкнути."}), 400
+        return jsonify({"ok": False, "msg": "Системне звання не можна видалити. Можна лише вимкнути."}), 400
     conn.execute("DELETE FROM rank_presets WHERE id=?", (rid,))
     conn.commit()
     log_action("delete", "rank_presets", rid, dict(r))
@@ -1271,7 +1297,8 @@ PERMISSIONS_LIST = [
 def users():
     conn = get_connection()
     users_list = conn.execute(
-        """SELECT u.*, r.name as role_name
+        """SELECT u.id, u.username, u.full_name, u.role_id, u.is_active,
+                  u.created_at, u.theme, r.name as role_name
            FROM users u JOIN roles r ON u.role_id = r.id
            ORDER BY u.id"""
     ).fetchall()
@@ -1322,7 +1349,7 @@ def user_edit(uid):
     password  = request.form.get("password", "").strip()
 
     if not full_name or not role_id:
-        return jsonify({"error": "Заповніть всі поля"}), 400
+        return jsonify({"ok": False, "msg": "Заповніть всі поля"}), 400
 
     conn = get_connection()
     if password:
@@ -1348,13 +1375,13 @@ def user_toggle(uid):
     from flask import session as sess
     # Не можна деактивувати себе
     if uid == sess.get("user_id"):
-        return jsonify({"error": "Не можна деактивувати власний акаунт"}), 400
+        return jsonify({"ok": False, "msg": "Не можна деактивувати власний акаунт"}), 400
 
     conn = get_connection()
     row = conn.execute("SELECT is_active FROM users WHERE id=?", (uid,)).fetchone()
     if not row:
         conn.close()
-        return jsonify({"error": "Не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Не знайдено"}), 404
     new_state = 0 if row["is_active"] else 1
     conn.execute("UPDATE users SET is_active=? WHERE id=?", (new_state, uid))
     conn.commit()
@@ -1367,13 +1394,13 @@ def user_toggle(uid):
 def user_delete(uid):
     from flask import session as sess
     if uid == sess.get("user_id"):
-        return jsonify({"error": "Не можна видалити власний акаунт"}), 400
+        return jsonify({"ok": False, "msg": "Не можна видалити власний акаунт"}), 400
 
     conn = get_connection()
     row = conn.execute("SELECT username FROM users WHERE id=?", (uid,)).fetchone()
     if not row:
         conn.close()
-        return jsonify({"error": "Не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Не знайдено"}), 404
     conn.execute("DELETE FROM users WHERE id=?", (uid,))
     conn.commit()
     conn.close()
@@ -1445,7 +1472,7 @@ def role_edit(rid):
     from core.auth import update_role
     name = request.form.get("name", "").strip()
     if not name:
-        return jsonify({"error": "Введіть назву"}), 400
+        return jsonify({"ok": False, "msg": "Введіть назву"}), 400
 
     perms = {}
     if request.form.get("perm_all"):
@@ -1470,11 +1497,11 @@ def role_delete(rid):
     row = conn.execute("SELECT name FROM roles WHERE id=?", (rid,)).fetchone()
     if not row:
         conn.close()
-        return jsonify({"error": "Не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Не знайдено"}), 404
     cnt = conn.execute("SELECT COUNT(*) FROM users WHERE role_id=?", (rid,)).fetchone()[0]
     if cnt > 0:
         conn.close()
-        return jsonify({"error": f"Роль використовується {cnt} користувачами"}), 400
+        return jsonify({"ok": False, "msg": f"Роль використовується {cnt} користувачами"}), 400
     conn.execute("DELETE FROM roles WHERE id=?", (rid,))
     conn.commit()
     conn.close()
@@ -1494,3 +1521,132 @@ def default_theme():
     conn.close()
     flash("Тему за замовченням збережено", "success")
     return redirect(url_for("settings.general"))
+
+
+# ─────────────────────────────────────────────
+#  НАЛАШТУВАННЯ АТЕСТАТУ
+# ─────────────────────────────────────────────
+
+@bp.route("/attestat")
+@login_required
+def attestat():
+    from core.settings import get_setting
+    basis_list     = json.loads(get_setting("attestat_basis_list",     "[]") or "[]")
+    recipient_list = json.loads(get_setting("attestat_recipient_list", "[]") or "[]")
+    service        = get_setting("attestat_service", "РСТ")
+    return render_template("settings/attestat.html",
+                           basis_list=basis_list,
+                           recipient_list=recipient_list,
+                           service=service)
+
+
+@bp.route("/attestat/save", methods=["POST"])
+@login_required
+def attestat_save():
+    """Зберігає поле service."""
+    service = request.form.get("service", "РСТ").strip()
+    conn = get_connection()
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('attestat_service', ?)", (service,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@bp.route("/attestat/basis/add", methods=["POST"])
+@login_required
+def attestat_basis_add():
+    """Returns: {"ok": bool, "list": [...]}"""
+    from core.settings import get_setting
+    text = (request.get_json(silent=True) or {}).get("text", "").strip()
+    if not text:
+        return jsonify({"ok": False, "msg": "Порожній рядок"}), 400
+    lst = json.loads(get_setting("attestat_basis_list", "[]") or "[]")
+    if text not in lst:
+        lst.append(text)
+    conn = get_connection()
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('attestat_basis_list', ?)",
+                 (json.dumps(lst, ensure_ascii=False),))
+    conn.commit(); conn.close()
+    return jsonify({"ok": True, "list": lst})
+
+
+@bp.route("/attestat/basis/delete", methods=["POST"])
+@login_required
+def attestat_basis_delete():
+    """Returns: {"ok": bool, "list": [...]}"""
+    from core.settings import get_setting
+    text = (request.get_json(silent=True) or {}).get("text", "").strip()
+    lst  = json.loads(get_setting("attestat_basis_list", "[]") or "[]")
+    lst  = [x for x in lst if x != text]
+    conn = get_connection()
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('attestat_basis_list', ?)",
+                 (json.dumps(lst, ensure_ascii=False),))
+    conn.commit(); conn.close()
+    return jsonify({"ok": True, "list": lst})
+
+
+@bp.route("/attestat/recipient/add", methods=["POST"])
+@login_required
+def attestat_recipient_add():
+    """Returns: {"ok": bool, "list": [...]}"""
+    from core.settings import get_setting
+    text = (request.get_json(silent=True) or {}).get("text", "").strip()
+    if not text:
+        return jsonify({"ok": False, "msg": "Порожній рядок"}), 400
+    lst = json.loads(get_setting("attestat_recipient_list", "[]") or "[]")
+    if text not in lst:
+        lst.append(text)
+    conn = get_connection()
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('attestat_recipient_list', ?)",
+                 (json.dumps(lst, ensure_ascii=False),))
+    conn.commit(); conn.close()
+    return jsonify({"ok": True, "list": lst})
+
+
+@bp.route("/attestat/recipient/delete", methods=["POST"])
+@login_required
+def attestat_recipient_delete():
+    """Returns: {"ok": bool, "list": [...]}"""
+    from core.settings import get_setting
+    text = (request.get_json(silent=True) or {}).get("text", "").strip()
+    lst  = json.loads(get_setting("attestat_recipient_list", "[]") or "[]")
+    lst  = [x for x in lst if x != text]
+    conn = get_connection()
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('attestat_recipient_list', ?)",
+                 (json.dumps(lst, ensure_ascii=False),))
+    conn.commit(); conn.close()
+    return jsonify({"ok": True, "list": lst})
+
+
+# ─────────────────────────────────────────────────────────────
+#  Налаштування речового забезпечення (строки носки, тип служби)
+# ─────────────────────────────────────────────────────────────
+
+@bp.route("/supply", methods=["GET", "POST"])
+@login_required
+def supply():
+    """Налаштування розрахунку строків носки та боргу."""
+    from core.settings import get_setting
+    if request.method == "POST":
+        default_service_type = request.form.get("default_service_type", "mobilized")
+        wear_warning_days    = request.form.get("wear_warning_days", "30").strip()
+        try:
+            wear_warning_days = str(max(0, int(wear_warning_days)))
+        except ValueError:
+            wear_warning_days = "30"
+
+        conn = get_connection()
+        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('default_service_type', ?)", (default_service_type,))
+        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('wear_warning_days', ?)",    (wear_warning_days,))
+        conn.commit()
+        conn.close()
+        flash("Збережено", "success")
+        return redirect(url_for("settings.supply"))
+
+    default_service_type = get_setting("default_service_type", "mobilized")
+    wear_warning_days    = get_setting("wear_warning_days",    "30")
+    return render_template(
+        "settings/supply.html",
+        default_service_type=default_service_type,
+        wear_warning_days=wear_warning_days,
+    )

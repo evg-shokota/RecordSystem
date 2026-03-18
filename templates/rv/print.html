@@ -28,7 +28,7 @@
 <h2>РОЗДАВАЛЬНА ВІДОМІСТЬ № {{ sheet.number }}</h2>
 <div class="meta">
     {% if sheet.unit_name %}Підрозділ: <strong>{{ sheet.unit_name }}</strong> | {% endif %}
-    Дата: <strong>{{ sheet.doc_date or '___________' }}</strong>
+    Дата: <strong>{{ sheet.doc_date | fdate('___________') }}</strong>
     {% if sheet.base_document %} | Підстава: {{ sheet.base_document }}{% endif %}
 </div>
 

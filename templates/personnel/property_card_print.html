@@ -80,10 +80,10 @@ body {
     line-height: 1.3;
     padding: 3px 1px;
     text-align: center;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
+    display: block;
+    height: 68px;
+    max-height: 68px;
+    overflow: hidden;
     margin: auto;
 }
 
@@ -226,9 +226,9 @@ body {
             <td class="center" style="font-size:9px; line-height:1.5;">
                 {% if person.enroll_order %}
                     {% if person.enroll_order_file %}
-                    <a class="doc-link order-link" href="{{ person.enroll_order_file }}" target="_blank">{{ person.enroll_order }}</a>
+                    <a class="doc-link order-link" href="{{ person.enroll_order_file }}" target="_blank">№{{ person.enroll_order }}</a>
                     {% else %}
-                    <span class="order-link-nofile" onclick="noFileAlert('enroll')">{{ person.enroll_order }}</span>
+                    <span class="order-link-nofile" onclick="noFileAlert('enroll')">№{{ person.enroll_order }}</span>
                     {% endif %}
                 {% endif %}
                 {% if person.enroll_date %}<div>{{ fmt_date(person.enroll_date) }}</div>{% endif %}
@@ -243,7 +243,12 @@ body {
                 {% endif %}
                 {% if person.dismiss_date %}<div>{{ fmt_date(person.dismiss_date) }}</div>{% endif %}
             </td>
-            <td class="center" style="font-size:9px;">{{ person.norm_name or '' }}</td>
+            <td class="center" style="font-size:9px;">
+                {{ person.norm_name or '' }}
+                {%- if person.service_type %}
+                <div style="font-size:8px;color:#555;">{{ 'Мобілізований' if person.service_type == 'mobilized' else 'Контрактник' }}</div>
+                {%- endif %}
+            </td>
         </tr>
     </tbody>
 </table>
@@ -272,7 +277,7 @@ body {
         <tr class="center">
             <td rowspan="2" class="hdr bold">№</td>
             <td rowspan="2" class="hdr bold">Найменування матеріальних засобів</td>
-            <td rowspan="2" class="hdr" style="height:58px; padding:0; width:38px; text-align:center; vertical-align:middle;">
+            <td rowspan="2" class="hdr" style="padding:0; width:38px; text-align:center; vertical-align:middle;">
                 <div class="doc-hdr-cell" style="font-size:9px; white-space:nowrap; color:black;">
                     {% if attestat_doc %}
                     <a class="doc-link" style="color:black;" href="/personnel/{{ person.id }}/attestat-import">Атестат</a>
@@ -288,19 +293,19 @@ body {
         </tr>
 
         {# Рядок 2: окремі документи — вертикальний текст, висота фіксована #}
-        <tr style="height:70px;">
+        <tr style="height:70px; max-height:70px;">
             {% for doc in other_docs %}
-            <td class="hdr" style="padding:0; vertical-align:middle; text-align:center;">
+            <td class="hdr" style="padding:0; vertical-align:middle; text-align:center; height:70px; max-height:70px; overflow:hidden;">
                 {% if doc.type == 'invoice' %}
-                <a class="doc-link doc-hdr-cell" href="/invoices/{{ doc.id }}" style="color:black;">Накл.&#10;{{ doc.label }}&#10;{{ fmt_date(doc.date) }}</a>
+                <a class="doc-link doc-hdr-cell" href="/invoices/{{ doc.id }}" style="color:black;">Накл.&#10;{{ doc.label[:8] }}&#10;{{ fmt_date(doc.date) }}</a>
                 {% elif doc.type == 'rv' %}
-                <a class="doc-link doc-hdr-cell" href="/rv/{{ doc.id }}/view" style="color:black;">РВ&#10;{{ doc.label }}&#10;{{ fmt_date(doc.date) }}</a>
+                <a class="doc-link doc-hdr-cell" href="/rv/{{ doc.id }}/view" style="color:black;">РВ&#10;{{ doc.label[:8] }}&#10;{{ fmt_date(doc.date) }}</a>
                 {% else %}
-                <div class="doc-hdr-cell">{{ doc.label }}</div>
+                <div class="doc-hdr-cell">{{ doc.label[:10] }}</div>
                 {% endif %}
             </td>
             {% endfor %}
-            {% for i in range(empty_cols) %}<td class="hdr"></td>{% endfor %}
+            {% for i in range(empty_cols) %}<td class="hdr" style="height:70px;"></td>{% endfor %}
         </tr>
     </thead>
 
@@ -335,17 +340,27 @@ body {
             {# Порожні #}
             {% for i in range(empty_cols) %}<td></td>{% endfor %}
 
-            {# Разом + дата заміни #}
+            {# Разом + борг + дата наступної видачі #}
             <td class="center" style="font-size:9px; line-height:1.3;">
                 {% if row.total_active %}<b>{{ row.total_active|int if row.total_active == row.total_active|int else row.total_active }}</b>{% endif %}
-                {% if row.from_norm and row.wear_years is defined %}
-                    {% if row.wear_years and row.wear_years > 0 %}
-                        {% if row.expiry_date is defined and row.expiry_date %}
-                        <div style="font-size:8px;color:{{ '#c00' if row.color == 'yellow' else '#666' }};">({{ row.expiry_date[5:7] }}.{{ row.expiry_date[:4] }})</div>
-                        {% endif %}
-                    {% else %}
+                {%- if row.debt_qty and row.debt_qty > 0 %}
+                <div style="font-size:8px;color:#c00;" title="Борг">(-{{ row.debt_qty|int if row.debt_qty == row.debt_qty|int else row.debt_qty }})</div>
+                {%- endif %}
+                {% if row.from_norm %}
+                    {% if row.expiry_date %}
+                        {%- set _ed = row.expiry_date %}
+                        {%- set _dl = row.days_left %}
+                        {%- if _dl is not none and _dl < 0 %}
+                        <div style="font-size:8px;color:#c00;font-weight:bold;" title="Строк вийшов {{ _dl|abs }} дн. тому">({{ _ed[8:10] }}.{{ _ed[5:7] }}.{{ _ed[:4] }})</div>
+                        {%- elif _dl is not none and _dl <= 30 %}
+                        <div style="font-size:8px;color:#b45309;" title="Залишилось {{ _dl }} дн.">({{ _ed[8:10] }}.{{ _ed[5:7] }}.{{ _ed[:4] }})</div>
+                        {%- else %}
+                        <div style="font-size:8px;color:#555;">({{ _ed[8:10] }}.{{ _ed[5:7] }}.{{ _ed[:4] }})</div>
+                        {%- endif %}
+                    {%- elif not row.total_active or row.total_active <= 0 %}
+                    {%- else %}
                     <div style="font-size:8px;color:#888;">(до зносу)</div>
-                    {% endif %}
+                    {%- endif %}
                 {% endif %}
             </td>
         </tr>

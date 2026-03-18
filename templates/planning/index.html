@@ -12,9 +12,10 @@
 
 {# ── Фільтри ── #}
 <form method="GET" class="card border-0 shadow-sm mb-3">
+    <input type="hidden" name="view" value="{{ view }}">
     <div class="card-body py-2">
         <div class="row g-2 align-items-end">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label class="form-label form-label-sm mb-1">Підрозділ</label>
                 <select name="unit_id" class="form-select form-select-sm">
                     <option value="">— всі підрозділи —</option>
@@ -26,17 +27,26 @@
                 </select>
             </div>
             <div class="col-md-3">
-                <label class="form-label form-label-sm mb-1">Сезонність</label>
-                <select name="season" class="form-select form-select-sm">
-                    <option value="all"   {{ 'selected' if season == 'all' }}>Всі</option>
-                    <option value="winter" {{ 'selected' if season == 'winter' }}>Зимове</option>
-                    <option value="summer" {{ 'selected' if season == 'summer' }}>Літнє</option>
-                    <option value="demi"   {{ 'selected' if season == 'demi' }}>Демісезонне</option>
-                    <option value="all_season" {{ 'selected' if season == 'all_season' }}>Всесезонне</option>
+                <label class="form-label form-label-sm mb-1">Позиція майна</label>
+                <select name="norm_dict_id" class="form-select form-select-sm">
+                    <option value="">— всі позиції —</option>
+                    {% for nd in norm_items %}
+                    <option value="{{ nd.id }}" {{ 'selected' if norm_dict_id == nd.id }}>{{ nd.name }}</option>
+                    {% endfor %}
                 </select>
             </div>
-            <div class="col-md-3">
-                <div class="form-check mt-4">
+            <div class="col-md-2">
+                <label class="form-label form-label-sm mb-1">Сезонність</label>
+                <select name="season" class="form-select form-select-sm">
+                    <option value="all"       {{ 'selected' if season == 'all' }}>Всі</option>
+                    <option value="winter"    {{ 'selected' if season == 'winter' }}>Зимове</option>
+                    <option value="summer"    {{ 'selected' if season == 'summer' }}>Літнє</option>
+                    <option value="demi"      {{ 'selected' if season == 'demi' }}>Демісезонне</option>
+                    <option value="all_season"{{ 'selected' if season == 'all_season' }}>Всесезонне</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end gap-2">
+                <div class="form-check mb-0 pb-1">
                     <input class="form-check-input" type="checkbox" name="only_needs" value="1"
                            id="onlyNeeds" {{ 'checked' if only_needs }}>
                     <label class="form-check-label form-label-sm" for="onlyNeeds">
@@ -53,23 +63,59 @@
     </div>
 </form>
 
-{# ── Підсумки ── #}
-<div class="row g-3 mb-3">
-    <div class="col-sm-6 col-md-4">
-        <div class="card border-0 shadow-sm text-center py-2">
-            <div class="fw-bold fs-4">{{ total_persons }}</div>
-            <div class="text-muted small">Військовослужбовців у вибірці</div>
+{# ── Підсумки + перемикач виглядів ── #}
+<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <div class="d-flex gap-2">
+        <div class="card border-0 shadow-sm px-3 py-2 text-center" style="min-width:110px">
+            <div class="fw-bold fs-5">{{ total_persons }}</div>
+            <div class="text-muted small">В/с у вибірці</div>
+        </div>
+        <div class="card border-0 shadow-sm px-3 py-2 text-center {% if total_needs > 0 %}border-start border-warning border-3{% endif %}" style="min-width:110px">
+            <div class="fw-bold fs-5 {% if total_needs > 0 %}text-warning{% endif %}">{{ total_needs }}</div>
+            <div class="text-muted small">Позицій з потребою</div>
         </div>
     </div>
-    <div class="col-sm-6 col-md-4">
-        <div class="card border-0 shadow-sm text-center py-2 {% if total_needs > 0 %}border-start border-warning border-3{% endif %}">
-            <div class="fw-bold fs-4 {% if total_needs > 0 %}text-warning{% endif %}">{{ total_needs }}</div>
-            <div class="text-muted small">Позицій з потребою</div>
+
+    <div class="ms-auto d-flex align-items-center gap-2">
+        {# Сортування (тільки для list-вигляду) #}
+        {% if view == 'list' %}
+        <div class="input-group input-group-sm" style="width:auto">
+            <span class="input-group-text"><i class="bi bi-sort-alpha-down"></i></span>
+            <select class="form-select form-select-sm" style="width:140px"
+                    onchange="applySort(this.value)">
+                <option value="name"      {{ 'selected' if sort_by == 'name' }}>За прізвищем</option>
+                <option value="item"      {{ 'selected' if sort_by == 'item' }}>За майном</option>
+                <option value="date"      {{ 'selected' if sort_by == 'date' }}>За датою</option>
+                <option value="remaining" {{ 'selected' if sort_by == 'remaining' }}>За потребою</option>
+            </select>
+        </div>
+        {% endif %}
+
+        {# Перемикач виглядів #}
+        <div class="btn-group btn-group-sm">
+            <a href="{{ url_for('planning.index', unit_id=unit_id or '', season=season, only_needs='1' if only_needs else '', norm_dict_id=norm_dict_id or '', view='list') }}"
+               class="btn btn-outline-secondary {% if view == 'list' %}active{% endif %}"
+               title="Список">
+                <i class="bi bi-list-ul"></i>
+            </a>
+            <a href="{{ url_for('planning.index', unit_id=unit_id or '', season=season, only_needs='1' if only_needs else '', norm_dict_id=norm_dict_id or '', view='by_item') }}"
+               class="btn btn-outline-secondary {% if view == 'by_item' %}active{% endif %}"
+               title="По майну">
+                <i class="bi bi-box-seam"></i>
+            </a>
+            <a href="{{ url_for('planning.index', unit_id=unit_id or '', season=season, only_needs='1' if only_needs else '', norm_dict_id=norm_dict_id or '', view='calendar') }}"
+               class="btn btn-outline-secondary {% if view == 'calendar' %}active{% endif %}"
+               title="Календар">
+                <i class="bi bi-calendar3"></i>
+            </a>
         </div>
     </div>
 </div>
 
-{# ── Таблиця ── #}
+{# ══════════════════════════════════════════
+   ВИГЛЯД: СПИСОК
+══════════════════════════════════════════ #}
+{% if view == 'list' %}
 {% if rows %}
 <div class="card border-0 shadow-sm">
     <div class="card-body p-0">
@@ -113,17 +159,11 @@
                             <i class="bi bi-check-circle me-1"></i>0
                             {% endif %}
                         </td>
-                        <td class="text-center text-muted small">
-                            {{ row.last_issue_date or '—' }}
-                        </td>
+                        <td class="text-center text-muted small">{{ row.last_issue_date | fdate }}</td>
                         <td class="text-center">
                             {% if row.next_issue_date %}
-                            <span class="
-                                {% if row.next_issue_days <= 0 %}text-danger fw-medium
-                                {% elif row.next_issue_days <= 30 %}text-warning fw-medium
-                                {% else %}text-muted small
-                                {% endif %}">
-                                {{ row.next_issue_date }}
+                            <span class="{% if row.next_issue_days <= 0 %}text-danger fw-medium{% elif row.next_issue_days <= 30 %}text-warning fw-medium{% else %}text-muted small{% endif %}">
+                                {{ row.next_issue_date | fdate }}
                                 {% if row.next_issue_days <= 0 %}
                                 <span class="badge bg-danger ms-1">Прострочено</span>
                                 {% elif row.next_issue_days <= 30 %}
@@ -145,13 +185,165 @@
 <div class="card border-0 shadow-sm">
     <div class="card-body text-center py-5 text-muted">
         <i class="bi bi-check2-all fs-2 text-success d-block mb-2"></i>
-        {% if only_needs %}
-        Всі позиції видані за нормою
-        {% else %}
-        Немає даних. Перевірте чи призначено норми видачі особовому складу.
-        {% endif %}
+        {% if only_needs %}Всі позиції видані за нормою{% else %}Немає даних. Перевірте чи призначено норми видачі.{% endif %}
     </div>
 </div>
 {% endif %}
 
+{# ══════════════════════════════════════════
+   ВИГЛЯД: ПО МАЙНУ
+══════════════════════════════════════════ #}
+{% elif view == 'by_item' %}
+{% if by_item %}
+<div class="d-flex flex-column gap-3">
+    {% for group in by_item %}
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-transparent d-flex align-items-center gap-2 py-2">
+            <i class="bi bi-box-seam text-warning"></i>
+            <strong>{{ group.norm_dict_name }}</strong>
+            <span class="badge bg-secondary ms-1">{{ group.persons | length }} осіб</span>
+            {% if group.total_remaining > 0 %}
+            <span class="badge bg-danger ms-1">
+                <i class="bi bi-exclamation-circle me-1"></i>Потреба: {{ group.total_remaining | int }}
+            </span>
+            {% endif %}
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>ПІБ</th>
+                        <th>Підрозділ</th>
+                        <th class="text-center">Норма</th>
+                        <th class="text-center">Видано</th>
+                        <th class="text-center">Залишок</th>
+                        <th class="text-center">Наступна видача</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in group.persons %}
+                    <tr class="{% if row.remaining > 0 %}table-warning{% elif row.next_issue_days is not none and row.next_issue_days <= 30 %}table-info{% endif %}">
+                        <td>
+                            <a href="{{ url_for('personnel.card', person_id=row.personnel_id) }}"
+                               class="text-decoration-none fw-medium">
+                                {% if row.rank %}<span class="text-muted small">{{ row.rank }} </span>{% endif %}
+                                {{ row.full_name }}
+                            </a>
+                        </td>
+                        <td class="text-muted small">{{ row.unit_name or '—' }}</td>
+                        <td class="text-center">{{ row.norm_qty | int }} {{ row.unit }}</td>
+                        <td class="text-center">{{ row.issued_qty | int }}</td>
+                        <td class="text-center fw-medium {% if row.remaining > 0 %}text-danger{% else %}text-success{% endif %}">
+                            {% if row.remaining > 0 %}<i class="bi bi-exclamation-circle me-1"></i>{{ row.remaining | int }}{% else %}<i class="bi bi-check-circle me-1"></i>0{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if row.next_issue_date %}
+                            <span class="{% if row.next_issue_days <= 0 %}text-danger fw-medium{% elif row.next_issue_days <= 30 %}text-warning fw-medium{% else %}text-muted small{% endif %}">
+                                {{ row.next_issue_date | fdate }}
+                                {% if row.next_issue_days is not none and row.next_issue_days <= 0 %}
+                                <span class="badge bg-danger ms-1">Прострочено</span>
+                                {% elif row.next_issue_days is not none and row.next_issue_days <= 30 %}
+                                <span class="badge bg-warning text-dark ms-1">{{ row.next_issue_days }} дн.</span>
+                                {% endif %}
+                            </span>
+                            {% else %}<span class="text-muted small">—</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-box-seam fs-2 d-block mb-2"></i>
+        Немає даних для відображення
+    </div>
+</div>
+{% endif %}
+
+{# ══════════════════════════════════════════
+   ВИГЛЯД: КАЛЕНДАР
+══════════════════════════════════════════ #}
+{% elif view == 'calendar' %}
+{% if by_calendar %}
+<div class="d-flex flex-column gap-3">
+    {% for month in by_calendar %}
+    <div class="card border-0 shadow-sm {% if month.overdue %}border-start border-danger border-3{% endif %}">
+        <div class="card-header bg-transparent d-flex align-items-center gap-2 py-2
+                    {% if month.overdue %}bg-danger-subtle{% endif %}">
+            <i class="bi bi-calendar3 {% if month.overdue %}text-danger{% else %}text-primary{% endif %}"></i>
+            <strong>{{ month.label }}</strong>
+            <span class="badge {% if month.overdue %}bg-danger{% else %}bg-primary{% endif %} ms-1">
+                {{ month.rows | length }} {{ 'видач' if (month.rows | length) % 10 in (2,3,4) and (month.rows | length) % 100 not in (12,13,14) else 'видач' }}
+            </span>
+            <span class="text-muted small ms-1">
+                ({{ month.rows | map(attribute='personnel_id') | list | unique | list | length }} осіб)
+            </span>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>ПІБ</th>
+                        <th>Підрозділ</th>
+                        <th>Позиція майна</th>
+                        <th class="text-center">Кількість</th>
+                        <th class="text-center">Дата</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in month.rows %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('personnel.card', person_id=row.personnel_id) }}"
+                               class="text-decoration-none fw-medium">
+                                {% if row.rank %}<span class="text-muted small">{{ row.rank }} </span>{% endif %}
+                                {{ row.full_name }}
+                            </a>
+                        </td>
+                        <td class="text-muted small">{{ row.unit_name or '—' }}</td>
+                        <td>{{ row.norm_dict_name }}</td>
+                        <td class="text-center">{{ row.norm_qty | int }} {{ row.unit }}</td>
+                        <td class="text-center">
+                            {% if row.next_issue_date %}
+                            <span class="{% if month.overdue %}text-danger fw-medium{% else %}text-muted small{% endif %}">
+                                {{ row.next_issue_date | fdate }}
+                            </span>
+                            {% elif row.remaining > 0 %}
+                            <span class="badge bg-danger">Зараз</span>
+                            {% else %}—{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-calendar-check fs-2 text-success d-block mb-2"></i>
+        Немає запланованих видач на найближчі 18 місяців
+    </div>
+</div>
+{% endif %}
+
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function applySort(val) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('sort', val);
+    window.location.href = url.toString();
+}
+</script>
 {% endblock %}

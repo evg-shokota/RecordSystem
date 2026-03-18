@@ -294,7 +294,7 @@ document.getElementById('btnAddRank').addEventListener('click', () => {
     fetch('/settings/ranks/add', { method: 'POST', body: fd })
         .then(r => r.json()).then(d => {
             if (d.ok) location.reload();
-            else alert(d.error || 'Помилка');
+            else alert(d.msg || d.error || 'Помилка');
         });
 });
 
@@ -324,7 +324,7 @@ document.getElementById('btnEditRank').addEventListener('click', () => {
     fetch(`/settings/ranks/${id}/edit`, { method: 'POST', body: fd })
         .then(r => r.json()).then(d => {
             if (d.ok) location.reload();
-            else alert(d.error || 'Помилка');
+            else alert(d.msg || d.error || 'Помилка');
         });
 });
 
@@ -356,12 +356,13 @@ document.querySelectorAll('.btn-toggle-rank').forEach(btn => {
 // ── Delete ─────────────────────────────────────────────────────
 document.querySelectorAll('.btn-delete-rank').forEach(btn => {
     btn.addEventListener('click', () => {
-        if (!confirm(`Видалити звання "${btn.dataset.name}"?`)) return;
-        fetch(`/settings/ranks/${btn.dataset.id}/delete`, { method: 'POST' })
-            .then(r => r.json()).then(d => {
-                if (d.ok) btn.closest('.rank-row').remove();
-                else alert(d.error || 'Помилка');
-            });
+        showConfirm(`Видалити звання "${btn.dataset.name}"?`, () => {
+            fetch(`/settings/ranks/${btn.dataset.id}/delete`, { method: 'POST' })
+                .then(r => r.json()).then(d => {
+                    if (d.ok) btn.closest('.rank-row').remove();
+                    else showToast(d.msg || d.error || 'Помилка', 'danger');
+                });
+        });
     });
 });
 </script>

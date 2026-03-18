@@ -58,53 +58,23 @@ body {
     color: var(--text-primary) !important;
 }
 
-/* ── Сайдбар — перекрити синій фон з main.css ── */
+/* ── Сайдбар — використовує CSS-змінні з main.css, лише доповнення ── */
 .app-sidebar {
-    background: var(--sidebar-bg) !important;
-    border-right: 1px solid var(--sidebar-border) !important;
+    border-right: 1px solid var(--sidebar-border);
 }
 
-.sidebar-brand, .sidebar-brand:hover {
-    color: var(--sidebar-text-active) !important;
-    border-bottom-color: var(--sidebar-border) !important;
-}
+.sidebar-brand-icon { color: var(--sidebar-brand-icon); }
+.sidebar-brand-text .subtitle { opacity: .65; }
 
-.sidebar-brand-icon { color: var(--sidebar-brand-icon) !important; }
-.sidebar-brand-text .title { color: var(--sidebar-text-active) !important; }
-.sidebar-brand-text .subtitle { color: var(--sidebar-text) !important; }
-
-.sidebar-nav .nav-link {
-    color: var(--sidebar-text) !important;
-}
-.sidebar-nav .nav-link:hover {
-    background: var(--sidebar-hover-bg) !important;
-    color: var(--sidebar-text-active) !important;
-}
+/* Активний пункт — акцент лінія зліва */
 .sidebar-nav .nav-link.active {
-    background: var(--sidebar-active-bg) !important;
     color: var(--app-primary) !important;
     border-left: 3px solid var(--app-primary);
     padding-left: 13px !important;
 }
 .sidebar-nav .nav-link i { opacity: 1 !important; }
 
-.nav-section-label { color: rgba(137,180,250,.5) !important; }
-
-/* Collapsible секції */
-.nav-group-toggle {
-    color: var(--sidebar-text) !important;
-    background: none !important;
-}
-.nav-group-toggle:hover { color: var(--sidebar-text-active) !important; }
-.nav-group-toggle::after { border-color: var(--sidebar-text) !important; }
-
-.nav-group.open > .nav-group-toggle { color: var(--sidebar-text-active) !important; }
-
-.sidebar-footer {
-    border-top-color: var(--sidebar-border) !important;
-    color: var(--sidebar-text) !important;
-}
-.sidebar-user-name { color: var(--sidebar-text-active) !important; }
+.sidebar-user-name { color: var(--sidebar-text-active) !important; opacity: .75; }
 
 /* ── Топбар ── */
 .app-topbar {
@@ -130,8 +100,11 @@ body {
 /* ── Таблиці ── */
 .table {
     --bs-table-bg: transparent;
+    --bs-table-color: var(--text-primary);
     --bs-table-striped-bg: rgba(205,214,244,.02);
+    --bs-table-striped-color: var(--text-primary);
     --bs-table-hover-bg: var(--table-hover-bg);
+    --bs-table-hover-color: var(--text-primary);
     color: var(--text-primary);
     border-color: var(--card-border);
 }
@@ -143,8 +116,45 @@ body {
     letter-spacing: .04em;
     text-transform: uppercase;
 }
-.table td { border-color: var(--card-border) !important; }
-.table-light { --bs-table-bg: var(--table-header-bg) !important; }
+.table td {
+    color: var(--text-primary);
+    border-color: var(--card-border) !important;
+}
+.table-light {
+    --bs-table-bg: var(--table-header-bg) !important;
+    --bs-table-color: var(--text-muted) !important;
+    background-color: var(--table-header-bg) !important;
+    color: var(--text-muted) !important;
+}
+/* Badge subtle variants у таблицях */
+.table .badge { color: inherit; }
+
+/* Рядки-заголовки груп у матричній картці */
+.table-secondary,
+tr.table-secondary > td,
+tr.table-secondary > th {
+    --bs-table-bg: rgba(137,180,250,.08) !important;
+    --bs-table-color: var(--text-muted) !important;
+    background-color: rgba(137,180,250,.08) !important;
+    color: var(--text-muted) !important;
+}
+
+/* Subtle фони у td (статус, наступна видача) */
+td.bg-success-subtle { background-color: rgba(166,227,161,.12) !important; color: #a6e3a1 !important; }
+td.bg-warning-subtle { background-color: rgba(249,226,175,.12) !important; color: #f9e2af !important; }
+td.bg-danger-subtle  { background-color: rgba(243,139,168,.12) !important; color: #f38ba8 !important; }
+td.bg-info-subtle    { background-color: rgba(137,220,235,.12) !important; color: #89dceb !important; }
+
+/* Загальні subtle класи на будь-яких елементах */
+.bg-success-subtle { background-color: rgba(166,227,161,.12) !important; color: #a6e3a1 !important; }
+.bg-warning-subtle { background-color: rgba(249,226,175,.12) !important; color: #f9e2af !important; }
+.bg-danger-subtle  { background-color: rgba(243,139,168,.12) !important; color: #f38ba8 !important; }
+.bg-info-subtle    { background-color: rgba(137,220,235,.12) !important; color: #89dceb !important; }
+
+/* text-success/warning/danger всередині subtle td — не перекривати колір іконок */
+td.bg-success-subtle .text-success { color: #a6e3a1 !important; }
+td.bg-warning-subtle .text-warning { color: #f9e2af !important; }
+td.bg-danger-subtle  .text-danger  { color: #f38ba8 !important; }
 
 /* ── Форми ── */
 .form-control, .form-select {
@@ -223,12 +233,19 @@ a:hover { color: #b8d0fc !important; }
 .app-sidebar a:hover { color: inherit !important; }
 
 /* ── Бейджі ── */
-.badge.bg-primary  { background: var(--app-primary) !important; color: #1e2030 !important; }
-.badge.bg-primary-subtle { background: rgba(137,180,250,.15) !important; color: var(--app-primary) !important; }
-.badge.bg-light    { background: rgba(205,214,244,.1) !important; color: var(--text-primary) !important; }
-.badge.bg-secondary { background: rgba(205,214,244,.12) !important; color: var(--text-muted) !important; }
+.badge.bg-primary         { background: var(--app-primary) !important; color: #1e2030 !important; }
+.badge.bg-primary-subtle  { background: rgba(137,180,250,.15) !important; color: var(--app-primary) !important; }
+.badge.bg-light           { background: rgba(205,214,244,.1) !important; color: var(--text-primary) !important; }
+.badge.bg-secondary       { background: rgba(205,214,244,.12) !important; color: var(--text-muted) !important; }
+.badge.bg-secondary-subtle { background: rgba(205,214,244,.1) !important; color: var(--text-muted) !important; }
+.badge.bg-info-subtle     { background: rgba(137,220,235,.12) !important; color: #89dceb !important; }
+.badge.bg-success-subtle  { background: rgba(166,227,161,.12) !important; color: #a6e3a1 !important; }
+.badge.bg-warning-subtle  { background: rgba(249,226,175,.12) !important; color: #f9e2af !important; }
+.badge.bg-danger-subtle   { background: rgba(243,139,168,.12) !important; color: #f38ba8 !important; }
+.badge.bg-dark            { background: rgba(205,214,244,.15) !important; color: var(--text-primary) !important; }
 .text-primary      { color: var(--app-primary) !important; }
 .text-muted        { color: var(--text-muted) !important; }
+.text-dark         { color: var(--text-primary) !important; }
 
 /* ── Модальні вікна ── */
 .modal-content {

@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import threading
+from urllib.parse import quote
 from pathlib import Path
 
 try:
@@ -56,6 +57,10 @@ def _fromjson(value):
     except (json.JSONDecodeError, TypeError):
         return []
 
+@app.template_filter("urlencode")
+def _urlencode(value):
+    return quote(str(value), safe='')
+
 @app.template_filter("fromjson_dict")
 def _fromjson_dict(value):
     if not value:
@@ -65,6 +70,29 @@ def _fromjson_dict(value):
         return result if isinstance(result, dict) else {}
     except (json.JSONDecodeError, TypeError):
         return {}
+
+@app.template_filter("fdate")
+def _fdate(value, fallback="—"):
+    """YYYY-MM-DD → ДД.ММ.РР  (напр. 2024-07-25 → 25.07.24)"""
+    if not value:
+        return fallback
+    s = str(value).strip()[:10]
+    if len(s) == 10 and s[4] == "-" and s[7] == "-":
+        return f"{s[8:10]}.{s[5:7]}.{s[2:4]}"
+    return s or fallback
+
+@app.template_filter("fdatetime")
+def _fdatetime(value, fallback="—"):
+    """YYYY-MM-DD HH:MM:SS → ДД.ММ.РР ГГ:ХХ  (напр. 2024-07-25 14:30 → 25.07.24 14:30)"""
+    if not value:
+        return fallback
+    s = str(value).strip()
+    date_part = s[:10]
+    time_part = s[11:16] if len(s) >= 16 else ""
+    if len(date_part) == 10 and date_part[4] == "-" and date_part[7] == "-":
+        formatted = f"{date_part[8:10]}.{date_part[5:7]}.{date_part[2:4]}"
+        return f"{formatted} {time_part}".strip() if time_part else formatted
+    return s or fallback
 
 # slot() реєструється через context_processor — стабільно незалежно від debug/reloader.
 # _slot_fn може бути замінена на повноцінну після завантаження плагінів.
@@ -101,31 +129,31 @@ def _auto_log_error(code: int, title: str, body: str) -> int | None:
     try:
         from core.db import get_connection as _gc
         conn = _gc()
-        existing = conn.execute(
-            """SELECT id FROM feedback
-               WHERE title=? AND page_url=? AND status IN ('new','in_progress')
-               AND created_at >= datetime('now','localtime','-60 minutes')
-               ORDER BY id DESC LIMIT 1""",
-            (title, request.url)
-        ).fetchone()
-        if existing:
-            conn.close()
-            return existing["id"]
-        cur = conn.execute(
-            """INSERT INTO feedback (user_id, username, category, priority, title, body, page_url, status)
-               VALUES (?, ?, 'bug', 'high', ?, ?, ?, 'new')""",
-            (
-                session.get("user_id"),
-                session.get("full_name") or session.get("username") or "system",
-                title,
-                body,
-                request.url,
+        try:
+            existing = conn.execute(
+                """SELECT id FROM feedback
+                   WHERE title=? AND page_url=? AND status IN ('new','in_progress')
+                   AND created_at >= datetime('now','localtime','-60 minutes')
+                   ORDER BY id DESC LIMIT 1""",
+                (title, request.url)
+            ).fetchone()
+            if existing:
+                return existing["id"]
+            cur = conn.execute(
+                """INSERT INTO feedback (user_id, username, category, priority, title, body, page_url, status)
+                   VALUES (?, ?, 'bug', 'high', ?, ?, ?, 'new')""",
+                (
+                    session.get("user_id"),
+                    session.get("full_name") or session.get("username") or "system",
+                    title,
+                    body,
+                    request.url,
+                )
             )
-        )
-        conn.commit()
-        fid = cur.lastrowid
-        conn.close()
-        return fid
+            conn.commit()
+            return cur.lastrowid
+        finally:
+            conn.close()
     except Exception:
         return None
 
@@ -195,6 +223,8 @@ def register_blueprints(app: Flask) -> None:
     from modules.import_export.routes import bp as import_export_bp
     from modules.feedback.routes import bp as feedback_bp
     from modules.attestat_import.routes import bp as attestat_import_bp
+    from modules.registry.routes import bp as registry_bp
+    from modules.acts.routes import bp as acts_bp
 
     app.register_blueprint(attestat_import_bp)
     app.register_blueprint(personnel_bp)
@@ -209,6 +239,8 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(reports_bp)
     app.register_blueprint(import_export_bp)
     app.register_blueprint(feedback_bp)
+    app.register_blueprint(registry_bp)
+    app.register_blueprint(acts_bp)
 
     @app.context_processor
     def inject_plugin_menu():
@@ -276,17 +308,20 @@ def dashboard():
         "SELECT COUNT(*) FROM invoices WHERE status IN ('created', 'issued')"
     ).fetchone()[0]
 
-    # Залишки складу (загальна сума)
+    # Залишки складу (загальна сума + топ-10)
     from core.warehouse import get_stock
     stock_rows = get_stock(conn)
     stock_total = round(sum(r["total_sum"] or 0 for r in stock_rows), 2)
+    stock_sorted = sorted(stock_rows, key=lambda r: r["qty_balance"] or 0, reverse=True)
+    stock_top10 = [dict(r) for r in stock_sorted[:10]]
+    stock_bottom10 = [dict(r) for r in sorted(stock_rows, key=lambda r: r["qty_balance"] or 0)[:10] if (r["qty_balance"] or 0) > 0]
 
     # Майно до видачі (кількість позицій де залишок < норми)
     needs_count = conn.execute("""
         SELECT COUNT(DISTINCT p.id || '-' || nd.id) FROM personnel p
         JOIN groups g ON p.group_id = g.id
-        JOIN supply_norms sn ON p.norm_id = sn.id
-        JOIN supply_norm_items sni ON sni.norm_id = sn.id
+        JOIN personnel_norms pn ON pn.personnel_id = p.id
+        JOIN supply_norm_items sni ON sni.norm_id = pn.norm_id
         JOIN norm_dictionary nd ON sni.norm_dict_id = nd.id
         WHERE p.is_active=1 AND g.type NOT IN ('szch','deceased','missing')
           AND COALESCE((
@@ -307,23 +342,97 @@ def dashboard():
            ORDER BY valid_until"""
     ).fetchall()
 
-    # Накладні без скану (статус issued, scan_path IS NULL)
-    invoices_no_scan = conn.execute(
+    # Накладні без скану (статус issued, scan_path IS NULL) — до 10 + загальна кількість
+    invoices_no_scan_all = conn.execute(
         """SELECT id, number, created_at, recipient_unit_id, recipient_personnel_id
            FROM invoices
            WHERE status = 'issued'
              AND (scan_path IS NULL OR scan_path = '')
            ORDER BY created_at DESC"""
     ).fetchall()
+    invoices_no_scan = invoices_no_scan_all[:10]
+    invoices_no_scan_total = len(invoices_no_scan_all)
 
-    # РВ без скану (статус active або closed, scan_path IS NULL)
-    rv_no_scan = conn.execute(
+    # РВ без скану (статус active або closed, scan_path IS NULL) — до 10 + загальна кількість
+    rv_no_scan_all = conn.execute(
         """SELECT id, number, created_at, unit_id
            FROM distribution_sheets
            WHERE status IN ('active', 'closed')
              AND (scan_path IS NULL OR scan_path = '')
            ORDER BY created_at DESC"""
     ).fetchall()
+    rv_no_scan = rv_no_scan_all[:10]
+    rv_no_scan_total = len(rv_no_scan_all)
+
+    # В/с яким потрібна видача (к-ть осіб, не позицій)
+    personnel_needs_count = conn.execute("""
+        SELECT COUNT(DISTINCT p.id) FROM personnel p
+        JOIN groups g ON p.group_id = g.id
+        JOIN personnel_norms pn ON pn.personnel_id = p.id
+        JOIN supply_norm_items sni ON sni.norm_id = pn.norm_id
+        JOIN norm_dictionary nd ON sni.norm_dict_id = nd.id
+        WHERE p.is_active=1 AND g.type NOT IN ('szch','deceased','missing')
+          AND COALESCE((
+              SELECT SUM(pi.quantity) FROM personnel_items pi
+              JOIN item_dictionary idi ON pi.item_id=idi.id
+              WHERE pi.personnel_id=p.id AND pi.status='active' AND idi.norm_dict_id=nd.id
+          ), 0) < COALESCE(sni.quantity, 0)
+    """).fetchone()[0] or 0
+
+    # Останні видачі (накладні із статусом issued, до 10)
+    recent_issues = conn.execute("""
+        SELECT i.id, i.number, i.created_at,
+               p.last_name, p.first_name, p.rank,
+               u.name as unit_name
+        FROM invoices i
+        LEFT JOIN personnel p ON i.recipient_personnel_id = p.id
+        LEFT JOIN units u ON i.recipient_unit_id = u.id
+        WHERE i.status = 'issued'
+        ORDER BY i.created_at DESC
+        LIMIT 10
+    """).fetchall()
+
+    # Графік 1: видачі по місяцях (попередні 6 міс + поточний)
+    from datetime import date as _date
+    import calendar as _cal
+    _today = _date.today()
+    chart_past = []
+    for i in range(5, -1, -1):
+        m = _today.month - i
+        y = _today.year
+        while m <= 0:
+            m += 12; y -= 1
+        month_start = f"{y:04d}-{m:02d}-01"
+        last_day = _cal.monthrange(y, m)[1]
+        month_end = f"{y:04d}-{m:02d}-{last_day:02d}"
+        UA_MONTHS_SHORT = ["","Січ","Лют","Бер","Кві","Тра","Чер",
+                           "Лип","Сер","Вер","Жов","Лис","Гру"]
+        cnt = conn.execute("""
+            SELECT COUNT(DISTINCT COALESCE(recipient_personnel_id, recipient_unit_id))
+            FROM invoices
+            WHERE status IN ('issued','processed')
+              AND date(COALESCE(issued_date, created_at)) BETWEEN ? AND ?
+        """, (month_start, month_end)).fetchone()[0] or 0
+        chart_past.append({"label": f"{UA_MONTHS_SHORT[m]} {y}", "value": cnt,
+                            "year": y, "month": m})
+
+    # Графік 2: потреби по місяцях (наступні 6 міс)
+    from modules.planning.routes import _planning_data, _group_by_calendar
+    plan_rows = _planning_data(conn)
+    calendar_data = _group_by_calendar(plan_rows)
+    chart_future = []
+    for i in range(0, 6):
+        m = _today.month + i
+        y = _today.year
+        while m > 12:
+            m -= 12; y += 1
+        UA_MONTHS_SHORT = ["","Січ","Лют","Бер","Кві","Тра","Чер",
+                           "Лип","Сер","Вер","Жов","Лис","Гру"]
+        # шукаємо у calendar_data
+        month_data = next((c for c in calendar_data if c["year"] == y and c["month"] == m), None)
+        cnt = len(set(r["personnel_id"] for r in month_data["rows"])) if month_data else 0
+        chart_future.append({"label": f"{UA_MONTHS_SHORT[m]} {y}", "value": cnt,
+                              "year": y, "month": m})
 
     # Номенклатурне майно на СЗЧ / Загиблих / Безвісті
     archive_groups = conn.execute(
@@ -349,6 +458,17 @@ def dashboard():
             archive_group_ids
         ).fetchall()
 
+    # Словник для пошуку залишків на плашці
+    from core.db import get_connection as _gc2
+    conn2 = _gc2()
+    norm_dict_options = conn2.execute("""
+        SELECT nd.id, nd.name, nd.unit, ndg.name AS group_name
+        FROM norm_dictionary nd
+        LEFT JOIN norm_dict_groups ndg ON nd.group_id = ndg.id
+        ORDER BY ndg.sort_order NULLS LAST, nd.sort_order NULLS LAST, nd.name
+    """).fetchall()
+    conn2.close()
+
     conn.close()
 
     backup_reminder = check_backup_reminder()
@@ -360,12 +480,67 @@ def dashboard():
         overdue_invoices=[dict(r) for r in overdue_invoices],
         nomenclature_archive=[dict(r) for r in nomenclature_archive],
         invoices_no_scan=[dict(r) for r in invoices_no_scan],
+        invoices_no_scan_total=invoices_no_scan_total,
         rv_no_scan=[dict(r) for r in rv_no_scan],
+        rv_no_scan_total=rv_no_scan_total,
         backup_reminder=backup_reminder,
         stock_total=stock_total,
+        stock_top10=stock_top10,
+        stock_bottom10=stock_bottom10,
         needs_count=needs_count,
+        personnel_needs_count=personnel_needs_count,
+        recent_issues=[dict(r) for r in recent_issues],
+        chart_past=chart_past,
+        chart_future=chart_future,
+        norm_dict_options=[dict(r) for r in norm_dict_options],
         user=current_user(),
     )
+
+
+@app.route("/api/stock-lookup")
+@login_required
+def api_stock_lookup():
+    """Повертає залишки складу для конкретної позиції норм-словника."""
+    norm_dict_id = request.args.get("norm_dict_id", type=int)
+    if not norm_dict_id:
+        return jsonify({"ok": False, "error": "norm_dict_id required"}), 400
+
+    from core.db import get_connection
+    from core.warehouse import get_stock
+    conn = get_connection()
+
+    # Знаходимо item_dictionary ids що належать до цього norm_dict_id
+    item_ids = [r["id"] for r in conn.execute(
+        "SELECT id FROM item_dictionary WHERE norm_dict_id = ?", (norm_dict_id,)
+    ).fetchall()]
+
+    nd = conn.execute(
+        "SELECT name, unit FROM norm_dictionary WHERE id = ?", (norm_dict_id,)
+    ).fetchone()
+
+    if not nd or not item_ids:
+        conn.close()
+        return jsonify({"ok": True, "qty_balance": 0, "unit": nd["unit"] if nd else "шт",
+                        "name": nd["name"] if nd else "—", "batches": []})
+
+    stock_all = get_stock(conn)
+    conn.close()
+
+    # Фільтруємо по item_ids
+    batches = [r for r in stock_all if r["item_id"] in item_ids]
+    qty_total = sum(r["qty_balance"] or 0 for r in batches)
+
+    return jsonify({
+        "ok": True,
+        "name": nd["name"],
+        "unit": nd["unit"] or "шт",
+        "qty_balance": qty_total,
+        "batches": [
+            {"category": r["category"], "price": r["price"],
+             "qty_balance": r["qty_balance"] or 0}
+            for r in batches if (r["qty_balance"] or 0) != 0
+        ]
+    })
 
 
 @app.route("/audit/")

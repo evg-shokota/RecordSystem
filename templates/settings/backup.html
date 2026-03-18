@@ -35,7 +35,7 @@
             Після відновлення необхідно перезапустити систему.
         </p>
         <form method="POST" action="{{ url_for('settings.backup_restore') }}"
-              onsubmit="return confirm('УВАГА! Всі поточні дані будуть замінені даними з бекапу. Продовжити?')">
+              data-confirm="УВАГА! Всі поточні дані будуть замінені даними з бекапу. Продовжити?">
             <div class="d-flex gap-2 align-items-center">
                 <input type="file" name="backup_file" accept=".zip"
                        class="form-control form-control-sm" style="max-width:320px;" required>
@@ -74,7 +74,7 @@
                             {% set lc = label_map.get(b.label, ('secondary', b.label)) %}
                             <span class="badge bg-{{ lc[0] }}">{{ lc[1] }}</span>
                         </td>
-                        <td class="text-muted small">{{ b.created_at }}</td>
+                        <td class="text-muted small">{{ b.created_at | fdatetime }}</td>
                         <td class="text-end text-muted small">{{ b.size_kb }} КБ</td>
                     </tr>
                     {% else %}

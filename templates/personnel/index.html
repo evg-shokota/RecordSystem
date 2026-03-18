@@ -416,7 +416,7 @@ async function submitMove() {
     }
     const result = await apiPost('/personnel/move', { ids, group_id, unit_id, platoon_id });
     if (!result) return;
-    if (result.error) { showToast(result.error, 'danger'); return; }
+    if (result.msg || result.error) { showToast(result.msg || result.error, 'danger'); return; }
     modalMove.hide();
     showToast(`Переміщено ${result.count} осіб`, 'success');
     setTimeout(() => window.location.reload(), 800);
@@ -438,7 +438,7 @@ async function submitArchive() {
     const note = document.getElementById('archiveNote').value;
     const result = await apiPost(`/personnel/${_archivePersonId}/archive`, { reason, note });
     if (!result) return;
-    if (result.error) {
+    if (result.msg || result.error) {
         if (result.items) {
             // є інвентарне майно
             const warn = document.getElementById('archiveInventoryWarning');
@@ -448,7 +448,7 @@ async function submitArchive() {
             ).join('');
             warn.classList.remove('d-none');
         }
-        showToast(result.error, 'danger');
+        showToast(result.msg || result.error, 'danger');
         return;
     }
     modalArchive.hide();
@@ -457,13 +457,14 @@ async function submitArchive() {
 }
 
 // ── Відновлення ──
-async function restorePerson(id) {
-    if (!confirm('Відновити особу з архіву?')) return;
-    const result = await apiPost(`/personnel/${id}/restore`, {});
-    if (!result) return;
-    if (result.error) { showToast(result.error, 'danger'); return; }
-    showToast('Особу відновлено', 'success');
-    setTimeout(() => window.location.reload(), 800);
+function restorePerson(id) {
+    showConfirm('Відновити особу з архіву?', async () => {
+        const result = await apiPost(`/personnel/${id}/restore`, {});
+        if (!result) return;
+        if (result.msg || result.error) { showToast(result.msg || result.error, 'danger'); return; }
+        showToast('Особу відновлено', 'success');
+        setTimeout(() => window.location.reload(), 800);
+    }, { confirmClass: 'btn-primary', confirmLabel: 'Відновити' });
 }
 </script>
 {% endblock %}

@@ -5,15 +5,15 @@
 {% block topbar_actions %}
 {% if inv.status == 'draft' %}
 <form method="POST" action="{{ url_for('invoices.assign_number', inv_id=inv.id) }}" class="d-inline"
-      onsubmit="return confirm('Присвоїти номер накладній? Після цього номер не зміниться.')">
+      data-confirm="Присвоїти номер накладній? Після цього номер не зміниться.">
     <button type="submit" class="btn btn-sm btn-success">
         <i class="bi bi-hash me-1"></i>Присвоїти номер
     </button>
 </form>
 {% endif %}
 {% if inv.status == 'created' %}
-<form method="POST" action="{{ url_for('invoices.issue', inv_id=inv.id) }}" class="d-inline">
-    <button type="submit" class="btn btn-sm btn-info">
+<form method="POST" action="{{ url_for('invoices.issue', inv_id=inv.id) }}" class="d-inline" id="formIssue">
+    <button type="button" class="btn btn-sm btn-info" onclick="confirmIssue()">
         <i class="bi bi-check2 me-1"></i>Видати
     </button>
 </form>
@@ -25,7 +25,7 @@
 {% endif %}
 {% if inv.status in ('created', 'issued', 'received') %}
 <form method="POST" action="{{ url_for('invoices.process', inv_id=inv.id) }}" class="d-inline"
-      onsubmit="return confirm('Провести накладну? Це спишить майно зі складу і запише на картку.')">
+      data-confirm="Провести накладну? Це спишить майно зі складу і запише на картку.">
     <button type="submit" class="btn btn-sm btn-success">
         <i class="bi bi-check2-all me-1"></i>Провести
     </button>
@@ -48,7 +48,7 @@
 {% endif %}
 {% if inv.status in ('draft', 'created', 'cancelled') %}
 <form method="POST" action="{{ url_for('invoices.delete', inv_id=inv.id) }}" class="d-inline"
-      onsubmit="return confirm('Видалити накладну назавжди?')">
+      data-confirm="Видалити накладну назавжди?">
     <button type="submit" class="btn btn-sm btn-outline-danger">
         <i class="bi bi-trash me-1"></i>Видалити
     </button>
@@ -86,12 +86,13 @@
     {% if inv.cancel_comment %} — {{ inv.cancel_comment }}{% endif %}
     {% endif %}
 </div>
-{% if inv.status in ('received', 'processed') and not inv.scan_path %}
+{% if inv.status in ('created', 'issued', 'received', 'processed') and not inv.scan_path and not inv.is_external %}
 <div class="alert alert-warning py-2 mb-3">
     <i class="bi bi-exclamation-triangle me-1"></i>
-    <strong>Увага:</strong> не завантажено скан документа.
-    {% if inv.status != 'processed' %}
-    <button type="button" class="btn btn-sm btn-warning ms-2" id="btnScanUploadAlert">
+    <strong>Увага:</strong> не завантажено скан підписаного документа.
+    {% if inv.status not in ('processed',) %}
+    <button type="button" class="btn btn-sm btn-warning ms-2" id="btnScanUploadAlert"
+            onclick="document.getElementById('btnScanUpload').click()">
         <i class="bi bi-paperclip me-1"></i>Завантажити скан
     </button>
     {% endif %}
@@ -133,7 +134,7 @@
                     </tr>
                     <tr>
                         <td class="text-muted">Дійсна до:</td>
-                        <td>{{ inv.valid_until or '—' }}</td>
+                        <td>{{ inv.valid_until | fdate }}</td>
                     </tr>
                     {% if inv.notes %}
                     <tr>
@@ -323,7 +324,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Закрити</button>
-                    <button type="submit" class="btn btn-danger">Скасувати накладну</button>
+                    <button type="submit" class="btn btn-outline-danger">Скасувати накладну</button>
                 </div>
             </div>
         </form>
@@ -860,19 +861,20 @@ document.getElementById('btnDocSave').addEventListener('click', async () => {
 });
 
 // ── Скинути до шаблону ────────────────────────────────────────
-document.getElementById('btnDocReset').addEventListener('click', async () => {
-    if (!confirm('Скинути документ до шаблону? Усі зміни буде втрачено.')) return;
-    const btn = document.getElementById('btnDocReset');
-    btn.disabled = true;
-    try {
-        const resp = await fetch(`/invoices/${DOC_INV_ID}/reset-body`, {method: 'POST'});
-        if (resp.ok) {
-            docEditorLoaded = false;
-            docEditor.innerHTML = '<p class="text-muted text-center"><em>Завантаження...</em></p>';
-            await openDocEditor();
-        }
-    } catch(e) {}
-    btn.disabled = false;
+document.getElementById('btnDocReset').addEventListener('click', () => {
+    showConfirm('Скинути документ до шаблону? Усі зміни буде втрачено.', async () => {
+        const btn = document.getElementById('btnDocReset');
+        btn.disabled = true;
+        try {
+            const resp = await fetch(`/invoices/${DOC_INV_ID}/reset-body`, {method: 'POST'});
+            if (resp.ok) {
+                docEditorLoaded = false;
+                docEditor.innerHTML = '<p class="text-muted text-center"><em>Завантаження...</em></p>';
+                await openDocEditor();
+            }
+        } catch(e) {}
+        btn.disabled = false;
+    }, { title: 'Скинути зміни', confirmLabel: 'Скинути', confirmClass: 'btn-warning' });
 });
 
 // ── Підсвітка при вставці ─────────────────────────────────────
@@ -930,7 +932,7 @@ document.getElementById('btnReceiveConfirm').addEventListener('click', async () 
     });
     const data = await res.json();
     if (data.ok) { receiveModal.hide(); showToast('Статус оновлено', 'success'); setTimeout(() => location.reload(), 600); }
-    else showToast(data.error || 'Помилка', 'danger');
+    else showToast(data.msg || data.error || 'Помилка', 'danger');
 });
 {% endif %}
 
@@ -950,16 +952,48 @@ document.getElementById('btnScanSave').addEventListener('click', async () => {
     const res  = await fetch(`/invoices/${INV_ID}/scan`, { method: 'POST', body: fd });
     const data = await res.json();
     if (data.ok) { scanModal.hide(); showToast('Скан завантажено', 'success'); setTimeout(() => location.reload(), 600); }
-    else showToast(data.error || 'Помилка', 'danger');
+    else showToast(data.msg || data.error || 'Помилка', 'danger');
 });
 
-document.getElementById('btnScanDelete')?.addEventListener('click', async () => {
-    if (!confirm('Видалити скан?')) return;
-    const res  = await fetch(`/invoices/${INV_ID}/scan/delete`, { method: 'POST' });
-    const data = await res.json();
-    if (data.ok) { scanModal.hide(); showToast('Скан видалено', 'success'); setTimeout(() => location.reload(), 600); }
-    else showToast(data.error || 'Помилка', 'danger');
+document.getElementById('btnScanDelete')?.addEventListener('click', () => {
+    showConfirm('Видалити скан?', async () => {
+        const res  = await fetch(`/invoices/${INV_ID}/scan/delete`, { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) { scanModal.hide(); showToast('Скан видалено', 'success'); setTimeout(() => location.reload(), 600); }
+        else showToast(data.msg || data.error || 'Помилка', 'danger');
+    });
 });
+{% endif %}
+
+// ── Видати: перевірка скану ───────────────────────────────────
+{% if inv.status == 'created' %}
+const HAS_SCAN = {{ 'true' if inv.scan_path else 'false' }};
+const IS_EXTERNAL = {{ 'true' if inv.is_external else 'false' }};
+
+function confirmIssue() {
+    if (HAS_SCAN || IS_EXTERNAL) {
+        // Скан є або зовнішня — підтверджуємо напряму
+        showConfirm('Позначити накладну як видану?', () => {
+            document.getElementById('formIssue').submit();
+        }, { confirmClass: 'btn-info', confirmLabel: 'Видати' });
+    } else {
+        // Скану немає — попередження з можливістю відкрити скан
+        showConfirm(
+            'Скан документа не завантажено. Рекомендується завантажити підписану накладну перед видачею. Продовжити без скану?',
+            () => { document.getElementById('formIssue').submit(); },
+            {
+                title: 'Видати без скану?',
+                confirmLabel: 'Видати без скану',
+                confirmClass: 'btn-warning',
+                cancelLabel: 'Завантажити скан',
+                onCancel: () => {
+                    const scanM = bootstrap.Modal.getOrCreateInstance(document.getElementById('scanModal'));
+                    scanM.show();
+                }
+            }
+        );
+    }
+}
 {% endif %}
 </script>
 {% endblock %}

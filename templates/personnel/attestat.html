@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Атестат — {{ person.last_name }} {{ person.first_name }}{% endblock %}
+{% block title %}Атестат — {{ person.last_name | upper }} {{ person.first_name }}{% endblock %}
 {% block page_title %}Речовий атестат{% endblock %}
 
 {% block topbar_actions %}
@@ -17,187 +17,325 @@
 <div class="alert alert-warning">
     <i class="bi bi-exclamation-triangle me-2"></i>
     На цій особі не призначено норму забезпечення та немає виданого майна.
-    Призначте норму у <a href="{{ url_for('personnel.view', person_id=person.id) }}">картці особи</a>.
+    Призначте норму у <a href="{{ url_for('personnel.card', person_id=person.id) }}">картці особи</a>.
 </div>
 {% else %}
 
-{# ── Атестат (A4) ── #}
+{# ── Загальна к-сть предметів ── #}
+{%- set total_items = namespace(n=0) %}
+{%- for gname, positions in groups.items() %}
+{%- for pos in positions %}
+{%- if pos.att_show and pos.att_qty %}{%- set total_items.n = total_items.n + (pos.att_qty | int) %}{%- endif %}
+{%- endfor %}
+{%- endfor %}
+
+<div class="att-font-controls">
+    <label>Розмір шрифту:</label>
+    <input type="range" id="attFontRange" min="8" max="16" step="0.5" value="12">
+    <span id="attFontVal">12</span> pt
+</div>
+
 <div class="attestat-page" id="attestatDoc">
 
-    {# Шапка #}
-    <div class="d-flex justify-content-between mb-2 att-header">
-        <div>
-            <strong>ПОГОДЖЕНО</strong><br>
-            {% if settings.chief_is_tvo == '1' %}
-            ТВО {{ settings.chief_rank }}<br>
-            ________________ {{ settings.chief_tvo_name }}
-            {% else %}
-            {{ settings.chief_rank }}<br>
-            ________________ {{ settings.chief_name }}
-            {% endif %}
-            <br>"____" ____________ {{ today[-4:] }} р.
-        </div>
-        <div class="text-center">
-            <div style="font-size:1rem; font-weight:bold; text-transform:uppercase;">
-                РЕЧОВИЙ АТЕСТАТ
-            </div>
-            <div class="text-muted" style="font-size:0.75rem;">
-                (наказ МОУ №232, Норма №1)
-            </div>
-        </div>
-        <div class="text-end">
-            <strong>ЗАТВЕРДЖУЮ</strong><br>
-            {% if settings.chief_is_tvo == '1' %}
-            ТВО {{ settings.chief_tvo_rank }}<br>
-            ________________ {{ settings.chief_tvo_name }}
-            {% else %}
-            {{ settings.chief_rank }}<br>
-            ________________ {{ settings.chief_name }}
-            {% endif %}
-            <br>"____" ____________ {{ today[-4:] }} р.
-        </div>
+    {# ── Заголовок ── #}
+    <div class="att-title">
+        АТЕСТАТ<br>
+        військовослужбовця №&nbsp;{{ person.card_number or person.id }}
     </div>
 
-    {# Дані особи #}
-    <table class="table table-borderless table-sm mb-2" style="font-size:0.82rem;">
+    <div class="att-fio">
+        {{ person.rank or '' }} {{ person.last_name | upper }} {{ person.first_name }}{% if person.middle_name %} {{ person.middle_name }}{% endif %}
+    </div>
+
+    {# ── Реєстраційна таблиця — всі поля редаговані inline ── #}
+    <table class="att-reg-table">
         <tr>
-            <td style="width:50%">
-                <strong>Звання:</strong> {{ person.rank or '—' }}<br>
-                <strong>ПІБ:</strong> {{ person.last_name | upper }} {{ person.first_name }} {{ person.middle_name or '' }}<br>
-                <strong>Посада:</strong> {{ person.position or '—' }}
-            </td>
+            <td class="att-reg-hdr">Реєстраційний номер</td>
+            <td class="att-reg-hdr" style="width:80px;">Номер аркуша</td>
+            <td class="att-reg-hdr">Номер документа</td>
+            <td class="att-reg-hdr">Дата документа</td>
+        </tr>
+        <tr>
+            <td><span class="att-editable" data-field="reg_number"></span></td>
+            <td><span class="att-editable" data-field="reg_sheet">1</span></td>
+            <td><span class="att-editable" data-field="reg_doc_number">{% if person.enroll_order %}№{{ person.enroll_order }}{% endif %}</span></td>
+            <td><span class="att-editable" data-field="reg_doc_date">{% if person.enroll_date %}{{ person.enroll_date | fdate }}{% endif %}</span></td>
+        </tr>
+        <tr>
+            <td class="att-reg-hdr">Підстава (мета) операції</td>
+            <td class="att-reg-hdr">Служба</td>
+            <td class="att-reg-hdr">Відправник (військова частина, підрозділ)</td>
+            <td class="att-reg-hdr">Отримувач (військова частина, підрозділ)</td>
+        </tr>
+        <tr>
+            {# Підстава — вільний ввід або зі списку #}
             <td>
-                <strong>Підрозділ:</strong>
-                {{ person.battalion_name or '' }}
-                {% if person.unit_name %} / {{ person.unit_name }}{% endif %}
-                {% if person.platoon_name %} / {{ person.platoon_name }}{% endif %}<br>
-                <strong>Дата зарахування:</strong> {{ person.enlist_date or '—' }}<br>
-                <strong>Наказ:</strong> {{ person.enlist_order or '—' }}
+                <span class="att-editable att-editable--select"
+                      data-field="reg_basis"
+                      data-options="{{ basis_list | tojson | e }}"></span>
+            </td>
+            {# Служба — зі значенням з налаштувань, але редаговане #}
+            <td><span class="att-editable" data-field="reg_service">{{ attestat_service }}</span></td>
+            {# Відправник — з налаштувань, незмінний при друці #}
+            <td class="att-readonly">{{ settings.unit_name or '' }}</td>
+            {# Отримувач — вільний ввід або зі списку #}
+            <td>
+                <span class="att-editable att-editable--select"
+                      data-field="reg_recipient"
+                      data-options="{{ recipient_list | tojson | e }}"></span>
             </td>
         </tr>
     </table>
 
-    {# Таблиця майна — рядки=позиції норми, колонки=видачі #}
-    <div class="table-responsive">
-    <table class="table table-bordered table-sm mb-2" style="font-size:0.76rem;" id="attestatTable">
-        <thead class="table-light">
+    {# ── Основна таблиця майна ── #}
+    <table class="att-main-table">
+        <thead>
             <tr>
-                <th class="text-center" style="width:28px">№</th>
-                <th>Найменування предметів речового майна</th>
-                <th class="text-center" style="width:36px">Од.</th>
-                {% if has_norm %}
-                <th class="text-center" style="width:44px">Норма</th>
-                {% endif %}
-                {% for i in range(max_issuances) %}
-                <th class="text-center" colspan="3" style="min-width:120px">
-                    Видача {{ i+1 }}
-                </th>
-                {% endfor %}
-                <th class="text-center" style="width:56px">Всього к-сть</th>
-                <th class="text-center" style="width:72px">Сума, грн</th>
-            </tr>
-            <tr class="att-subhead">
-                <th></th>
-                <th></th>
-                <th></th>
-                {% if has_norm %}<th></th>{% endif %}
-                {% for i in range(max_issuances) %}
-                <th class="text-center" style="width:52px">Дата</th>
-                <th class="text-center" style="width:36px">К-сть</th>
-                <th class="text-center" style="width:34px">Кат.</th>
-                {% endfor %}
-                <th></th>
-                <th></th>
+                <th class="center" style="width:24px;">№<br>з/п</th>
+                <th>Найменування військового майна</th>
+                <th class="center" style="width:30px;">Код</th>
+                <th class="center" style="width:30px;">Одиниця</th>
+                <th class="center" style="width:44px;">Ціна</th>
+                <th class="center" style="width:34px;">Кате&shy;горія</th>
+                <th class="center" style="width:36px;">Кіль&shy;кість</th>
+                <th class="center" style="width:56px;">Сума, грн.</th>
+                <th class="center" style="width:52px;">Дата видачі</th>
+                <th class="center" style="width:60px;">Кількість (прописом)</th>
             </tr>
         </thead>
         <tbody>
-            {% for group_name, positions in groups.items() %}
-            <tr class="table-secondary">
-                <td colspan="{{ 3 + (1 if has_norm else 0) + max_issuances * 3 + 2 }}" class="fw-bold py-1" style="font-size:0.73rem;">{{ group_name }}</td>
-            </tr>
+        {%- set row_num = namespace(n=0) %}
+        {% for gname, positions in groups.items() %}
             {% for pos in positions %}
+            {%- if pos.att_show %}
+            {%- set row_num.n = row_num.n + 1 %}
+            {%- set iss_last = pos.issuances[-1] if pos.issuances else none %}
             <tr>
-                <td class="text-center text-muted">{{ pos.seq }}</td>
-                <td>{{ pos.name }}</td>
-                <td class="text-center">{{ pos.unit }}</td>
-                {% if has_norm %}
-                <td class="text-center text-muted small">{{ pos.norm_qty|int if pos.norm_qty else '—' }}</td>
-                {% endif %}
-                {% for iss in pos.issuances %}
-                <td class="text-center text-nowrap">{{ iss.date or '—' }}</td>
-                <td class="text-center fw-semibold">{{ iss.qty|int if iss.qty == iss.qty|int else iss.qty }}</td>
-                <td class="text-center">{{ iss.category or '—' }}</td>
-                {% endfor %}
-                {# Заповнюємо порожні колонки якщо видач менше max #}
-                {% for i in range(max_issuances - pos.issuances|length) %}
-                <td></td><td></td><td></td>
-                {% endfor %}
-                <td class="text-center fw-semibold">
-                    {{ pos.total_qty|int if pos.total_qty == pos.total_qty|int else pos.total_qty }}
+                <td class="center">{{ row_num.n }}</td>
+                <td>{{ pos.name }}{% if pos.att_is_partial %} (неповна){% endif %}</td>
+                <td class="center"></td>
+                <td class="center">{{ pos.unit }}</td>
+                <td class="center">{% if iss_last and iss_last.price and iss_last.price > 0 %}{{ "%.2f"|format(iss_last.price) }}{% endif %}</td>
+                <td class="center">{% if iss_last and iss_last.category %}{{ iss_last.category }}{% endif %}</td>
+                <td class="center">{{ pos.att_qty | int if pos.att_qty == pos.att_qty | int else pos.att_qty }}</td>
+                <td class="right">{% if pos.total_sum and pos.total_sum > 0 %}{{ "%.2f"|format(pos.total_sum) }}{% endif %}</td>
+                <td class="center">
+                    {% if pos.att_date_label %}{{ pos.att_date_label }}{% elif iss0 and iss0.date %}{{ iss0.date | fdate }}{% endif %}
                 </td>
-                <td class="text-end">
-                    {% if pos.total_sum %}{{ "%.2f"|format(pos.total_sum) }}{% else %}—{% endif %}
-                </td>
+                <td class="center">({{ total_qty_words[pos.seq] }})</td>
             </tr>
+            {%- endif %}
             {% endfor %}
-            {% endfor %}
+        {% endfor %}
         </tbody>
         <tfoot>
-            <tr class="table-light fw-bold">
-                <td colspan="{{ 2 + (1 if has_norm else 0) + max_issuances * 3 + 2 }}" class="text-end">Загальна сума:</td>
-                <td class="text-end">{{ "%.2f"|format(total_sum) }}</td>
+            <tr>
+                <td colspan="6" class="right">Загальна сума:</td>
+                <td class="center">{{ total_items_count }}</td>
+                <td class="right">{% if total_sum > 0 %}{{ "%.2f"|format(total_sum) }}{% endif %}</td>
+                <td colspan="2"></td>
             </tr>
         </tfoot>
     </table>
+
+    {# ── Підсумок ── #}
+    <div class="att-total">
+        Усього предметів: {{ total_items_count }} ({{ total_items_words }})
     </div>
 
-    {# Підписи #}
-    <div class="d-flex justify-content-between mt-3" style="font-size:0.8rem;">
-        <div>
-            Начальник речової служби<br>
-            {{ settings.clerk_rank }} ________________ {{ settings.clerk_name }}<br>
-            "____" ____________ {{ today[-4:] }} р.
-        </div>
-        <div class="text-end">
-            Майно отримав<br>
-            {{ person.rank or '' }} ________________
-            {{ person.last_name | upper }} {{ person.first_name[0] if person.first_name else '' }}.{{ person.middle_name[0] if person.middle_name else '' }}.<br>
-            "____" ____________ {{ today[-4:] }} р.
-        </div>
+    {# ── Текст підтвердження ── #}
+    <div class="att-confirm">
+        Перелічене в атестаті військовослужбовцю військове майно, його кількість, вартість, якість і строки видавання вказані вірно
     </div>
+
+    {# ── Підписи ── #}
+    <div class="att-sign-row">
+        {{ person.rank or '' }} <span class="att-line"></span> {{ person.last_name | upper }} {{ person.first_name }} {{ person.middle_name or '' }}
+    </div>
+    <div class="att-sign-label">(військове звання, ініціали та підпис особи, якій видано атестат)</div>
+
+    <div class="att-sign-row" style="margin-top:18pt;">
+        {% if settings.chief_is_tvo == '1' %}ТВО {{ settings.chief_tvo_rank }}{% else %}{{ settings.clerk_rank }}{% endif %}
+        <span class="att-line"></span>
+        {% if settings.chief_is_tvo == '1' %}{{ settings.chief_tvo_name }}{% else %}{{ settings.clerk_name }}{% endif %}
+    </div>
+    <div class="att-sign-label">(ТВО НРСТ служби, звання, підпис, прізвище, ініціали)</div>
 
 </div>
 {% endif %}
-
 {% endblock %}
 
 {% block scripts %}
 <style>
 .attestat-page {
-    background: white;
-    padding: 20px 24px;
-    max-width: 1100px;
+    background: #ffffff !important;
+    color: #000000 !important;
+    color-scheme: light;
+    padding: 20mm;
+    max-width: 210mm;
     margin: 0 auto;
-    box-shadow: 0 0 8px rgba(0,0,0,0.1);
-    border-radius: 4px;
+    box-shadow: 0 0 16px rgba(0,0,0,.3);
+    border-radius: 3px;
+    font-size: 12pt;
+    font-family: "Times New Roman", Times, serif;
 }
-.att-header { font-size: 0.8rem; }
-.att-subhead th { font-weight: normal; font-size: 0.7rem; color: #555; }
+.attestat-page * { color: inherit; box-sizing: border-box; font-weight: normal; }
+
+.att-title { text-align: center; font-size: 14pt; font-weight: normal; margin-bottom: 8pt; line-height: 1.6; }
+.att-fio   { font-size: 12pt; margin-bottom: 10pt; }
+
+/* ── Налаштування розміру шрифту ── */
+.att-font-controls { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 8px; }
+.att-font-controls label { color: #555; }
+.att-font-controls input[type=range] { width: 120px; cursor: pointer; }
+.att-font-controls span { min-width: 28px; text-align: center; font-weight: 500; }
+@media print { .att-font-controls { display: none !important; } }
+
+/* ── Реєстраційна таблиця ── */
+.att-reg-table { width: 100%; border-collapse: collapse; margin-bottom: 10pt; }
+.att-reg-table td { border: 1px solid #000000; padding: 3px 5px; vertical-align: middle; text-align: center; }
+.att-reg-hdr { font-size: 0.75em; text-align: center; }
+.att-readonly { text-align: center; }
+
+/* Редаговані поля */
+.att-editable {
+    display: block;
+    min-height: 18px;
+    width: 100%;
+    cursor: pointer;
+    border-radius: 2px;
+    padding: 1px 3px;
+    text-align: center;
+}
+.att-editable:hover { background: #f0f4ff; }
+.att-editable input,
+.att-editable select { width: 100%; border: none; outline: none; background: transparent; font-size: inherit; font-family: inherit; padding: 0; text-align: center; color: #000; }
+
+/* ── Основна таблиця ── */
+.att-main-table { width: 100%; border-collapse: collapse; margin-bottom: 8pt; }
+.att-main-table th { border: 1px solid #000000; padding: 3px; text-align: center; font-weight: normal; line-height: 1.3; }
+.att-main-table td { border: 1px solid #000000; padding: 2px 3px; vertical-align: middle; }
+.att-main-table tfoot td { border: 1px solid #000000; }
+
+.center { text-align: center; }
+.right  { text-align: right; }
+
+.att-total   { text-align: right; margin: 6pt 0; }
+.att-confirm { margin: 10pt 0; font-size: 0.9em; line-height: 1.5; }
+.att-sign-row { margin-top: 14pt; display: flex; align-items: baseline; gap: 6px; }
+.att-line { display: inline-block; flex: 1; border-bottom: 1px solid #000000; min-width: 80px; margin: 0 4px; }
+.att-sign-label { font-size: 0.75em; text-align: center; margin-top: 2pt; margin-bottom: 4pt; }
 
 @media print {
-    .app-sidebar, .app-topbar, .btn, .alert { display: none !important; }
+    .app-sidebar, .app-topbar, .btn, .alert, .breadcrumb { display: none !important; }
     .app-main { margin: 0 !important; padding: 0 !important; }
     .app-content { padding: 0 !important; }
-    .attestat-page {
-        box-shadow: none;
-        padding: 6mm 8mm;
-        max-width: 100%;
-        margin: 0;
-    }
-    .table { font-size: 8pt !important; }
-    .table thead { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; }
-    .table-secondary { background: #e8e8e8 !important; -webkit-print-color-adjust: exact; }
-    @page { size: A4 landscape; margin: 8mm 8mm 8mm 12mm; }
+    .attestat-page { box-shadow: none; padding: 20mm; max-width: 100%; margin: 0; }
+    .att-editable:hover { background: transparent; }
+    .att-editable input, .att-editable select { display: none; }
+    @page { size: A4 portrait; margin: 0; }
 }
 </style>
+
+<script>
+const ATT_PERSON_ID = {{ person.id }};
+const ATT_DATA_URL  = `/personnel/${ATT_PERSON_ID}/attestat/data`;
+
+// ── Застосувати розмір шрифту ──
+function applyFontSize(pt) {
+    document.getElementById('attestatDoc').style.fontSize = pt + 'pt';
+    document.getElementById('attFontVal').textContent = pt;
+    document.getElementById('attFontRange').value = pt;
+}
+
+// ── Слайдер розміру шрифту ──
+document.getElementById('attFontRange').addEventListener('input', function() {
+    applyFontSize(this.value);
+});
+document.getElementById('attFontRange').addEventListener('change', function() {
+    saveField('reg_font_size', this.value);
+});
+
+// ── Завантажити збережені значення з сервера і заповнити поля ──
+fetch(ATT_DATA_URL)
+    .then(r => r.json())
+    .then(d => {
+        if (!d.ok || !d.data) return;
+        // Розмір шрифту
+        if (d.data.reg_font_size) applyFontSize(d.data.reg_font_size);
+        // Текстові поля
+        document.querySelectorAll('.att-editable[data-field]').forEach(el => {
+            const val = d.data[el.dataset.field];
+            if (val) { el.dataset.value = val; el.textContent = val; }
+        });
+    })
+    .catch(() => {});
+
+// ── Зберегти одне поле на сервері ──
+function saveField(field, value) {
+    fetch(ATT_DATA_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({field, value})
+    }).catch(() => {});
+}
+
+// ── Inline-edit для реєстраційних полів ──
+document.querySelectorAll('.att-editable').forEach(el => {
+    const isSelect = el.classList.contains('att-editable--select');
+    const options  = isSelect ? JSON.parse(el.dataset.options || '[]') : [];
+
+    el.addEventListener('click', () => {
+        if (el.querySelector('input, select')) return;
+
+        const current = el.dataset.value || el.textContent.trim();
+
+        if (isSelect && options.length) {
+            const sel = document.createElement('select');
+            sel.innerHTML = `<option value="">— обрати —</option>` +
+                options.map(o => `<option value="${o}"${o===current?' selected':''}>${o}</option>`).join('') +
+                `<option value="__custom__">✎ Інше...</option>`;
+            el.innerHTML = '';
+            el.appendChild(sel);
+            sel.focus();
+
+            sel.addEventListener('change', () => {
+                if (sel.value === '__custom__') showTextInput(el, current);
+                else commit(el, sel.value);
+            });
+            sel.addEventListener('blur', () => {
+                if (sel.value && sel.value !== '__custom__') commit(el, sel.value);
+                else restore(el, current);
+            });
+        } else {
+            showTextInput(el, current);
+        }
+    });
+});
+
+function showTextInput(el, current) {
+    const inp = document.createElement('input');
+    inp.type  = 'text';
+    inp.value = current;
+    inp.style.textAlign = 'center';
+    el.innerHTML = '';
+    el.appendChild(inp);
+    inp.focus(); inp.select();
+    inp.addEventListener('blur',    () => commit(el, inp.value.trim()));
+    inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter')  inp.blur();
+        if (e.key === 'Escape') restore(el, current);
+    });
+}
+
+function commit(el, value) {
+    el.dataset.value = value;
+    el.textContent   = value || '';
+    if (el.dataset.field) saveField(el.dataset.field, value);
+}
+
+function restore(el, original) {
+    el.textContent = original || '';
+}
+</script>
 {% endblock %}

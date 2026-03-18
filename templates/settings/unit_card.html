@@ -130,8 +130,14 @@
                     {{ personnel | selectattr('is_active', 'equalto', 1) | list | length }}
                 </span>
             </div>
+            {% if personnel %}
+            <div class="px-3 pt-2 pb-1">
+                <input type="text" id="personnelTableSearch" class="form-control form-control-sm"
+                       placeholder="Пошук за прізвищем або ім'ям...">
+            </div>
+            {% endif %}
             <div class="card-body p-0" style="max-height:380px;overflow-y:auto">
-                <table class="table table-sm mb-0 align-middle">
+                <table class="table table-sm mb-0 align-middle" id="personnelTable">
                     <thead class="table-light sticky-top">
                         <tr>
                             <th>ПІБ</th>
@@ -141,7 +147,8 @@
                     </thead>
                     <tbody>
                         {% for p in personnel %}
-                        <tr class="{{ '' if p.is_active else 'text-muted' }}">
+                        <tr class="{{ '' if p.is_active else 'text-muted' }}"
+                            data-pname="{{ (p.last_name ~ ' ' ~ p.first_name ~ ' ' ~ (p.middle_name or '')) | lower }}">
                             <td>
                                 <a href="{{ url_for('personnel.card', person_id=p.id) }}"
                                    class="text-decoration-none">
@@ -287,7 +294,18 @@ const respModal = new bootstrap.Modal(document.getElementById('modalResp'));
 let editRid = null;
 let selectedPid = null;
 
-// ── Пошук по списку о/с
+// ── Пошук по таблиці о/с (у картці підрозділу)
+const personnelTableSearch = document.getElementById('personnelTableSearch');
+if (personnelTableSearch) {
+    personnelTableSearch.addEventListener('input', function() {
+        const q = this.value.toLowerCase();
+        document.querySelectorAll('#personnelTable tbody tr[data-pname]').forEach(tr => {
+            tr.style.display = tr.dataset.pname.includes(q) ? '' : 'none';
+        });
+    });
+}
+
+// ── Пошук по списку о/с (у модалці призначення)
 document.getElementById('personnelSearch').addEventListener('input', function() {
     const q = this.value.toLowerCase();
     document.querySelectorAll('.personnel-option').forEach(el => {
@@ -361,7 +379,7 @@ document.getElementById('btnSaveResp').addEventListener('click', async () => {
 
     const res  = await fetch(url, { method: 'POST', body: fd });
     const data = await res.json();
-    if (!data.ok) { showToast(data.error || 'Помилка', 'danger'); return; }
+    if (!data.ok) { showToast(data.msg || data.error || 'Помилка', 'danger'); return; }
 
     if (editRid) {
         const row = document.querySelector(`tr[data-rid="${editRid}"]`);
@@ -424,7 +442,7 @@ function toggleResp(btn) {
     const rid = btn.dataset.rid;
     fetch(`/settings/units/responsible/${rid}/toggle`, { method: 'POST' })
         .then(r => r.json()).then(data => {
-            if (!data.ok) { showToast(data.error, 'danger'); return; }
+            if (!data.ok) { showToast(data.msg || data.error, 'danger'); return; }
             const row = btn.closest('tr');
             const badge = row.querySelector('td:nth-child(4) .badge');
             if (data.is_active) {
@@ -444,12 +462,13 @@ function toggleResp(btn) {
 
 // ── Видалити
 function delResp(btn) {
-    if (!confirm(`Зняти призначення для "${btn.dataset.name}"?`)) return;
-    fetch(`/settings/units/responsible/${btn.dataset.rid}/delete`, { method: 'POST' })
-        .then(r => r.json()).then(data => {
-            if (data.ok) { btn.closest('tr').remove(); showToast('Видалено', 'success'); }
-            else showToast(data.error, 'danger');
-        });
+    showConfirm(`Зняти призначення для "${btn.dataset.name}"?`, () => {
+        fetch(`/settings/units/responsible/${btn.dataset.rid}/delete`, { method: 'POST' })
+            .then(r => r.json()).then(data => {
+                if (data.ok) { btn.closest('tr').remove(); showToast('Видалено', 'success'); }
+                else showToast(data.msg || data.error, 'danger');
+            });
+    });
 }
 
 // ── Обробники для існуючих кнопок

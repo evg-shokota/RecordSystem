@@ -1,624 +1,726 @@
 {% extends "base.html" %}
-{% block title %}{{ person.last_name }} {{ person.first_name }} — {{ unit_name }}{% endblock %}
-{% block page_title %}Картка особового складу{% endblock %}
+{% block title %}{{ person.last_name | upper }} {{ person.first_name }} — {{ person.unit_name or person.battalion_name or 'Особовий склад' }}{% endblock %}
+{% block page_title %}{% endblock %}
 
 {%- macro abbr_unit(u) -%}
 {%- set u = u | lower | trim -%}
 {%- if u == 'штука' or u == 'шт' %}шт.
 {%- elif u == 'комплект' %}к-кт.
 {%- elif u == 'одиниця' %}од.
-{%- elif u == 'пара' %}пара
+{%- elif u == 'пара' %}пар.
 {%- else %}{{ u }}{%- endif -%}
 {%- endmacro -%}
+
 
 {% block topbar_actions %}
 <a href="{{ url_for('personnel.index') }}" class="btn btn-sm btn-outline-secondary">
     <i class="bi bi-arrow-left me-1"></i>До списку
 </a>
-<a href="{{ url_for('personnel.edit', person_id=person.id) }}" class="btn btn-sm btn-primary">
-    <i class="bi bi-pencil me-1"></i>Редагувати
-</a>
-<a href="{{ url_for('personnel.property_card_print', person_id=person.id) }}"
-   class="btn btn-sm btn-outline-secondary">
-    <i class="bi bi-card-list me-1"></i>Картка майна
-</a>
-<a href="{{ url_for('personnel.attestat', person_id=person.id) }}" class="btn btn-sm btn-outline-secondary">
-    <i class="bi bi-file-earmark-person me-1"></i>Атестат
-</a>
-{% if person.is_active %}
-<button class="btn btn-sm btn-outline-success js-create-doc-btn"
-        data-person-id="{{ person.id }}"
-        data-back="{{ request.url }}">
-    <i class="bi bi-file-earmark-plus me-1"></i>Створити документ
-</button>
-<a href="{{ url_for('attestat_import.index', person_id=person.id) }}" class="btn btn-sm btn-outline-info">
-    <i class="bi bi-box-arrow-in-down me-1"></i>Прийом з атестату
-</a>
-<button class="btn btn-sm btn-outline-warning" onclick="openArchiveModal()">
-    <i class="bi bi-archive me-1"></i>Архівувати
-</button>
-{% else %}
-<button class="btn btn-sm btn-outline-success" onclick="restorePerson()">
-    <i class="bi bi-arrow-counterclockwise me-1"></i>Відновити
-</button>
-{% endif %}
-{%- for action in slot('personnel.card.actions', person=person) %}
-<a href="{{ action.url }}" class="btn btn-sm {{ action.class|default('btn-outline-secondary') }}">
-    <i class="{{ action.icon }} me-1"></i>{{ action.label }}
-</a>
-{%- endfor %}
 {% endblock %}
 
 {% block content %}
 
-{# ── Шапка картки ── #}
-<div class="card mb-3">
-    <div class="card-body">
-        <div class="d-flex align-items-start gap-4">
-            {# Фото або заглушка + upload #}
-            <div class="flex-shrink-0">
-                <div class="position-relative" style="width:80px;">
-                    <div id="photoWrap">
-                    {% if person.photo_path %}
-                    <img id="photoImg" src="{{ person.photo_path }}" alt="фото"
-                         class="rounded border" style="width:80px;height:100px;object-fit:cover;">
-                    {% else %}
-                    <div id="photoImg" class="d-flex align-items-center justify-content-center rounded border bg-light"
-                         style="width:80px;height:100px;">
-                        <i class="bi bi-person-fill text-secondary" style="font-size:2.5rem;"></i>
-                    </div>
-                    {% endif %}
-                    </div>
-                    {# Кнопки управління фото #}
-                    <div class="d-flex gap-1 mt-1">
-                        <label class="btn btn-outline-secondary btn-sm flex-fill p-1" style="font-size:10px;"
-                               title="Завантажити фото" for="photoInput">
-                            <i class="bi bi-camera"></i>
-                        </label>
-                        {% if person.photo_path %}
-                        <button class="btn btn-outline-danger btn-sm p-1" style="font-size:10px;"
-                                title="Видалити фото" onclick="deletePhoto()">
-                            <i class="bi bi-trash"></i>
-                        </button>
+{# ════════════════════════════════════════════
+   HERO — профіль особи
+════════════════════════════════════════════ #}
+{%- set _is_active = person.is_active %}
+{%- set _accent = 'danger' if not _is_active else
+    ('warning' if person.group_type in ('szch','missing') else
+    ('secondary' if person.group_type == 'deceased' else 'primary')) %}
+
+<div class="pc-hero mb-4">
+    {# Акцентна смуга #}
+    <div class="pc-hero__bar pc-hero__bar--{{ _accent }}"></div>
+
+    <div class="pc-hero__body">
+
+        {# ── ЛІВА ПАНЕЛЬ: тільки аватар ── #}
+        <div class="pc-hero__left">
+            <div class="pc-avatar-wrap">
+                <div id="photoWrap">
+                {% if person.photo_path %}
+                <img id="photoImg_el" src="{{ person.photo_path }}" alt="фото" class="pc-avatar">
+                {% else %}
+                <div id="photoImg_el" class="pc-avatar pc-avatar--initials pc-avatar--{{ _accent }}">
+                    {{ person.last_name[0] | upper }}{{ person.first_name[0] | upper if person.first_name else '' }}
+                </div>
+                {% endif %}
+                </div>
+                <label class="pc-avatar__upload" for="photoInput" title="Змінити фото">
+                    <i class="bi bi-camera-fill"></i>
+                </label>
+                <input type="file" id="photoInput" accept=".jpg,.jpeg,.png" class="d-none" onchange="uploadPhoto(this)">
+                {% if person.photo_path %}
+                <div class="pc-avatar-delete">
+                    <button class="btn btn-outline-danger btn-sm py-0 px-2" style="font-size:11px;" onclick="deletePhoto()" title="Видалити фото">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {# ── ЦЕНТРАЛЬНА ПАНЕЛЬ: ім'я + звання + кнопки ── #}
+        <div class="pc-hero__info">
+            {# Ім'я + бейджі статусу #}
+            <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                <h2 class="pc-hero__name mb-0">
+                    {{ person.last_name | upper }}
+                    <span class="pc-hero__name--light">{{ person.first_name }}{% if person.middle_name %} {{ person.middle_name }}{% endif %}</span>
+                </h2>
+                {% if not _is_active %}
+                <span class="badge rounded-pill bg-secondary">АРХІВ</span>
+                {% endif %}
+                {% if person.group_name %}
+                    {%- set gc = {'active':'success','dismissed':'secondary','szch':'warning','deceased':'dark','missing':'danger'} %}
+                    {%- set c = gc.get(person.group_type, 'secondary') %}
+                    <span class="badge rounded-pill bg-{{ c }}-subtle text-{{ c }} border border-{{ c }}-subtle">{{ person.group_name }}</span>
+                {% endif %}
+            </div>
+
+            {# Звання + посада + категорія #}
+            <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+                <div class="pc-hero__sub">
+                    {% if rank_insignia %}<span class="pc-insignia">{{ rank_insignia }}</span>{% endif %}
+                    {% if person.rank %}{{ person.rank }}{% endif %}
+                    {% if person.position %} · {{ person.position }}{% endif %}
+                </div>
+                {%- set _cat_label = 'Офіцер' if rank_category == 'officer' else ('Сержант' if rank_category == 'nco' else 'Солдат') %}
+                {%- set _cat_color = 'primary' if rank_category == 'officer' else ('warning' if rank_category == 'nco' else 'secondary') %}
+                <span class="badge pc-cat-badge bg-{{ _cat_color }}-subtle text-{{ _cat_color }} border border-{{ _cat_color }}-subtle">{{ _cat_label }}</span>
+            </div>
+
+            {# Підрозділ #}
+            {% if person.battalion_name or person.unit_name %}
+            <div class="pc-hero__sub mb-3">
+                <i class="bi bi-building me-1"></i>{{ person.battalion_name or '' }}{% if person.unit_name %} / {{ person.unit_name }}{% endif %}{% if person.platoon_name %} / {{ person.platoon_name }}{% endif %}
+            </div>
+            {% else %}
+            <div class="mb-3"></div>
+            {% endif %}
+
+            {# Кнопки дій #}
+            <div class="d-flex flex-wrap gap-2">
+                {% if person.is_active %}
+                <button class="btn btn-sm btn-success js-create-doc-btn"
+                        data-person-id="{{ person.id }}" data-back="{{ request.url }}">
+                    <i class="bi bi-file-earmark-plus me-1"></i>Видати майно
+                </button>
+                {% else %}
+                <button class="btn btn-sm btn-outline-success" onclick="restorePerson()">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i>Відновити
+                </button>
+                {% endif %}
+                <a href="{{ url_for('personnel.attestat', person_id=person.id) }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-file-earmark-person me-1"></i>Атестат
+                </a>
+                <a href="{{ url_for('personnel.edit', person_id=person.id) }}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-pencil me-1"></i>Редагувати
+                </a>
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                        <i class="bi bi-three-dots"></i>
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li>
+                            <a class="dropdown-item" href="{{ url_for('personnel.property_card_print', person_id=person.id) }}">
+                                <i class="bi bi-printer me-2"></i>Картка майна (друк)
+                            </a>
+                        </li>
+                        {% if person.is_active %}
+                        <li>
+                            <a class="dropdown-item" href="{{ url_for('attestat_import.index', person_id=person.id) }}">
+                                <i class="bi bi-box-arrow-in-down me-2"></i>Прийом з атестату
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <button class="dropdown-item text-warning" onclick="openArchiveModal()">
+                                <i class="bi bi-archive me-2"></i>Архівувати
+                            </button>
+                        </li>
                         {% endif %}
-                    </div>
-                    <input type="file" id="photoInput" accept=".jpg,.jpeg,.png" class="d-none"
-                           onchange="uploadPhoto(this)">
+                        {%- for action in slot('personnel.card.actions', person=person) %}
+                        <li>
+                            <a class="dropdown-item" href="{{ action.url }}">
+                                <i class="{{ action.icon }} me-2"></i>{{ action.label }}
+                            </a>
+                        </li>
+                        {%- endfor %}
+                    </ul>
                 </div>
             </div>
 
-            <div class="flex-grow-1">
-                <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
-                    <h2 class="mb-0 fw-bold" style="font-size:1.4rem;">
-                        {{ person.last_name }} {{ person.first_name }}{% if person.middle_name %} {{ person.middle_name }}{% endif %}
-                    </h2>
-                    {% if not person.is_active %}
-                    <span class="badge bg-secondary">АРХІВ</span>
-                    {% endif %}
+            {% if person.archive_reason %}
+            <div class="alert alert-warning py-1 px-2 mt-2 mb-0 d-inline-flex align-items-center gap-2" style="font-size:12px;">
+                <i class="bi bi-info-circle"></i>
+                Причина вибуття: <strong>{{ person.archive_reason }}</strong>
+                {% if person.archived_at %} · {{ person.archived_at | fdate }}{% endif %}
+            </div>
+            {% endif %}
+        </div>
 
-                    {# Група #}
-                    {% if person.group_name %}
-                        {% if person.group_type == 'active' %}
-                            <span class="badge bg-success-subtle text-success border border-success-subtle">{{ person.group_name }}</span>
-                        {% elif person.group_type == 'dismissed' %}
-                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{{ person.group_name }}</span>
-                        {% elif person.group_type == 'szch' %}
-                            <span class="badge bg-warning-subtle text-warning border border-warning-subtle">{{ person.group_name }}</span>
-                        {% elif person.group_type == 'deceased' %}
-                            <span class="badge bg-dark-subtle text-dark border border-dark-subtle">{{ person.group_name }}</span>
-                        {% elif person.group_type == 'missing' %}
-                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle">{{ person.group_name }}</span>
+        {# ── ПРАВА ПАНЕЛЬ: заголовок картки обліку ── #}
+        <div class="pc-hero__card-header">
+            <div class="pc-hero__card-title">Картка обліку речового майна</div>
+            <div class="pc-hero__card-num">
+                №&nbsp;{{ person.card_number or person.id }}
+                {% if person.enroll_date %}&nbsp;від&nbsp;{{ person.enroll_date | fdate }}{% endif %}
+            </div>
+            <div class="pc-hero__card-divider"></div>
+            <dl class="pc-hero__card-dl">
+                {% if person.draft_date %}
+                <div class="pc-hero__card-row">
+                    <dt>Призов</dt>
+                    <dd>{{ person.draft_date | fdate }}{% if person.draft_by %}&nbsp;· {{ person.draft_by }}{% endif %}</dd>
+                </div>
+                {% endif %}
+                {% if person.ipn %}
+                <div class="pc-hero__card-row">
+                    <dt>ІПН</dt>
+                    <dd>{{ person.ipn }}</dd>
+                </div>
+                {% endif %}
+                {% if person.enroll_date %}
+                <div class="pc-hero__card-row">
+                    <dt>Зарахування</dt>
+                    <dd>
+                        {{ person.enroll_date | fdate }}
+                        {% if person.enroll_order %}
+                        &nbsp;·&nbsp;
+                        {% if person.enroll_order_file %}
+                        <a href="{{ person.enroll_order_file }}" target="_blank" class="pc-hero__card-link">
+                            №{{ person.enroll_order }}&nbsp;<i class="bi bi-file-earmark-pdf"></i>
+                        </a>
                         {% else %}
-                            <span class="badge bg-light text-secondary border">{{ person.group_name }}</span>
+                        №{{ person.enroll_order }}
                         {% endif %}
+                        {% endif %}
+                    </dd>
+                </div>
+                {% endif %}
+                {% if person.dismiss_date %}
+                <div class="pc-hero__card-row pc-hero__card-row--danger">
+                    <dt>Вибуття</dt>
+                    <dd>
+                        {{ person.dismiss_date | fdate }}
+                        {% if person.dismiss_order %}
+                        &nbsp;·&nbsp;
+                        {% if person.dismiss_order_file %}
+                        <a href="{{ person.dismiss_order_file }}" target="_blank" class="pc-hero__card-link">
+                            №{{ person.dismiss_order }}&nbsp;<i class="bi bi-file-earmark-pdf"></i>
+                        </a>
+                        {% else %}
+                        №{{ person.dismiss_order }}
+                        {% endif %}
+                        {% endif %}
+                    </dd>
+                </div>
+                {% endif %}
+                {% if person.phone %}
+                <div class="pc-hero__card-row">
+                    <dt>Телефон</dt>
+                    <dd><a href="tel:{{ person.phone }}" class="pc-hero__card-link">{{ person.phone }}</a></dd>
+                </div>
+                {% endif %}
+            </dl>
+        </div>
+
+    </div>{# /pc-hero__body #}
+</div>{# /pc-hero #}
+
+
+{# ════════════════════════════════════════════
+   ОСНОВНИЙ КОНТЕНТ — сітка блоків
+════════════════════════════════════════════ #}
+
+{# Верхній рядок: Розміри | На забезпеченні | Документи #}
+<div class="pc-top-row mb-3">
+
+    {# Розміри — окрема плашка #}
+    {%- set _sz = [
+        ('Зріст',   person.size_height),
+        ('Голова',  person.size_head),
+        ('Костюм',  person.size_suit),
+        ('Куртка',  person.size_jacket),
+        ('Штани',   person.size_pants),
+        ('Взуття',  person.size_shoes),
+        ('Білизна', person.size_underwear),
+        ('Броня',   person.size_vest),
+    ] %}
+    {# Поля БД для кожного розміру #}
+    {%- set _sz_fields = [
+        ('Зріст',   person.size_height,    'size_height'),
+        ('Голова',  person.size_head,      'size_head'),
+        ('Костюм',  person.size_suit,      'size_suit'),
+        ('Куртка',  person.size_jacket,    'size_jacket'),
+        ('Штани',   person.size_pants,     'size_pants'),
+        ('Взуття',  person.size_shoes,     'size_shoes'),
+        ('Білизна', person.size_underwear, 'size_underwear'),
+        ('Броня',   person.size_vest,      'size_vest'),
+    ] %}
+    <div class="pc-block mb-0 pc-sizes-wrap" id="sizesBlock">
+        <div class="pc-block__header">
+            <span class="pc-block__title"><i class="bi bi-rulers"></i>Розміри</span>
+        </div>
+        <div class="pc-sizes-list">
+            {% for lbl, val, field in _sz_fields %}
+            <div class="pc-sz-row" data-field="{{ field }}">
+                <span class="pc-sz-label">{{ lbl }}</span>
+                <span class="pc-sz-val{% if not val %} pc-sz-val--empty{% endif %}"
+                      onclick="szEdit(this, '{{ field }}')"
+                      title="Натисніть щоб редагувати">
+                    {% if val %}{{ val }}{% else %}<span class="pc-sz-add">додати</span>{% endif %}
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    {# На забезпеченні #}
+    {%- set active_items = items | selectattr('status', 'equalto', 'active') | list %}
+    <div class="pc-block mb-0">
+        <div class="pc-block__header">
+            <span class="pc-block__title"><i class="bi bi-person-check"></i>На забезпеченні</span>
+            <span class="pc-block__meta">
+                {% if active_items %}{{ "%.2f"|format(total_sum) }} грн · {{ active_items|length }} поз.{% endif %}
+            </span>
+            <button class="btn btn-sm btn-link pc-block__expand" title="Розгорнути" onclick="openModal('modalItems')">
+                <i class="bi bi-arrows-fullscreen" style="font-size:13px;"></i>
+            </button>
+        </div>
+        {% if active_items %}
+        <div class="pc-scroll-body">
+            <table class="table table-sm table-hover align-middle mb-0" style="font-size:12px;">
+                <thead><tr>
+                    <th>Найменування</th>
+                    <th class="text-center">К-сть</th>
+                    <th>Видано</th>
+                    <th class="text-end">Ціна/од.</th>
+                </tr></thead>
+                <tbody>
+                {% for item in active_items %}
+                <tr>
+                    <td>{{ item.item_name }}{% if item.is_inventory %}<i class="bi bi-bookmark-check-fill text-primary ms-1" style="font-size:10px;" title="Інвентарне"></i>{% endif %}</td>
+                    <td class="text-center">{{ item.quantity | int }} {{ abbr_unit(item.unit_of_measure or 'шт') }}</td>
+                    <td class="text-nowrap">{{ item.issue_date | fdate }}</td>
+                    <td class="text-end">{% if item.price %}{{ "%.2f"|format(item.price) }}{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+                <tfoot><tr class="fw-semibold">
+                    <td colspan="3" class="text-end" style="font-size:11px;">Загальна сума:</td>
+                    <td class="text-end">{{ "%.2f"|format(total_sum) }}</td>
+                </tr></tfoot>
+            </table>
+        </div>
+        {% else %}
+        <div class="pc-empty">
+            <i class="bi bi-inbox fs-3 d-block mb-2"></i>Нічого не видано
+            {% if person.is_active %}
+            <div class="mt-2">
+                <button class="btn btn-sm btn-primary js-create-doc-btn"
+                        data-person-id="{{ person.id }}" data-back="{{ request.url }}">
+                    <i class="bi bi-plus-lg me-1"></i>Видати майно
+                </button>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {# Документи #}
+    <div class="pc-block mb-0">
+        <div class="pc-block__header">
+            <span class="pc-block__title"><i class="bi bi-file-earmark-text"></i>Документи</span>
+            <button class="btn btn-sm btn-outline-success pc-block__more js-create-doc-btn"
+                    data-person-id="{{ person.id }}" data-back="{{ request.url }}">
+                <i class="bi bi-plus-lg"></i>
+            </button>
+            <button class="btn btn-sm btn-link pc-block__expand" title="Розгорнути" onclick="openModal('modalDocs')">
+                <i class="bi bi-arrows-fullscreen" style="font-size:13px;"></i>
+            </button>
+        </div>
+        <div id="docsLoading" class="pc-empty py-3">
+            <span class="spinner-border spinner-border-sm me-2"></span>Завантаження...
+        </div>
+        <div id="docsContent" class="d-none pc-scroll-body">
+            <div class="pc-docs-section">
+                <div class="pc-docs-section__label"><i class="bi bi-receipt text-primary me-1"></i>Накладні</div>
+                <div id="invoicesList" class="pc-docs-list"></div>
+            </div>
+            <div class="pc-docs-section mt-2">
+                <div class="pc-docs-section__label"><i class="bi bi-table text-success me-1"></i>Роздавальні відомості</div>
+                <div id="rvList" class="pc-docs-list"></div>
+            </div>
+        </div>
+    </div>
+
+</div>{# /pc-top-row #}
+
+{# Нижній рядок: Картка речового майна | Норми + Історія #}
+<div class="pc-grid">
+
+    {# ── КОЛОНКА ЛІВА: Картка речового майна ── #}
+    <div class="pc-col pc-col--main">
+
+        {# Картка речового майна #}
+        <div class="pc-block">
+            <div class="pc-block__header">
+                <span class="pc-block__title"><i class="bi bi-card-list"></i>Картка речового майна</span>
+                <span class="pc-block__meta">
+                    {%- if property_card.rows %}
+                    {%- set _total = property_card.rows|length %}
+                    {%- set _need = property_card.rows | selectattr('color', 'equalto', 'red') | list | length %}
+                    {{ _total }} поз.
+                    {%- if _need %} · <span class="text-danger">{{ _need }} потребує видачі</span>{% endif %}
+                    {%- endif %}
+                </span>
+                <a href="{{ url_for('personnel.property_card_print', person_id=person.id) }}"
+                   class="btn btn-sm btn-outline-secondary pc-block__more">
+                    <i class="bi bi-printer me-1"></i>Друк
+                </a>
+                <button class="btn btn-sm btn-link pc-block__expand" title="Розгорнути"
+                        onclick="openModal('modalPropCard')">
+                    <i class="bi bi-arrows-fullscreen" style="font-size:13px;"></i>
+                </button>
+            </div>
+
+            {% if property_card.rows %}
+            {%- set pc_docs = property_card.docs %}
+            {%- set TOTAL_COLS = 12 %}
+            {%- set empty_cols = TOTAL_COLS - (pc_docs | length) %}
+            <div class="pc-scroll-body table-responsive">
+            <table class="table table-sm table-bordered mb-0" style="font-size:0.75rem; min-width:700px; table-layout:fixed;">
+                <colgroup>
+                    <col style="width:28px;">
+                    <col style="width:200px;">
+                    <col style="width:50px;">
+                    {% for _ in pc_docs %}<col style="width:42px;">{% endfor %}
+                    {% for _ in range(empty_cols) %}<col style="width:38px;">{% endfor %}
+                    <col style="width:38px;">
+                    <col style="width:72px;">
+                </colgroup>
+                <thead class="table-light">
+                    <tr class="text-center align-middle">
+                        <th rowspan="2">#</th>
+                        <th rowspan="2" class="text-start">Найменування</th>
+                        <th rowspan="2" title="Стан">Стан</th>
+                        <th colspan="{{ pc_docs | length if pc_docs else 1 }}" style="font-size:0.7rem;">
+                            Найменування, номер і дата документа
+                        </th>
+                        {% for _ in range(empty_cols) %}<th style="font-size:0.6rem;">&nbsp;</th>{% endfor %}
+                        <th rowspan="2" style="font-size:0.7rem;">Разом</th>
+                        <th rowspan="2" style="font-size:0.7rem;">Наст. видача</th>
+                    </tr>
+                    <tr class="text-center">
+                        {% for doc in pc_docs %}
+                        <th style="font-size:0.65rem; padding:2px; line-height:1.2;">
+                            {% if doc.type == 'invoice' %}
+                            <a href="{{ url_for('invoices.view', inv_id=doc.id) }}" class="text-decoration-none text-primary d-block" target="_blank">
+                                <i class="bi bi-receipt" style="font-size:0.65rem;"></i><br><b>{{ doc.label }}</b>
+                            </a>
+                            {% elif doc.type == 'rv' %}
+                            <a href="{{ url_for('rv.view', sid=doc.id) }}" class="text-decoration-none text-success d-block" target="_blank">
+                                <i class="bi bi-list-columns-reverse" style="font-size:0.65rem;"></i><br><b>{{ doc.label }}</b>
+                            </a>
+                            {% elif doc.type == 'attestat_import' %}
+                            <a href="{{ url_for('personnel.attestat_import', person_id=person.id) }}" class="text-decoration-none text-info d-block" target="_blank">
+                                <i class="bi bi-box-arrow-in-down" style="font-size:0.65rem;"></i><br><b>{{ doc.label }}</b>
+                            </a>
+                            {% else %}
+                            <span style="font-size:0.65rem;">{{ doc.label }}</span>
+                            {% endif %}
+                            {% if doc.date %}<div class="text-muted" style="font-size:0.6rem;">{{ doc.date | fdate }}</div>{% endif %}
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {%- set ns = namespace(cur_group='', row_num=0) %}
+                    {% for row in property_card.rows %}
+                    {% if row.group_name != ns.cur_group %}
+                    {%- set ns.cur_group = row.group_name %}
+                    <tr class="table-secondary">
+                        <td colspan="{{ 3 + TOTAL_COLS + 1 }}" class="fw-bold py-1 px-2" style="font-size:0.7rem;">{{ row.group_name }}</td>
+                    </tr>
+                    {% endif %}
+                    {%- set ns.row_num = ns.row_num + 1 %}
+                    <tr>
+                        <td class="text-center text-muted">{{ ns.row_num }}</td>
+                        <td>{{ row.norm_name }}</td>
+                        {% if row.color == 'green' %}
+                        <td class="text-center bg-success-subtle text-success fw-semibold" title="Норма виконана"><i class="bi bi-check-circle-fill"></i></td>
+                        {% elif row.color in ('yellow','orange') %}
+                        <td class="text-center bg-warning-subtle text-warning fw-semibold" title="Потребує заміни / часткова"><i class="bi bi-arrow-clockwise"></i></td>
+                        {% elif row.color == 'red' %}
+                        <td class="text-center bg-danger-subtle text-danger fw-semibold" title="Не видавалось"><i class="bi bi-x-circle-fill"></i></td>
+                        {% else %}
+                        <td class="text-center text-muted">—</td>
+                        {% endif %}
+                        {% for doc in pc_docs %}
+                        {%- set cell = row.cells.get(doc.key) %}
+                        <td class="text-center{%- if cell and cell.status == 'written_off' %} text-muted text-decoration-line-through{%- elif cell and cell.status == 'returned' %} text-muted{%- endif %}">
+                            {% if cell %}{{ cell.qty|int if cell.qty == cell.qty|int else cell.qty }}{% endif %}
+                        </td>
+                        {% endfor %}
+                        {% for i in range(empty_cols) %}<td></td>{% endfor %}
+                        <td class="text-center fw-semibold">
+                            {% if row.total_active %}{{ row.total_active|int if row.total_active == row.total_active|int else row.total_active }}{% else %}—{% endif %}
+                            {%- if row.debt_qty and row.debt_qty > 0 %}
+                            <br><span class="text-danger" style="font-size:0.65rem;" title="Борг: не вистачає {{ row.debt_qty }} {{ row.unit or 'шт' }}">-{{ row.debt_qty|int if row.debt_qty == row.debt_qty|int else row.debt_qty }}</span>
+                            {%- endif %}
+                        </td>
+                        {% if row.expiry_date %}
+                            {% if row.days_left is not none and row.days_left < 0 %}
+                            <td class="text-center small bg-danger-subtle text-danger" title="Строк вийшов {{ row.days_left|abs }} дн. тому">{{ row.expiry_date | fdate }}</td>
+                            {% elif row.days_left is not none and row.days_left <= 30 %}
+                            <td class="text-center small bg-warning-subtle text-warning" title="Залишилось {{ row.days_left }} дн.">{{ row.expiry_date | fdate }}</td>
+                            {% else %}
+                            <td class="text-center small text-muted">{{ row.expiry_date | fdate }}</td>
+                            {% endif %}
+                        {% elif not row.from_norm %}
+                        <td class="text-center text-muted small">—</td>
+                        {% elif row.total_active > 0 %}
+                        <td class="text-center text-muted small">∞</td>
+                        {% else %}
+                        <td class="text-center text-muted small">—</td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>{# /pc-scroll-body #}
+            <div class="px-3 py-2 text-muted border-top d-flex flex-wrap gap-3" style="font-size:0.75rem;">
+                <span><i class="bi bi-receipt text-primary me-1"></i>Накладна</span>
+                <span><i class="bi bi-list-columns-reverse text-success me-1"></i>РВ</span>
+                <span><i class="bi bi-box-arrow-in-down text-info me-1"></i>Атестат</span>
+                <span class="ms-2 text-success"><i class="bi bi-check-circle-fill me-1"></i>виконано</span>
+                <span class="text-warning"><i class="bi bi-arrow-clockwise me-1"></i>заміна</span>
+                <span class="text-danger"><i class="bi bi-x-circle-fill me-1"></i>не видано</span>
+            </div>
+            {% else %}
+            <div class="pc-empty">
+                <i class="bi bi-card-list fs-3 d-block mb-2"></i>
+                Картка порожня — норму не призначено
+                <div class="small mt-1">
+                    <a href="{{ url_for('personnel.edit', person_id=person.id) }}">Призначити норму</a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>{# /pc-col--main #}
+
+    {# ── КОЛОНКА ПРАВА: Норми + Історія ── #}
+    <div class="pc-col pc-col--side">
+
+        {# Норми особи #}
+        {% if person_norms %}
+        <div class="pc-block">
+            <div class="pc-block__header">
+                <span class="pc-block__title"><i class="bi bi-list-check"></i>Норми видачі</span>
+            </div>
+            <div class="pc-scroll-body">
+                {% for pn in person_norms %}
+                <div class="px-3 py-2 border-bottom" style="font-size:13px;">
+                    <div class="fw-semibold">{{ pn.norm_name }}</div>
+                    {% if pn.personnel_cat %}
+                    <div class="text-muted" style="font-size:11px;">
+                        <i class="bi bi-tag me-1"></i>Категорія {{ pn.personnel_cat }}
+                    </div>
                     {% endif %}
                 </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
 
-                <p class="text-muted mb-0" style="font-size:14px;">
-                    {% if person.rank %}<span class="me-2">{{ person.rank }}</span>{% endif %}
-                    {% if person.position %}<span>{{ person.position }}</span>{% endif %}
-                </p>
+        {# Історія #}
+        <div class="pc-block">
+            <div class="pc-block__header">
+                <span class="pc-block__title"><i class="bi bi-clock-history"></i>Історія</span>
+                <button class="btn btn-sm btn-link pc-block__expand" title="Розгорнути"
+                        onclick="openModal('modalHistory')">
+                    <i class="bi bi-arrows-fullscreen" style="font-size:13px;"></i>
+                </button>
+            </div>
+            <div id="historyLoading" class="pc-empty py-3 flex-shrink-0">
+                <span class="spinner-border spinner-border-sm me-2"></span>Завантаження...
+            </div>
+            <div id="historyContent" class="d-none pc-scroll-body" style="flex:1; max-height:none; overflow-y:auto;">
+                <div id="historyList"></div>
+            </div>
+        </div>
 
-                {% if person.archive_reason %}
-                <div class="alert alert-warning py-1 px-2 mt-2 mb-0" style="font-size:12px;">
-                    <i class="bi bi-info-circle me-1"></i>
-                    Причина вибуття: <strong>{{ person.archive_reason }}</strong>
-                    {% if person.archived_at %} · {{ person.archived_at[:10] }}{% endif %}
-                </div>
+    </div>{# /pc-col--side #}
+</div>{# /pc-grid #}
+
+
+{# ════════════════════════════════════════════
+   Модальні вікна — розгорнутий перегляд
+════════════════════════════════════════════ #}
+
+{# На забезпеченні #}
+<div class="modal fade" id="modalItems" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title"><i class="bi bi-person-check me-2"></i>На забезпеченні — {{ person.last_name | upper }} {{ person.first_name }}</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                {% if active_items %}
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light sticky-top"><tr>
+                        <th>#</th><th>Найменування</th>
+                        <th class="text-center">К-сть</th>
+                        <th>Видано</th>
+                        <th class="text-end">Ціна/од.</th>
+                        <th class="text-end">Сума</th>
+                    </tr></thead>
+                    <tbody>
+                    {% for item in active_items %}
+                    <tr>
+                        <td class="text-muted">{{ loop.index }}</td>
+                        <td>{{ item.item_name }}{% if item.is_inventory %}<i class="bi bi-bookmark-check-fill text-primary ms-1" style="font-size:10px;"></i>{% endif %}</td>
+                        <td class="text-center">{{ item.quantity | int }} {{ abbr_unit(item.unit_of_measure or 'шт') }}</td>
+                        <td>{{ item.issue_date | fdate }}</td>
+                        <td class="text-end">{% if item.price %}{{ "%.2f"|format(item.price) }}{% else %}—{% endif %}</td>
+                        <td class="text-end fw-semibold">{% if item.price and item.quantity %}{{ "%.2f"|format(item.price * item.quantity) }}{% else %}—{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                    <tfoot><tr class="fw-bold table-light">
+                        <td colspan="5" class="text-end">Загальна сума:</td>
+                        <td class="text-end">{{ "%.2f"|format(total_sum) }} грн</td>
+                    </tr></tfoot>
+                </table>
+                {% else %}
+                <div class="pc-empty py-5">Нічого не видано</div>
                 {% endif %}
             </div>
         </div>
     </div>
 </div>
 
-{# ── Дві колонки: основні дані + розміри ── #}
-<div class="row g-3 mb-3">
-    <div class="col-md-7">
-        <div class="card h-100">
-            <div class="card-header py-2 fw-semibold">
-                <i class="bi bi-info-circle me-2 text-primary"></i>Основні дані
+{# Картка речового майна #}
+<div class="modal fade" id="modalPropCard" tabindex="-1">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title"><i class="bi bi-card-list me-2"></i>Картка речового майна — {{ person.last_name | upper }} {{ person.first_name }}</h6>
+                <a href="{{ url_for('personnel.property_card_print', person_id=person.id) }}" class="btn btn-sm btn-outline-secondary me-2">
+                    <i class="bi bi-printer me-1"></i>Друк
+                </a>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="card-body">
-                <dl class="row mb-0" style="font-size:13px;">
-                    {% if person.battalion_name %}
-                    <dt class="col-sm-5 text-muted fw-normal">Батальйон</dt>
-                    <dd class="col-sm-7">{{ person.battalion_name }}</dd>
-                    {% endif %}
-                    {% if person.unit_name %}
-                    <dt class="col-sm-5 text-muted fw-normal">Підрозділ</dt>
-                    <dd class="col-sm-7">
-                        {% if person.unit_id %}
-                        <a href="{{ url_for('settings.unit_card', uid=person.unit_id) }}"
-                           class="text-decoration-none">{{ person.unit_name }}</a>
-                        {% else %}
-                        {{ person.unit_name }}
-                        {% endif %}
-                    </dd>
-                    {% endif %}
-                    {% if person.platoon_name %}
-                    <dt class="col-sm-5 text-muted fw-normal">Взвод</dt>
-                    <dd class="col-sm-7">{{ person.platoon_name }}</dd>
-                    {% endif %}
-                    <dt class="col-sm-5 text-muted fw-normal">Категорія</dt>
-                    <dd class="col-sm-7">{{ 'Офіцер' if person.category == 'officer' else 'Солдат / Сержант' }}</dd>
-                    {% if person.ipn %}
-                    <dt class="col-sm-5 text-muted fw-normal">ІПН</dt>
-                    <dd class="col-sm-7"><code>{{ person.ipn }}</code></dd>
-                    {% endif %}
-                    {% if person.card_number %}
-                    <dt class="col-sm-5 text-muted fw-normal">Номер картки</dt>
-                    <dd class="col-sm-7">{{ person.card_number }}</dd>
-                    {% endif %}
-                    {% if person.phone %}
-                    <dt class="col-sm-5 text-muted fw-normal">Телефон</dt>
-                    <dd class="col-sm-7">{{ person.phone }}</dd>
-                    {% endif %}
-                    {% if person.draft_date or person.draft_by %}
-                    <dt class="col-sm-5 text-muted fw-normal">Призваний</dt>
-                    <dd class="col-sm-7">
-                        {% if person.draft_date %}{{ person.draft_date }}{% endif %}
-                        {% if person.draft_by %}<br><span class="text-muted" style="font-size:12px;">{{ person.draft_by }}</span>{% endif %}
-                    </dd>
-                    {% endif %}
-                    {% if person.enroll_date or person.enroll_order %}
-                    <dt class="col-sm-5 text-muted fw-normal">Зарахований</dt>
-                    <dd class="col-sm-7">
-                        {% if person.enroll_date %}{{ person.enroll_date }}{% endif %}
-                        {% if person.enroll_order %}
-                         ·
-                        {% if person.enroll_order_file %}
-                        <a href="{{ person.enroll_order_file }}" target="_blank"
-                           class="text-decoration-none text-body" title="Відкрити файл наказу зарахування">
-                            {{ person.enroll_order }}
-                            <i class="bi bi-file-earmark-pdf text-success ms-1" style="font-size:11px;"></i>
-                        </a>
-                        {% else %}
-                        <span class="text-muted" title="Файл наказу не завантажено">{{ person.enroll_order }}</span>
-                        {% endif %}
-                        {% endif %}
-                    </dd>
-                    {% endif %}
-                    {% if person.dismiss_date or person.dismiss_order %}
-                    <dt class="col-sm-5 text-muted fw-normal">Вибув</dt>
-                    <dd class="col-sm-7">
-                        {% if person.dismiss_date %}{{ person.dismiss_date }}{% endif %}
-                        {% if person.dismiss_order %}
-                         ·
-                        {% if person.dismiss_order_file %}
-                        <a href="{{ person.dismiss_order_file }}" target="_blank"
-                           class="text-decoration-none text-body" title="Відкрити файл наказу вибуття">
-                            {{ person.dismiss_order }}
-                            <i class="bi bi-file-earmark-pdf text-success ms-1" style="font-size:11px;"></i>
-                        </a>
-                        {% else %}
-                        <span class="text-muted" title="Файл наказу не завантажено">{{ person.dismiss_order }}</span>
-                        {% endif %}
-                        {% endif %}
-                    </dd>
-                    {% endif %}
-                </dl>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-5">
-        <div class="card h-100">
-            <div class="card-header py-2 fw-semibold">
-                <i class="bi bi-rulers me-2 text-primary"></i>Розміри
-            </div>
-            <div class="card-body">
-                <dl class="row mb-0" style="font-size:13px;">
-                    {% if person.size_height %}
-                    <dt class="col-6 text-muted fw-normal">Зріст</dt>
-                    <dd class="col-6">{{ person.size_height }}</dd>
-                    {% endif %}
-                    {% if person.size_head %}
-                    <dt class="col-6 text-muted fw-normal">Голова</dt>
-                    <dd class="col-6">{{ person.size_head }}</dd>
-                    {% endif %}
-                    {% if person.size_underwear %}
-                    <dt class="col-6 text-muted fw-normal">Нижня білизна</dt>
-                    <dd class="col-6">{{ person.size_underwear }}</dd>
-                    {% endif %}
-                    {% if person.size_suit %}
-                    <dt class="col-6 text-muted fw-normal">Костюм</dt>
-                    <dd class="col-6">{{ person.size_suit }}</dd>
-                    {% endif %}
-                    {% if person.size_jacket %}
-                    <dt class="col-6 text-muted fw-normal">Куртка</dt>
-                    <dd class="col-6">{{ person.size_jacket }}</dd>
-                    {% endif %}
-                    {% if person.size_pants %}
-                    <dt class="col-6 text-muted fw-normal">Штани</dt>
-                    <dd class="col-6">{{ person.size_pants }}</dd>
-                    {% endif %}
-                    {% if person.size_shoes %}
-                    <dt class="col-6 text-muted fw-normal">Взуття</dt>
-                    <dd class="col-6">{{ person.size_shoes }}</dd>
-                    {% endif %}
-                    {% if not (person.size_height or person.size_head or person.size_underwear
-                               or person.size_suit or person.size_jacket or person.size_pants
-                               or person.size_shoes) %}
-                    <dd class="col-12 text-muted fst-italic">Розміри не вказані</dd>
-                    {% endif %}
-                </dl>
-            </div>
-        </div>
-    </div>
-</div>
-
-{# ── Вкладки ── #}
-<div class="card">
-    <div class="card-header p-0">
-        <ul class="nav nav-tabs card-header-tabs" id="cardTabs" role="tablist">
-            <li class="nav-item">
-                <button class="nav-link active" id="tab-items" data-bs-toggle="tab"
-                        data-bs-target="#pane-items" type="button" role="tab">
-                    <i class="bi bi-box-seam me-1"></i>Майно
-                    {% if items %}
-                    <span class="badge bg-primary rounded-pill ms-1"
-                          style="font-size:10px;">{{ items|length }}</span>
-                    {% endif %}
-                </button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link" id="tab-property-card" data-bs-toggle="tab"
-                        data-bs-target="#pane-property-card" type="button" role="tab">
-                    <i class="bi bi-card-list me-1"></i>Картка речового майна
-                    {% if property_card.rows %}
-                    <span class="badge bg-success rounded-pill ms-1"
-                          style="font-size:10px;">{{ property_card.rows|length }}</span>
-                    {% endif %}
-                </button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link" id="tab-docs" data-bs-toggle="tab"
-                        data-bs-target="#pane-docs" type="button" role="tab">
-                    <i class="bi bi-file-earmark-text me-1"></i>Документи
-                </button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link" id="tab-history" data-bs-toggle="tab"
-                        data-bs-target="#pane-history" type="button" role="tab">
-                    <i class="bi bi-clock-history me-1"></i>Історія
-                </button>
-            </li>
-            {%- set _extra_tabs = slot('personnel.card.tabs', person=person) %}
-            {%- for tab in _extra_tabs %}
-            <li class="nav-item">
-                <button class="nav-link" data-bs-toggle="tab"
-                        data-bs-target="#pane-{{ tab.id }}" type="button" role="tab">
-                    {%- if tab.icon %}<i class="{{ tab.icon }} me-1"></i>{%- endif %}{{ tab.label }}
-                    {%- if tab.badge %}<span class="badge {{ tab.badge.class|default('bg-secondary') }} rounded-pill ms-1" style="font-size:10px;">{{ tab.badge.text }}</span>{%- endif %}
-                </button>
-            </li>
-            {%- endfor %}
-        </ul>
-    </div>
-    <div class="tab-content">
-
-        {# ── Вкладка: Майно ── #}
-        <div class="tab-pane fade show active" id="pane-items" role="tabpanel">
-            {% if items %}
-            <div class="table-responsive">
-                <table class="table table-sm table-hover mb-0">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Назва майна</th>
-                            <th class="text-center">К-сть</th>
-                            <th class="text-end">Ціна</th>
-                            <th class="text-end">Сума</th>
-                            <th>Кат.</th>
-                            <th>Видано</th>
-                            <th>Статус</th>
+            <div class="modal-body p-0 overflow-auto">
+                {% if property_card.rows %}
+                {%- set pc_docs2 = property_card.docs %}
+                {%- set TOTAL_COLS2 = 12 %}
+                {%- set empty_cols2 = TOTAL_COLS2 - (pc_docs2 | length) %}
+                <table class="table table-sm table-bordered mb-0" style="font-size:0.78rem; min-width:900px;">
+                    <thead class="sticky-top">
+                        <tr class="text-center align-middle">
+                            <th rowspan="2" style="width:28px;">#</th>
+                            <th rowspan="2" class="text-start" style="min-width:200px;">Найменування</th>
+                            <th rowspan="2" style="width:50px;">Стан</th>
+                            <th colspan="{{ pc_docs2|length if pc_docs2 else 1 }}">Документи</th>
+                            {% for _ in range(empty_cols2) %}<th></th>{% endfor %}
+                            <th rowspan="2" style="width:50px;">Разом</th>
+                            <th rowspan="2" style="width:80px;">Наст. видача</th>
+                        </tr>
+                        <tr class="text-center">
+                            {% for doc in pc_docs2 %}
+                            <th style="font-size:0.65rem; padding:2px; width:44px;">
+                                {% if doc.type == 'invoice' %}<a href="{{ url_for('invoices.view', inv_id=doc.id) }}" class="text-primary" target="_blank"><b>{{ doc.label }}</b></a>
+                                {% elif doc.type == 'rv' %}<a href="{{ url_for('rv.view', sid=doc.id) }}" class="text-success" target="_blank"><b>{{ doc.label }}</b></a>
+                                {% else %}<span>{{ doc.label }}</span>{% endif %}
+                                {% if doc.date %}<div class="text-muted" style="font-size:0.58rem;">{{ doc.date | fdate }}</div>{% endif %}
+                            </th>
+                            {% endfor %}
                         </tr>
                     </thead>
                     <tbody>
-                    {% for item in items %}
-                    <tr class="{% if item.status != 'active' %}text-muted{% endif %}">
-                        <td class="text-muted">{{ loop.index }}</td>
-                        <td>
-                            {{ item.item_name }}
-                            {% if item.is_inventory %}
-                            <i class="bi bi-bookmark-check-fill text-primary ms-1"
-                               title="Інвентарне майно" style="font-size:11px;"></i>
-                            {% endif %}
-                        </td>
-                        <td class="text-center">{{ item.quantity }} {{ abbr_unit(item.unit_of_measure or 'шт') }}</td>
-                        <td class="text-end">
-                            {% if item.price %}{{ "%.2f"|format(item.price) }}{% else %}—{% endif %}
-                        </td>
-                        <td class="text-end">
-                            {% if item.price and item.quantity %}
-                                {{ "%.2f"|format(item.price * item.quantity) }}
-                            {% else %}—{% endif %}
-                        </td>
-                        <td>{{ item.category }}</td>
-                        <td>{{ item.issue_date or '—' }}</td>
-                        <td>
-                            {% if item.status == 'active' %}
-                                <span class="badge bg-success-subtle text-success border border-success-subtle">активне</span>
-                            {% elif item.status == 'written_off' %}
-                                <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">списане</span>
-                            {% elif item.status == 'returned' %}
-                                <span class="badge bg-info-subtle text-info border border-info-subtle">здане</span>
-                            {% else %}
-                                <span class="badge bg-light text-secondary border">{{ item.status }}</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                    </tbody>
-                    <tfoot>
-                        <tr class="table-light fw-semibold">
-                            <td colspan="4" class="text-end">Загальна сума (активне):</td>
-                            <td class="text-end">{{ "%.2f"|format(total_sum) }} грн</td>
-                            <td colspan="3"></td>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
-            {% else %}
-            <div class="p-4 text-center text-muted">
-                <i class="bi bi-inbox fs-2 d-block mb-2"></i>
-                Майно на картці відсутнє
-            </div>
-            {% endif %}
-        </div>
-
-        {# ── Вкладка: Картка речового майна ── #}
-        <div class="tab-pane fade" id="pane-property-card" role="tabpanel">
-
-            {# Toolbar вкладки #}
-            <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom">
-                <span class="text-muted small">
-                    <i class="bi bi-info-circle me-1"></i>
-                    Матрична картка обліку майна особистого користування
-                </span>
-                <a href="{{ url_for('personnel.property_card_print', person_id=person.id) }}"
-                   class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-printer me-1"></i>Відкрити картку (друк)
-                </a>
-            </div>
-
-            {% if property_card.rows %}
-            {%- set pc_docs       = property_card.docs %}
-            {%- set pc_other_docs = pc_docs %}
-            {%- set TOTAL_COLS = 12 %}
-            {%- set empty_cols = TOTAL_COLS - (pc_other_docs | length) %}
-
-            <div class="table-responsive">
-            <table class="table table-sm table-bordered mb-0" style="font-size:0.75rem; min-width:700px; table-layout:fixed;">
-                <colgroup>
-                    <col style="width:28px;">     {# № #}
-                    <col style="width:200px;">    {# Назва #}
-                    <col style="width:50px;">     {# Стан #}
-                    {% for _ in pc_other_docs %}<col style="width:42px;">{% endfor %}
-                    {% for _ in range(empty_cols) %}<col style="width:38px;">{% endfor %}
-                    <col style="width:38px;">     {# Разом #}
-                </colgroup>
-                <thead class="table-light">
-                    {# Рядок 1 #}
-                    <tr class="text-center align-middle">
-                        <th rowspan="2">#</th>
-                        <th rowspan="2" class="text-start">Найменування</th>
-                        <th rowspan="2" title="Стан забезпечення">Стан</th>
-                        <th colspan="{{ pc_other_docs | length if pc_other_docs else 1 }}" style="font-size:0.7rem;">
-                            Найменування, номер і дата документа
-                        </th>
-                        {% for _ in range(empty_cols) %}<th style="font-size:0.6rem; color:#ccc;">&nbsp;</th>{% endfor %}
-                        <th rowspan="2" style="font-size:0.7rem;">Разом</th>
-                    </tr>
-
-                    {# Рядок 2 — окремі документи #}
-                    <tr class="text-center">
-                        {% for doc in pc_other_docs %}
-                        <th style="font-size:0.65rem; padding:2px; line-height:1.2;">
-                            {% if doc.type == 'invoice' %}
-                            <a href="{{ url_for('invoices.view', invoice_id=doc.id) }}"
-                               class="text-decoration-none text-primary d-block" target="_blank"
-                               title="Відкрити накладну {{ doc.label }}">
-                                <i class="bi bi-receipt" style="font-size:0.65rem;"></i><br>
-                                <b>{{ doc.label }}</b>
-                            </a>
-                            {% elif doc.type == 'rv' %}
-                            <a href="{{ url_for('rv.view', sheet_id=doc.id) }}"
-                               class="text-decoration-none text-success d-block" target="_blank"
-                               title="Відкрити РВ {{ doc.label }}">
-                                <i class="bi bi-list-columns-reverse" style="font-size:0.65rem;"></i><br>
-                                <b>{{ doc.label }}</b>
-                            </a>
-                            {% elif doc.type == 'attestat_import' %}
-                            <a href="{{ url_for('personnel.attestat_import', person_id=person.id) }}"
-                               class="text-decoration-none text-info d-block" target="_blank"
-                               title="Прийом з атестату">
-                                <i class="bi bi-box-arrow-in-down" style="font-size:0.65rem;"></i><br>
-                                <b>{{ doc.label }}</b>
-                            </a>
-                            {% else %}
-                            <span style="font-size:0.65rem;">{{ doc.label }}</span>
-                            {% endif %}
-                            {% if doc.date %}
-                            <div class="text-muted" style="font-size:0.6rem;">{{ doc.date }}</div>
-                            {% endif %}
-                        </th>
-                        {% endfor %}
-                    </tr>
-                </thead>
-
-                <tbody>
-                    {%- set ns = namespace(cur_group='', row_num=0) %}
-                    {% for row in property_card.rows %}
-
-                    {# Рядок-заголовок групи #}
-                    {% if row.group_name != ns.cur_group %}
-                    {%- set ns.cur_group = row.group_name %}
-                    <tr class="table-secondary">
-                        <td colspan="{{ 3 + TOTAL_COLS + 1 }}"
-                            class="fw-bold py-1 px-2" style="font-size:0.7rem;">
-                            {{ row.group_name }}
-                        </td>
-                    </tr>
-                    {% endif %}
-
-                    {%- set ns.row_num = ns.row_num + 1 %}
-                    <tr>
-                        <td class="text-center text-muted">{{ ns.row_num }}</td>
-                        <td>{{ row.norm_name }}</td>
-
-                        {# Стан кольором #}
-                        {% if row.color == 'green' %}
-                        <td class="text-center bg-success-subtle text-success fw-semibold"
-                            title="Норма виконана">
-                            <i class="bi bi-check-circle-fill"></i>
-                        </td>
-                        {% elif row.color == 'yellow' %}
-                        <td class="text-center bg-warning-subtle text-warning fw-semibold"
-                            title="Строк носіння вийшов — потребує заміни">
-                            <i class="bi bi-arrow-clockwise"></i>
-                        </td>
-                        {% elif row.color == 'orange' %}
-                        <td class="text-center bg-warning-subtle text-warning fw-semibold"
-                            title="Видано частково">
-                            <i class="bi bi-dash-circle"></i>
-                        </td>
-                        {% elif row.color == 'red' %}
-                        <td class="text-center bg-danger-subtle text-danger fw-semibold"
-                            title="Не видавалось">
-                            <i class="bi bi-x-circle-fill"></i>
-                        </td>
-                        {% else %}
-                        <td class="text-center text-muted">—</td>
+                        {%- set ns2 = namespace(cur_group='', row_num=0) %}
+                        {% for row in property_card.rows %}
+                        {% if row.group_name != ns2.cur_group %}
+                        {%- set ns2.cur_group = row.group_name %}
+                        <tr class="table-secondary"><td colspan="{{ 3 + TOTAL_COLS2 + 1 }}" class="fw-bold py-1 px-2" style="font-size:0.72rem;">{{ row.group_name }}</td></tr>
                         {% endif %}
-
-                        {# Всі документи (накладні, РВ, атестати) #}
-                        {% for doc in pc_other_docs %}
-                        {%- set cell = row.cells.get(doc.key) %}
-                        <td class="text-center
-                            {%- if cell and cell.status == 'written_off' %} text-muted text-decoration-line-through
-                            {%- elif cell and cell.status == 'returned' %} text-muted
-                            {%- endif %}">
-                            {% if cell %}{{ cell.qty|int if cell.qty == cell.qty|int else cell.qty }}{% endif %}
-                        </td>
+                        {%- set ns2.row_num = ns2.row_num + 1 %}
+                        <tr>
+                            <td class="text-center text-muted">{{ ns2.row_num }}</td>
+                            <td>{{ row.norm_name }}</td>
+                            {% if row.color == 'green' %}<td class="text-center bg-success-subtle text-success"><i class="bi bi-check-circle-fill"></i></td>
+                            {% elif row.color in ('yellow','orange') %}<td class="text-center bg-warning-subtle text-warning"><i class="bi bi-arrow-clockwise"></i></td>
+                            {% elif row.color == 'red' %}<td class="text-center bg-danger-subtle text-danger"><i class="bi bi-x-circle-fill"></i></td>
+                            {% else %}<td class="text-center text-muted">—</td>{% endif %}
+                            {% for doc in pc_docs2 %}
+                            {%- set cell = row.cells.get(doc.key) %}
+                            <td class="text-center{% if cell and cell.status == 'written_off' %} text-muted text-decoration-line-through{% endif %}">
+                                {% if cell %}{{ cell.qty|int if cell.qty == cell.qty|int else cell.qty }}{% endif %}
+                            </td>
+                            {% endfor %}
+                            {% for i in range(empty_cols2) %}<td></td>{% endfor %}
+                            <td class="text-center fw-semibold">{{ row.total_active|int if row.total_active else '—' }}
+                                {%- if row.debt_qty and row.debt_qty > 0 %}<br><span class="text-danger" style="font-size:0.65rem;" title="Борг">-{{ row.debt_qty|int if row.debt_qty == row.debt_qty|int else row.debt_qty }}</span>{%- endif %}
+                            </td>
+                            {% if row.expiry_date %}
+                                {% if row.days_left is not none and row.days_left < 0 %}<td class="text-center small bg-danger-subtle text-danger">{{ row.expiry_date | fdate }}</td>
+                                {% elif row.days_left is not none and row.days_left <= 30 %}<td class="text-center small bg-warning-subtle text-warning">{{ row.expiry_date | fdate }}</td>
+                                {% else %}<td class="text-center small text-muted">{{ row.expiry_date | fdate }}</td>{% endif %}
+                            {% else %}<td class="text-center text-muted small">{% if row.total_active > 0 %}∞{% else %}—{% endif %}</td>{% endif %}
+                        </tr>
                         {% endfor %}
-
-                        {# Порожні #}
-                        {% for i in range(empty_cols) %}
-                        <td></td>
-                        {% endfor %}
-
-                        {# Разом #}
-                        <td class="text-center fw-semibold">
-                            {% if row.total_active %}
-                                {{ row.total_active|int if row.total_active == row.total_active|int else row.total_active }}
-                            {% else %}—{% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            </div>
-
-            {# Легенда #}
-            <div class="px-3 py-2 text-muted border-top d-flex flex-wrap gap-3" style="font-size:0.75rem;">
-                <span><i class="bi bi-receipt text-primary me-1"></i>Накладна</span>
-                <span><i class="bi bi-list-columns-reverse text-success me-1"></i>РВ</span>
-                <span><i class="bi bi-box-arrow-in-down text-info me-1"></i>Атестат</span>
-                <span class="ms-2 text-success"><i class="bi bi-check-circle-fill me-1"></i>норма виконана</span>
-                <span class="text-warning"><i class="bi bi-arrow-clockwise me-1"></i>потребує заміни</span>
-                <span class="text-warning"><i class="bi bi-dash-circle me-1"></i>часткова видача</span>
-                <span class="text-danger"><i class="bi bi-x-circle-fill me-1"></i>не видавалось</span>
-            </div>
-
-            {% else %}
-            <div class="p-4 text-center text-muted">
-                <i class="bi bi-card-list fs-2 d-block mb-2"></i>
-                <div>Картка порожня — норму не призначено</div>
-                <div class="small mt-1">
-                    Призначте норму видачі в
-                    <a href="{{ url_for('personnel.edit', person_id=person.id) }}">картці особи</a>,
-                    прив'яжіть позиції у
-                    <a href="{{ url_for('settings.items') }}">Словнику майна</a>
-                    до стандартних назв зі
-                    <a href="{{ url_for('settings.norm_dict') }}">Словника норм</a>.
-                </div>
-            </div>
-            {% endif %}
-        </div>
-
-        {# ── Вкладка: Документи ── #}
-        <div class="tab-pane fade" id="pane-docs" role="tabpanel">
-            <div id="docsLoading" class="p-4 text-center text-muted">
-                <div class="spinner-border spinner-border-sm me-2"></div>Завантаження...
-            </div>
-            <div id="docsContent" class="d-none">
-                {# Накладні #}
-                <div class="px-3 pt-3 pb-1">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="mb-0"><i class="bi bi-file-earmark-text me-2 text-primary"></i>Накладні</h6>
-                        <button class="btn btn-sm btn-outline-success js-create-doc-btn"
-                                data-person-id="{{ person.id }}"
-                                data-back="{{ request.url }}">
-                            <i class="bi bi-plus-lg me-1"></i>Створити документ
-                        </button>
-                    </div>
-                    <div id="invoicesList">
-                        <div class="text-muted fst-italic">Накладні відсутні</div>
-                    </div>
-                </div>
-                <hr class="my-2">
-                {# Роздавальні відомості #}
-                <div class="px-3 pb-3">
-                    <h6 class="mb-2"><i class="bi bi-table me-2 text-primary"></i>Роздавальні відомості</h6>
-                    <div id="rvList">
-                        <div class="text-muted fst-italic">РВ відсутні</div>
-                    </div>
-                </div>
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="pc-empty py-5">Норму не призначено</div>
+                {% endif %}
             </div>
         </div>
-
-        {# ── Вкладка: Історія ── #}
-        <div class="tab-pane fade" id="pane-history" role="tabpanel">
-            <div class="p-4 text-center text-muted">
-                <i class="bi bi-clock-history fs-2 d-block mb-2"></i>
-                Журнал змін відображатиметься тут
-            </div>
-        </div>
-
-        {# ── Додаткові вкладки від плагінів ── #}
-        {%- for tab in _extra_tabs %}
-        <div class="tab-pane fade" id="pane-{{ tab.id }}" role="tabpanel">
-            {{ slot('personnel.card.tab_content', tab_id=tab.id, person=person) | safe }}
-        </div>
-        {%- endfor %}
-
     </div>
 </div>
 
-{# ══════════════════════════════════════════════════════════
+{# Документи #}
+<div class="modal fade" id="modalDocs" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title"><i class="bi bi-file-earmark-text me-2"></i>Документи — {{ person.last_name | upper }} {{ person.first_name }}</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modalDocsBody">
+                <div class="mb-3">
+                    <div class="fw-semibold text-muted small mb-2"><i class="bi bi-receipt text-primary me-1"></i>НАКЛАДНІ</div>
+                    <div id="modalInvoicesList"></div>
+                </div>
+                <div>
+                    <div class="fw-semibold text-muted small mb-2"><i class="bi bi-table text-success me-1"></i>РОЗДАВАЛЬНІ ВІДОМОСТІ</div>
+                    <div id="modalRvList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Історія #}
+<div class="modal fade" id="modalHistory" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title"><i class="bi bi-clock-history me-2"></i>Історія — {{ person.last_name | upper }} {{ person.first_name }}</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0" id="modalHistoryBody"></div>
+        </div>
+    </div>
+</div>
+
+{# ════════════════════════════════════════════
    Модальне вікно — Архівування
-══════════════════════════════════════════════════════════ #}
+════════════════════════════════════════════ #}
 <div class="modal fade" id="modalArchive" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -628,7 +730,7 @@
             </div>
             <div class="modal-body">
                 <p class="mb-2">
-                    Особа: <strong>{{ person.last_name }} {{ person.first_name }}{% if person.middle_name %} {{ person.middle_name }}{% endif %}</strong>
+                    Особа: <strong>{{ person.last_name | upper }} {{ person.first_name }}{% if person.middle_name %} {{ person.middle_name }}{% endif %}</strong>
                 </p>
                 <div id="archiveInventoryWarning" class="alert alert-danger d-none py-2">
                     <strong><i class="bi bi-exclamation-triangle me-1"></i>Є не здане інвентарне майно:</strong>
@@ -662,6 +764,460 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+/* ═══════════════════════════════════════════
+   PersonCard — Fluent-inspired layout
+═══════════════════════════════════════════ */
+
+/* Hero */
+.pc-hero {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,.18);
+    border: 1px solid var(--card-border);
+    /* Acrylic/glass effect — тонований градієнт поверх card-bg */
+    background:
+        linear-gradient(135deg,
+            rgba(137,180,250,.07) 0%,
+            rgba(137,180,250,.02) 40%,
+            rgba(203,166,247,.05) 100%),
+        var(--card-bg);
+}
+.pc-hero__bar {
+    position: absolute; left:0; top:0; bottom:0; width:5px;
+}
+.pc-hero__bar--primary   { background: linear-gradient(180deg, var(--app-primary), rgba(137,180,250,.4)); }
+.pc-hero__bar--danger    { background: linear-gradient(180deg, #f38ba8, rgba(243,139,168,.3)); }
+.pc-hero__bar--warning   { background: linear-gradient(180deg, #f9e2af, rgba(249,226,175,.3)); }
+.pc-hero__bar--secondary { background: linear-gradient(180deg, var(--text-muted), transparent); }
+
+.pc-hero__body {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    padding: 20px 24px 20px 28px;
+}
+
+/* Ліва панель: аватар + розміри */
+.pc-hero__left {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: 100px;
+}
+
+/* Аватар */
+.pc-avatar-wrap { position: relative; flex-shrink: 0; }
+.pc-avatar {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--card-border);
+    display: block;
+}
+.pc-avatar--initials {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem; font-weight: 700; letter-spacing: -.02em;
+    background: var(--table-header-bg);
+}
+.pc-avatar--primary   { border-color: var(--app-primary); color: var(--app-primary); }
+.pc-avatar--danger    { border-color: rgba(243,139,168,.5); color: #f38ba8; }
+.pc-avatar--warning   { border-color: rgba(249,226,175,.5); color: #f9e2af; }
+.pc-avatar--secondary { border-color: var(--card-border); color: var(--text-muted); }
+.pc-avatar__upload {
+    position: absolute; bottom:2px; right:2px;
+    width:24px; height:24px; border-radius:50%;
+    background: var(--app-primary); color: #1e2030;
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; cursor:pointer;
+    border: 2px solid var(--card-bg);
+    opacity:0; transition: opacity .15s;
+}
+.pc-hero:hover .pc-avatar__upload { opacity:1; }
+
+/* Центральна панель */
+.pc-hero__info { flex:1; min-width:0; }
+
+/* Права панель — заголовок картки обліку */
+.pc-hero__card-header {
+    flex-shrink: 0;
+    width: 260px;
+    border-left: 1px solid var(--card-border);
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.pc-hero__card-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+.pc-hero__card-num {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-heading);
+    letter-spacing: .01em;
+    margin-bottom: 2px;
+}
+.pc-hero__card-divider {
+    height: 1px;
+    background: var(--card-border);
+    margin: 6px 0;
+}
+.pc-hero__card-dl { margin: 0; display: flex; flex-direction: column; gap: 5px; }
+.pc-hero__card-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+.pc-hero__card-row dt {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    font-weight: 400;
+    min-width: 78px;
+    flex-shrink: 0;
+}
+.pc-hero__card-row dd {
+    font-size: 12px;
+    color: var(--text-primary);
+    margin: 0;
+    font-weight: 500;
+    word-break: break-word;
+}
+.pc-hero__card-row--danger dt,
+.pc-hero__card-row--danger dd { color: #f38ba8; }
+.pc-hero__card-link {
+    color: var(--app-primary);
+    text-decoration: none;
+}
+.pc-hero__card-link:hover { text-decoration: underline; }
+.pc-hero__card-link i { font-size: 11px; }
+
+@media (max-width: 900px) {
+    .pc-hero__card-header { display: none; }
+}
+
+/* Ім'я */
+.pc-hero__info { flex:1; min-width:0; }
+.pc-hero__name {
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: .01em;
+    line-height: 1.2;
+    color: var(--text-heading);
+}
+.pc-hero__name--light { font-weight: 400; }
+.pc-hero__sub { font-size: 0.82rem; color: var(--text-muted); }
+
+/* Insignia зі звання */
+.pc-insignia {
+    display: inline-block;
+    font-family: monospace;
+    font-size: 0.85em;
+    letter-spacing: 2px;
+    color: var(--app-primary);
+    margin-right: 3px;
+}
+
+/* Категорійний бейдж */
+.pc-cat-badge {
+    font-size: 11px;
+    padding: 3px 9px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    border-radius: 20px;
+    flex-shrink: 0;
+}
+
+/* Інфо-плашки (strip + info-grid — однаковий стиль) */
+.pc-info-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+/* Key-info strip */
+.pc-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.pc-strip__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: var(--table-header-bg);
+    border: 1px solid var(--card-border);
+    font-size: 12px;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+.pc-strip__item i { font-size: 11px; color: var(--text-muted); }
+.pc-strip__item--danger {
+    background: rgba(243,139,168,.08);
+    border-color: rgba(243,139,168,.2);
+}
+.pc-strip__link { color: inherit; text-decoration: none; }
+.pc-strip__link:hover { color: var(--app-primary); }
+
+
+/* Кнопка видалення фото */
+.pc-avatar-delete {
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    transition: opacity .15s;
+}
+.pc-hero:hover .pc-avatar-delete { opacity: 1; }
+
+/* ── Верхній рядок ── */
+.pc-top-row {
+    display: grid;
+    grid-template-columns: 160px 1fr 280px;
+    gap: 14px;
+    align-items: stretch;
+    /* Фіксована висота верхнього ряду — 8 рядків розмірів */
+    height: 290px;
+}
+@media (max-width: 1100px) {
+    .pc-top-row { grid-template-columns: 160px 1fr; height: auto; }
+    .pc-top-row > :last-child { grid-column: 1 / -1; }
+}
+@media (max-width: 700px) {
+    .pc-top-row { grid-template-columns: 1fr; }
+}
+
+/* ── Блок розмірів ── */
+.pc-sizes-wrap { display: flex; flex-direction: column; }
+.pc-sizes-list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+.pc-sz-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    flex: 1;                  /* рівномірно ділять висоту */
+    min-height: 30px;
+    border-bottom: 1px solid var(--card-border);
+}
+.pc-sz-row:last-child { border-bottom: none; }
+.pc-sz-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.pc-sz-val {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 1px 4px;
+    transition: background .12s;
+    min-width: 32px;
+    text-align: right;
+}
+.pc-sz-val:hover { background: var(--table-header-bg); }
+.pc-sz-val--empty { font-weight: 400; }
+.pc-sz-add {
+    font-size: 11px;
+    color: var(--app-primary);
+    opacity: .75;
+}
+.pc-sz-input {
+    width: 64px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: right;
+    border: 1px solid var(--app-primary);
+    border-radius: 4px;
+    padding: 1px 4px;
+    background: var(--input-bg, var(--card-bg));
+    color: var(--text-primary);
+    outline: none;
+}
+
+/* "На забезпеченні" і "Документи" — займають всю висоту верхнього ряду */
+.pc-top-row > .pc-block { display: flex; flex-direction: column; }
+.pc-top-row > .pc-block .pc-scroll-body {
+    flex: 1;
+    max-height: none;
+    overflow: hidden;   /* без скролу — кнопка ⛶ відкриває модаль */
+}
+.pc-top-row > .pc-block .pc-empty {
+    flex: 1;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+}
+
+/* ── Нижня сітка: картка речового майна | норми+історія ── */
+.pc-grid {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 14px;
+    align-items: start;
+    /* Висота = залишок viewport після hero + верхнього ряду + відступів */
+    --pc-grid-h: calc(100vh - 52px - 48px - 160px - 290px - 14px - 14px - 14px - 24px);
+}
+.pc-col--main,
+.pc-col--side {
+    display: flex;
+    flex-direction: column;
+    height: var(--pc-grid-h);
+    min-height: 300px;
+}
+/* Картка речового майна — займає всю висоту лівої колонки */
+.pc-col--main > .pc-block {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0;
+    overflow: hidden;
+}
+.pc-col--main > .pc-block .pc-scroll-body {
+    flex: 1;
+    max-height: none;
+    overflow: hidden;   /* скрол вимкнено — ⛶ відкриває модаль */
+}
+/* Права колонка: Норми (фіксована) + Історія (решта) */
+.pc-col--side > .pc-block:not(:last-child) {
+    flex-shrink: 0;
+    margin-bottom: 14px;
+}
+.pc-col--side > .pc-block:last-child {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0;
+    overflow: hidden;
+}
+.pc-col--side > .pc-block:last-child .pc-scroll-body,
+.pc-col--side > .pc-block:last-child #historyContent {
+    flex: 1;
+    max-height: none;
+    overflow: hidden;   /* скрол вимкнено — ⛶ відкриває модаль */
+}
+@media (max-width: 1100px) {
+    .pc-grid { grid-template-columns: 1fr; }
+    .pc-col--main, .pc-col--side { height: auto; min-height: unset; }
+    .pc-col--main > .pc-block,
+    .pc-col--side > .pc-block:last-child { flex: none; }
+    .pc-col--main > .pc-block .pc-scroll-body,
+    .pc-col--side > .pc-block:last-child .pc-scroll-body,
+    .pc-col--side > .pc-block:last-child #historyContent,
+    .pc-top-row > .pc-block .pc-scroll-body { overflow-y: auto; max-height: 320px; flex: none; }
+}
+
+/* Блоки */
+.pc-block {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 8px rgba(0,0,0,.08);
+    margin-bottom: 14px;
+}
+.pc-block:last-child { margin-bottom: 0; }
+.pc-block__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--card-border);
+    background: rgba(137,180,250,.03);
+}
+.pc-block__title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-heading);
+    display:flex; align-items:center; gap:7px;
+    flex:1;
+}
+.pc-block__title i { color: var(--app-primary); font-size:14px; }
+.pc-block__meta { font-size:12px; color: var(--text-muted); }
+.pc-block__more { font-size:12px; flex-shrink:0; }
+.pc-block__expand {
+    color: var(--text-muted);
+    padding: 2px 4px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+.pc-block__expand:hover { color: var(--app-primary); }
+
+/* Скрол всередині блоку */
+.pc-scroll-body {
+    max-height: 320px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+.pc-scroll-body::-webkit-scrollbar { width: 4px; }
+.pc-scroll-body::-webkit-scrollbar-track { background: transparent; }
+.pc-scroll-body::-webkit-scrollbar-thumb { background: var(--card-border); border-radius: 2px; }
+
+/* Порожній стан */
+.pc-empty {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 24px 16px;
+    font-size: 13px;
+}
+
+/* Документи */
+.pc-docs-section { padding: 8px 14px; }
+.pc-docs-section__label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+.pc-docs-list { display:flex; flex-direction:column; gap:4px; }
+.pc-doc-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--card-border);
+    background: var(--table-header-bg);
+    font-size: 12px;
+    text-decoration: none;
+    color: var(--text-primary);
+    transition: border-color .12s;
+}
+.pc-doc-row:hover { border-color: rgba(137,180,250,.3); color: var(--text-primary); }
+.pc-doc-row__num { font-weight:600; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pc-doc-row__date { color:var(--text-muted); white-space:nowrap; }
+
+
+/* Історія */
+.pc-history-item {
+    display:flex; align-items:flex-start; gap:10px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--card-border);
+    font-size: 12px;
+}
+.pc-history-item:last-child { border-bottom: none; }
+.pc-history-item__icon { font-size:15px; flex-shrink:0; margin-top:1px; }
+.pc-history-item__body { flex:1; min-width:0; }
+.pc-history-item__title { font-weight:500; color: var(--text-primary); }
+.pc-history-item__sub { color: var(--text-muted); }
+</style>
+
 <script>
 const PERSON_ID = {{ person.id }};
 const modalArchive = new bootstrap.Modal(document.getElementById('modalArchive'));
@@ -675,28 +1231,71 @@ async function uploadPhoto(input) {
     try {
         const resp = await fetch(`/personnel/${PERSON_ID}/photo`, { method: 'POST', body: fd });
         const data = await resp.json();
-        if (data.error) { showToast(data.error, 'danger'); return; }
-        // Замінити фото на сторінці
+        if (data.msg || data.error) { showToast(data.msg || data.error, 'danger'); return; }
         const wrap = document.getElementById('photoWrap');
-        wrap.innerHTML = `<img id="photoImg" src="${data.photo_url}?t=${Date.now()}"
-            class="rounded border" style="width:80px;height:100px;object-fit:cover;">`;
+        wrap.innerHTML = `<img id="photoImg_el" src="${data.photo_url}?t=${Date.now()}" class="pc-avatar">`;
         showToast('Фото збережено', 'success');
     } catch(e) { showToast('Помилка завантаження', 'danger'); }
 }
 
-async function deletePhoto() {
-    if (!confirm('Видалити фото?')) return;
-    const data = await apiPost(`/personnel/${PERSON_ID}/photo/delete`, {});
-    if (!data) return;
-    if (data.error) { showToast(data.error, 'danger'); return; }
-    const wrap = document.getElementById('photoWrap');
-    wrap.innerHTML = `<div id="photoImg" class="d-flex align-items-center justify-content-center rounded border bg-light"
-        style="width:80px;height:100px;">
-        <i class="bi bi-person-fill text-secondary" style="font-size:2.5rem;"></i></div>`;
-    showToast('Фото видалено', 'success');
+function deletePhoto() {
+    showConfirm('Видалити фото?', async () => {
+        const data = await apiPost(`/personnel/${PERSON_ID}/photo/delete`, {});
+        if (!data) return;
+        if (data.msg || data.error) { showToast(data.msg || data.error, 'danger'); return; }
+        const wrap = document.getElementById('photoWrap');
+        const initials = '{{ (person.last_name[0]|upper) }}{{ (person.first_name[0]|upper) if person.first_name else "" }}';
+        wrap.innerHTML = `<div id="photoImg_el" class="pc-avatar pc-avatar--initials pc-avatar--{{ _accent }}">${initials}</div>`;
+        showToast('Фото видалено', 'success');
+    });
 }
 
-// ── Документи вкладка ──
+// ── Розміри — inline edit ──
+function szEdit(el, field) {
+    if (el.querySelector('input')) return; // вже відкрито
+    const currentVal = el.dataset.val || '';
+    const displayVal = el.textContent.trim();
+    const isAdd = el.classList.contains('pc-sz-val--empty');
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'pc-sz-input';
+    input.value = isAdd ? '' : displayVal;
+    input.maxLength = 10;
+    el.innerHTML = '';
+    el.appendChild(input);
+    input.focus();
+    input.select();
+
+    async function save() {
+        const val = input.value.trim();
+        const data = await apiPost(`/personnel/${PERSON_ID}/sizes`, { field, value: val });
+        if (!data) { restore(); return; }
+        if (!data.ok) { showToast(data.msg || 'Помилка збереження', 'danger'); restore(); return; }
+        if (val) {
+            el.innerHTML = val;
+            el.classList.remove('pc-sz-val--empty');
+        } else {
+            el.innerHTML = '<span class="pc-sz-add">додати</span>';
+            el.classList.add('pc-sz-val--empty');
+        }
+    }
+    function restore() {
+        if (isAdd) {
+            el.innerHTML = '<span class="pc-sz-add">додати</span>';
+        } else {
+            el.innerHTML = displayVal;
+        }
+    }
+
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { input.removeEventListener('blur', save); restore(); }
+    });
+}
+
+// ── Документи ──
 const STATUS_LABELS = {
     draft:'Чернетка', created:'Створено', issued:'Видано',
     processed:'Проведено', cancelled:'Скасовано',
@@ -708,61 +1307,136 @@ const STATUS_COLORS = {
     active:'primary', closed:'success',
 };
 
-document.getElementById('tab-docs').addEventListener('shown.bs.tab', loadDocuments, { once: true });
+function fmtDate(s) {
+    if (!s || s.length < 10) return s || '—';
+    return s.slice(8,10)+'.'+s.slice(5,7)+'.'+s.slice(2,4);
+}
 
-async function loadDocuments() {
+(async function loadDocuments() {
     const resp = await fetch(`/personnel/${PERSON_ID}/documents`);
     const data = await resp.json();
     document.getElementById('docsLoading').classList.add('d-none');
     document.getElementById('docsContent').classList.remove('d-none');
 
-    // Накладні
     const invEl = document.getElementById('invoicesList');
     if (data.invoices && data.invoices.length) {
-        invEl.innerHTML = `<div class="table-responsive">
-            <table class="table table-sm table-hover mb-0">
-            <thead><tr>
-                <th>Номер</th><th>Дата</th><th>Статус</th>
-                <th class="text-end">Сума</th><th></th>
-            </tr></thead><tbody>
-            ${data.invoices.map(inv => `<tr>
-                <td><a href="/invoices/${inv.id}?back=${encodeURIComponent(location.href)}" class="text-decoration-none">${inv.number || '—'}</a></td>
-                <td>${(inv.created_at||'').slice(0,10) || '—'}</td>
-                <td><span class="badge bg-${STATUS_COLORS[inv.status]||'secondary'}-subtle text-${STATUS_COLORS[inv.status]||'secondary'} border border-${STATUS_COLORS[inv.status]||'secondary'}-subtle">
-                    ${STATUS_LABELS[inv.status]||inv.status}</span></td>
-                <td class="text-end">${inv.total_sum ? Number(inv.total_sum).toFixed(2)+' грн' : '—'}</td>
-                <td><a href="/invoices/${inv.id}?back=${encodeURIComponent(location.href)}" class="btn btn-sm btn-outline-secondary py-0">
-                    <i class="bi bi-eye"></i></a></td>
-            </tr>`).join('')}
-            </tbody></table></div>`;
+        invEl.innerHTML = data.invoices.map(inv => {
+            const c = STATUS_COLORS[inv.status] || 'secondary';
+            return `<a href="/invoices/${inv.id}?back=${encodeURIComponent(location.href)}" class="pc-doc-row">
+                <i class="bi bi-receipt text-primary" style="font-size:13px;flex-shrink:0;"></i>
+                <span class="pc-doc-row__num">${inv.number || '—'}</span>
+                <span class="pc-doc-row__date">${fmtDate(inv.created_at)}</span>
+                <span class="badge bg-${c}-subtle text-${c} border border-${c}-subtle" style="font-size:10px;">${STATUS_LABELS[inv.status]||inv.status}</span>
+            </a>`;
+        }).join('');
     } else {
-        invEl.innerHTML = '<div class="text-muted fst-italic">Накладні відсутні</div>';
+        invEl.innerHTML = '<div class="text-muted fst-italic" style="font-size:12px;">Накладні відсутні</div>';
     }
 
-    // РВ
     const rvEl = document.getElementById('rvList');
     if (data.rv_sheets && data.rv_sheets.length) {
-        rvEl.innerHTML = `<div class="table-responsive">
-            <table class="table table-sm table-hover mb-0">
-            <thead><tr>
-                <th>Номер</th><th>Дата</th><th>Статус</th>
-                <th class="text-end">Сума</th><th></th>
-            </tr></thead><tbody>
-            ${data.rv_sheets.map(rv => `<tr>
-                <td><a href="/rv/${rv.id}/view?back=${encodeURIComponent(location.href)}" class="text-decoration-none">${rv.number || '—'}</a></td>
-                <td>${rv.doc_date || '—'}</td>
-                <td><span class="badge bg-${STATUS_COLORS[rv.status]||'secondary'}-subtle text-${STATUS_COLORS[rv.status]||'secondary'} border border-${STATUS_COLORS[rv.status]||'secondary'}-subtle">
-                    ${STATUS_LABELS[rv.status]||rv.status}</span></td>
-                <td class="text-end">${rv.total_sum ? Number(rv.total_sum).toFixed(2)+' грн' : '—'}</td>
-                <td><a href="/rv/${rv.id}/view?back=${encodeURIComponent(location.href)}" class="btn btn-sm btn-outline-secondary py-0">
-                    <i class="bi bi-eye"></i></a></td>
-            </tr>`).join('')}
-            </tbody></table></div>`;
+        rvEl.innerHTML = data.rv_sheets.map(rv => {
+            const c = STATUS_COLORS[rv.status] || 'secondary';
+            return `<a href="/rv/${rv.id}/view?back=${encodeURIComponent(location.href)}" class="pc-doc-row">
+                <i class="bi bi-table text-success" style="font-size:13px;flex-shrink:0;"></i>
+                <span class="pc-doc-row__num">${rv.number || '—'}</span>
+                <span class="pc-doc-row__date">${fmtDate(rv.doc_date)}</span>
+                <span class="badge bg-${c}-subtle text-${c} border border-${c}-subtle" style="font-size:10px;">${STATUS_LABELS[rv.status]||rv.status}</span>
+            </a>`;
+        }).join('');
     } else {
-        rvEl.innerHTML = '<div class="text-muted fst-italic">РВ відсутні</div>';
+        rvEl.innerHTML = '<div class="text-muted fst-italic" style="font-size:12px;">РВ відсутні</div>';
     }
+})();
+
+// ── Історія ──
+(async function loadHistory() {
+    const resp = await fetch(`/personnel/${PERSON_ID}/history`);
+    const data = await resp.json();
+    document.getElementById('historyLoading').classList.add('d-none');
+    document.getElementById('historyContent').classList.remove('d-none');
+
+    const ACTION_ICON = {
+        add: 'bi-plus-circle-fill text-success',
+        edit: 'bi-pencil-fill text-primary',
+        delete: 'bi-trash-fill text-danger',
+        archive: 'bi-archive-fill text-warning',
+    };
+
+    const listEl = document.getElementById('historyList');
+    if (!data.events || !data.events.length) {
+        listEl.innerHTML = '<div class="pc-empty py-3">Журнал порожній</div>';
+        return;
+    }
+
+    listEl.innerHTML = data.events.map(e => {
+        if (e.type === 'invoice') {
+            const c = STATUS_COLORS[e.status] || 'secondary';
+            const meta = [
+                e.item_count ? `${e.item_count} поз.` : '',
+                e.total_sum  ? `${e.total_sum.toFixed(2)} грн` : '',
+            ].filter(Boolean).join(' · ');
+            return `<div class="pc-history-item">
+                <i class="pc-history-item__icon bi bi-receipt text-warning"></i>
+                <div class="pc-history-item__body">
+                    <div class="pc-history-item__title">
+                        Накладна&nbsp;<a href="/invoices/${e.id}" class="text-decoration-none fw-semibold">${e.number}</a>
+                        <span class="badge bg-${c}-subtle text-${c} border border-${c}-subtle ms-1" style="font-size:10px;">${e.status_label}</span>
+                    </div>
+                    <div class="pc-history-item__sub">${e.date}${meta ? ' · ' + meta : ''}</div>
+                </div>
+            </div>`;
+        } else if (e.type === 'rv') {
+            const c = STATUS_COLORS[e.status] || 'secondary';
+            const meta = [
+                e.item_count ? `${e.item_count} поз.` : '',
+                e.total_sum  ? `${e.total_sum.toFixed(2)} грн` : '',
+            ].filter(Boolean).join(' · ');
+            return `<div class="pc-history-item">
+                <i class="pc-history-item__icon bi bi-table text-success"></i>
+                <div class="pc-history-item__body">
+                    <div class="pc-history-item__title">
+                        РВ&nbsp;<a href="/rv/${e.id}/view" class="text-decoration-none fw-semibold">${e.number}</a>
+                        <span class="badge bg-${c}-subtle text-${c} border border-${c}-subtle ms-1" style="font-size:10px;">${e.status_label}</span>
+                    </div>
+                    <div class="pc-history-item__sub">${e.date}${meta ? ' · ' + meta : ''}</div>
+                </div>
+            </div>`;
+        } else {
+            const icon = ACTION_ICON[e.action] || 'bi-circle text-muted';
+            return `<div class="pc-history-item">
+                <i class="pc-history-item__icon bi ${icon}"></i>
+                <div class="pc-history-item__body">
+                    <div class="pc-history-item__title">
+                        ${e.table_label}
+                        <span class="badge bg-light text-dark border ms-1" style="font-size:10px;">${e.action_label}</span>
+                        ${e.user !== 'система' ? `<span class="text-muted ms-1" style="font-size:11px;">· ${e.user}</span>` : ''}
+                    </div>
+                    ${e.description ? `<div class="pc-history-item__sub">${e.description}</div>` : ''}
+                    <div class="pc-history-item__sub">${e.date}</div>
+                </div>
+            </div>`;
+        }
+    }).join('');
+})();
+
+// ── Розгортання блоків у модальне вікно ──
+function openModal(id) {
+    const modal = new bootstrap.Modal(document.getElementById(id));
+    // Синхронізуємо вміст з основного блоку в модальний
+    if (id === 'modalDocs') {
+        document.getElementById('modalInvoicesList').innerHTML =
+            document.getElementById('invoicesList').innerHTML;
+        document.getElementById('modalRvList').innerHTML =
+            document.getElementById('rvList').innerHTML;
+    } else if (id === 'modalHistory') {
+        document.getElementById('modalHistoryBody').innerHTML =
+            document.getElementById('historyList').innerHTML;
+    }
+    modal.show();
 }
 
+// ── Архів ──
 function openArchiveModal() {
     document.getElementById('archiveReason').value = '';
     document.getElementById('archiveNote').value = '';
@@ -776,30 +1450,48 @@ async function submitArchive() {
     const note = document.getElementById('archiveNote').value;
     const result = await apiPost(`/personnel/${PERSON_ID}/archive`, { reason, note });
     if (!result) return;
-    if (result.error) {
+    if (result.msg || result.error) {
         if (result.items) {
-            const warn = document.getElementById('archiveInventoryWarning');
             const list = document.getElementById('archiveInventoryList');
-            list.innerHTML = result.items.map(i =>
-                `<li>${i.name} — ${i.quantity} шт.</li>`
-            ).join('');
-            warn.classList.remove('d-none');
+            list.innerHTML = result.items.map(i => `<li>${i.name} — ${i.quantity} шт.</li>`).join('');
+            document.getElementById('archiveInventoryWarning').classList.remove('d-none');
         }
-        showToast(result.error, 'danger');
-        return;
+        showToast(result.msg || result.error, 'danger'); return;
     }
     modalArchive.hide();
     showToast('Особу заархівовано', 'success');
     setTimeout(() => window.location.reload(), 800);
 }
 
-async function restorePerson() {
-    if (!confirm('Відновити особу з архіву?')) return;
-    const result = await apiPost(`/personnel/${PERSON_ID}/restore`, {});
-    if (!result) return;
-    if (result.error) { showToast(result.error, 'danger'); return; }
-    showToast('Особу відновлено', 'success');
-    setTimeout(() => window.location.reload(), 800);
+function restorePerson() {
+    showConfirm('Відновити особу з архіву?', async () => {
+        const result = await apiPost(`/personnel/${PERSON_ID}/restore`, {});
+        if (!result) return;
+        if (result.msg || result.error) { showToast(result.msg || result.error, 'danger'); return; }
+        showToast('Особу відновлено', 'success');
+        setTimeout(() => window.location.reload(), 800);
+    }, { confirmClass: 'btn-primary', confirmLabel: 'Відновити' });
 }
+
+// ── Підгонка висоти нижньої сітки під реальний layout ──
+// CSS calc() використовує фіксовані офсети, але navbar/topbar можуть мати іншу висоту.
+// JS вираховує реальний офсет і коригує CSS-змінну --pc-grid-h.
+function equalizeGrid() {
+    if (window.innerWidth <= 1100) return;
+
+    const grid = document.querySelector('.pc-grid');
+    if (!grid) return;
+
+    // Відстань від верху сторінки до початку .pc-grid
+    const gridTop = grid.getBoundingClientRect().top + window.scrollY;
+    // Залишаємо 16px відступ знизу
+    const available = window.innerHeight - gridTop - 16;
+    const h = Math.max(available, 300);
+
+    grid.style.setProperty('--pc-grid-h', h + 'px');
+}
+
+window.addEventListener('load', equalizeGrid);
+window.addEventListener('resize', equalizeGrid);
 </script>
 {% endblock %}

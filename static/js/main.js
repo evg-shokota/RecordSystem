@@ -81,12 +81,76 @@ function renderSuggestions(inputEl, suggestionsEl, items) {
 }
 
 // =====================================================
-// Підтвердження небезпечних дій
+// Підтвердження небезпечних дій — Bootstrap Modal
 // =====================================================
 
-function confirmAction(message, callback) {
-    if (window.confirm(message)) {
-        callback();
+/**
+ * showConfirm(message, onConfirm, opts)
+ * opts: { title, confirmLabel, confirmClass, cancelLabel, onCancel }
+ * Якщо #confirmModal не існує (напр. login page) — fallback до window.confirm
+ */
+function showConfirm(message, onConfirm, opts) {
+    opts = opts || {};
+    var modal = document.getElementById('confirmModal');
+    if (!modal) {
+        if (window.confirm(message)) onConfirm();
+        else if (opts.onCancel) opts.onCancel();
+        return;
+    }
+    var msgEl   = document.getElementById('confirmModalMessage');
+    var titleEl = document.getElementById('confirmModalTitle');
+    var okBtn   = document.getElementById('confirmModalOk');
+    var cancelEl= document.getElementById('confirmModalCancel');
+
+    if (titleEl)  titleEl.textContent  = opts.title  || 'Підтвердити дію';
+    if (msgEl)    msgEl.textContent    = message;
+    if (okBtn) {
+        okBtn.textContent  = opts.confirmLabel || 'Підтвердити';
+        okBtn.className    = 'btn btn-sm ' + (opts.confirmClass || 'btn-danger');
+    }
+    if (cancelEl) cancelEl.textContent = opts.cancelLabel || 'Скасувати';
+
+    var bsModal = bootstrap.Modal.getOrCreateInstance(modal);
+
+    // Прибираємо старі обробники (clone trick)
+    var newOk     = okBtn.cloneNode(true);
+    var newCancel = cancelEl ? cancelEl.cloneNode(true) : null;
+    okBtn.parentNode.replaceChild(newOk, okBtn);
+    if (cancelEl && newCancel) cancelEl.parentNode.replaceChild(newCancel, cancelEl);
+
+    newOk.addEventListener('click', function() {
+        bsModal.hide();
+        onConfirm();
+    });
+
+    if (newCancel && opts.onCancel) {
+        newCancel.addEventListener('click', function() {
+            // data-bs-dismiss="modal" вже є на кнопці — modal закриється сам
+            setTimeout(opts.onCancel, 200);
+        });
+    }
+
+    bsModal.show();
+}
+
+// Зворотна сумісність
+function confirmAction(message, callback) { showConfirm(message, callback); }
+
+// =====================================================
+// Loading state для кнопок
+// setBtnLoading(btn, true)  — показати спіннер, задизейблити
+// setBtnLoading(btn, false) — відновити оригінальний HTML
+// =====================================================
+
+function setBtnLoading(btn, loading) {
+    if (!btn) return;
+    if (loading) {
+        btn._origHtml = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>';
+        btn.disabled = true;
+    } else {
+        if (btn._origHtml !== undefined) btn.innerHTML = btn._origHtml;
+        btn.disabled = false;
     }
 }
 
@@ -107,6 +171,65 @@ function showToast(message, type = 'info') {
         setTimeout(() => el.remove(), 300);
     }, 3500);
 }
+
+// =====================================================
+// data-confirm — глобальний перехоплювач для форм і кнопок
+// Додай data-confirm="Текст підтвердження" до <form> або <button>/<a>
+// Опційно: data-confirm-title="Заголовок" data-confirm-class="btn-danger"
+// =====================================================
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Форми з data-confirm замість onsubmit="return confirm(...)"
+    document.addEventListener('submit', function(e) {
+        var form = e.target.closest('form[data-confirm]');
+        if (!form) return;
+        var msg   = form.dataset.confirm;
+        var title = form.dataset.confirmTitle || 'Підтвердити дію';
+        var cls   = form.dataset.confirmClass || 'btn-danger';
+        e.preventDefault();
+        showConfirm(msg, function() {
+            form.removeAttribute('data-confirm');
+            form.submit();
+        }, { title: title, confirmClass: cls });
+    }, true);
+
+    // Кнопки/посилання з data-confirm
+    document.addEventListener('click', function(e) {
+        var el = e.target.closest('[data-confirm]:not(form)');
+        if (!el) return;
+        var msg   = el.dataset.confirm;
+        var title = el.dataset.confirmTitle || 'Підтвердити дію';
+        var cls   = el.dataset.confirmClass || 'btn-danger';
+        e.preventDefault();
+        e.stopPropagation();
+        var href = el.tagName === 'A' ? el.href : null;
+        showConfirm(msg, function() {
+            if (href) { location.href = href; return; }
+            // Для кнопок у формі — submit батьківської форми
+            var parentForm = el.closest('form');
+            if (parentForm) {
+                el.removeAttribute('data-confirm');
+                parentForm.submit();
+            }
+        }, { title: title, confirmClass: cls });
+    }, true);
+});
+
+// =====================================================
+// Глобальний loading state для submit-кнопок
+// Для форм без data-confirm: кнопка з type=submit автоматично
+// отримує спіннер при submit (запобігає подвійному кліку).
+// Щоб вимкнути для конкретної кнопки: data-no-loading
+// =====================================================
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('submit', function(e) {
+        var form = e.target.closest('form');
+        if (!form || form.dataset.confirm) return; // з data-confirm — не чіпаємо (там окрема логіка)
+        var btn = form.querySelector('[type=submit]:not([data-no-loading])');
+        if (btn) setBtnLoading(btn, true);
+    });
+});
 
 // =====================================================
 // Чекбокси для масового вибору
@@ -727,13 +850,27 @@ class StockItemRow {
                 priceSel.name          = 'price[]';
                 priceSel.onchange = () => {
                     const r = rows.find(r => String(r.price) === priceSel.value) || rows[0];
-                    if (balCell) balCell.textContent = r.balance;
+                    if (balCell) {
+                        balCell.textContent = r.balance;
+                        const freeQty = parseFloat(r.qty_free !== undefined ? r.qty_free : r.balance) || 0;
+                        balCell.classList.remove('text-danger', 'text-warning', 'text-success');
+                        if (freeQty <= 0) balCell.classList.add('text-danger');
+                        else if (freeQty < 5) balCell.classList.add('text-warning');
+                        else balCell.classList.add('text-success');
+                    }
                     this._notify();
                 };
             }
             if (priceInp) { priceInp.style.display = 'none'; priceInp.name = ''; }
             const sel = rows.find(r => String(r.price) === (priceSel?.value)) || rows[0];
-            if (balCell) balCell.textContent = sel.balance;
+            if (balCell) {
+                balCell.textContent = sel.balance;
+                const freeQty = parseFloat(sel.qty_free !== undefined ? sel.qty_free : sel.balance) || 0;
+                balCell.classList.remove('text-danger', 'text-warning', 'text-success');
+                if (freeQty <= 0) balCell.classList.add('text-danger');
+                else if (freeQty < 5) balCell.classList.add('text-warning');
+                else balCell.classList.add('text-success');
+            }
         } else {
             // Одна ціна — звичайне поле
             if (priceSel) { priceSel.style.display = 'none'; priceSel.name = ''; }
@@ -742,7 +879,14 @@ class StockItemRow {
                 priceInp.name          = 'price[]';
                 priceInp.value         = rows[0].price;
             }
-            if (balCell) balCell.textContent = rows[0].balance;
+            if (balCell) {
+                balCell.textContent = rows[0].balance;
+                const freeQty = parseFloat(rows[0].qty_free !== undefined ? rows[0].qty_free : rows[0].balance) || 0;
+                balCell.classList.remove('text-danger', 'text-warning', 'text-success');
+                if (freeQty <= 0) balCell.classList.add('text-danger');
+                else if (freeQty < 5) balCell.classList.add('text-warning');
+                else balCell.classList.add('text-success');
+            }
         }
 
         this._notify();
@@ -933,7 +1077,7 @@ const DictItemAdder = (() => {
                 if (opts.onSaved) opts.onSaved(newOpt);
                 if (typeof showToast === 'function') showToast(`"${name}" додано до словника`, 'success');
             } else {
-                errEl.textContent = data.error || 'Помилка збереження';
+                errEl.textContent = data.msg || data.error || 'Помилка збереження';
                 errEl.style.display = '';
             }
         });

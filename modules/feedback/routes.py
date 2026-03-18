@@ -100,7 +100,7 @@ def add():
     page_url = (data.get("page_url") or "").strip()
 
     if not title:
-        return jsonify({"error": "Введіть заголовок"}), 400
+        return jsonify({"ok": False, "msg": "Введіть заголовок"}), 400
     if category not in CATEGORIES:
         category = "other"
     if priority not in PRIORITIES:
@@ -125,7 +125,7 @@ def set_status(fid):
     status = data.get("status", "new")
     note   = (data.get("note") or "").strip()
     if status not in STATUSES:
-        return jsonify({"error": "Невідомий статус"}), 400
+        return jsonify({"ok": False, "msg": "Невідомий статус"}), 400
 
     conn = get_connection()
     if status in ("done", "rejected"):
@@ -152,12 +152,12 @@ def comment_add(fid):
     parent_id = data.get("parent_id")  # може бути None
 
     if not body:
-        return jsonify({"error": "Порожній коментар"}), 400
+        return jsonify({"ok": False, "msg": "Порожній коментар"}), 400
 
     conn = get_connection()
     if not conn.execute("SELECT id FROM feedback WHERE id=?", (fid,)).fetchone():
         conn.close()
-        return jsonify({"error": "Запис не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Запис не знайдено"}), 404
 
     # Перевірити parent_id
     if parent_id:

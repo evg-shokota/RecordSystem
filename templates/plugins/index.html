@@ -189,7 +189,7 @@
                 <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
                 <form id="uninstallForm" method="post">
                     <input type="hidden" name="keep_data" id="keepDataInput" value="1">
-                    <button class="btn btn-danger btn-sm">Видалити</button>
+                    <button class="btn btn-outline-danger btn-sm">Видалити</button>
                 </form>
             </div>
         </div>
@@ -226,7 +226,7 @@ document.querySelectorAll('.btn-toggle').forEach(btn => {
             };
             setTimeout(() => _tryReload(15), 1000);
         } else {
-            showToast(data.error, 'danger');
+            showToast(data.msg || data.error, 'danger');
             btn.disabled = false;
         }
     });
@@ -283,7 +283,7 @@ uploadBtn.addEventListener('click', async () => {
         showToast('Модуль завантажено. Натисніть «Встановити»', 'success');
         setTimeout(() => location.reload(), 800);
     } else {
-        showToast(data.error, 'danger');
+        showToast(data.msg || data.error, 'danger');
         uploadBtn.disabled = false;
         uploadBtn.innerHTML = '<i class="bi bi-upload me-1"></i>Завантажити';
     }

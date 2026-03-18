@@ -62,7 +62,7 @@
         </a>
 
         {# Визначаємо активні секції для авторозгортання #}
-        {%- set _in_docs = request.blueprint in ('invoices','rv','doc_templates','planning','reports') %}
+        {%- set _in_docs = request.blueprint in ('invoices','rv','doc_templates','planning','reports','registry','acts') %}
         {%- set _in_plugins = plugin_menu_items and request.path and plugin_menu_items | selectattr('url') | list | length > 0 %}
         {%- set _sidebar_extra = slot('sidebar.items') %}
         {%- set _in_extra = _sidebar_extra and _sidebar_extra | length > 0 %}
@@ -138,6 +138,12 @@
             <li class="nav-section-body" data-section-body="docs">
                 <ul class="nav flex-column">
                     <li class="nav-item">
+                        <a class="nav-link {% if request.blueprint == 'registry' %}active{% endif %}"
+                           href="{{ url_for('registry.index') }}">
+                            <i class="bi bi-journal-text"></i> Реєстр документів
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'invoices' %}active{% endif %}"
                            href="/invoices/">
                             <i class="bi bi-receipt"></i> Накладні
@@ -165,6 +171,18 @@
                         <a class="nav-link {% if request.blueprint == 'reports' %}active{% endif %}"
                            href="{{ url_for('reports.index') }}">
                             <i class="bi bi-file-earmark-bar-graph"></i> Звіти
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.blueprint == 'acts' and '/write-off' in request.path %}active{% endif %}"
+                           href="{{ url_for('acts.write_off_list') }}">
+                            <i class="bi bi-file-earmark-x"></i> Акти списання
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.blueprint == 'acts' and '/exploit' in request.path %}active{% endif %}"
+                           href="{{ url_for('acts.exploit_list') }}">
+                            <i class="bi bi-file-earmark-check"></i> Акти введення в експл.
                         </a>
                     </li>
                 </ul>
@@ -531,13 +549,37 @@ async function submitFeedback() {
         document.getElementById('fbPriority').value = 'normal';
         showToast('Повідомлення надіслано. Дякуємо!', 'success');
     } else {
-        showToast(d.error || 'Помилка', 'danger');
+        showToast(d.msg || d.error || 'Помилка', 'danger');
     }
 }
 </script>
 {% endif %}
 
 </div><!-- /toast-container-fixed --></div>
+
+{# ══════════════════════════════════════════════════════════
+   Глобальний модаль підтвердження небезпечних дій
+   Використання: showConfirm('Повідомлення', callback, opts)
+   ══════════════════════════════════════════════════════════ #}
+<div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-0">
+                <h6 class="modal-title fw-semibold" id="confirmModalTitle">Підтвердити дію</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-2 pb-1">
+                <p class="mb-0 text-muted small" id="confirmModalMessage"></p>
+            </div>
+            <div class="modal-footer border-0 pt-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary"
+                        id="confirmModalCancel" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-sm btn-danger"
+                        id="confirmModalOk">Підтвердити</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>

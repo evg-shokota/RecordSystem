@@ -13,6 +13,7 @@ from core.auth import login_required
 from core.db import get_connection
 from core.audit import log_action
 from core.hooks import emit, filter_value, collect
+from core.warehouse import get_units_by_battalion as _get_units_by_battalion, get_platoons_by_unit as _get_platoons_by_unit
 
 bp = Blueprint("personnel", __name__, url_prefix="/personnel")
 
@@ -96,19 +97,6 @@ def _get_all_battalions(conn) -> list:
         "SELECT id, name FROM battalions ORDER BY name"
     ).fetchall()
 
-
-def _get_units_by_battalion(conn, battalion_id) -> list:
-    return conn.execute(
-        "SELECT id, name FROM units WHERE battalion_id = ? ORDER BY name",
-        (battalion_id,)
-    ).fetchall()
-
-
-def _get_platoons_by_unit(conn, unit_id) -> list:
-    return conn.execute(
-        "SELECT id, name FROM platoons WHERE unit_id = ? ORDER BY name",
-        (unit_id,)
-    ).fetchall()
 
 
 def _active_inventory_items(conn, personnel_id: int) -> list:
@@ -215,7 +203,8 @@ def index():
             SELECT p.id AS person_id,
                    COUNT(DISTINCT sni.norm_dict_id) AS total_needed
             FROM personnel p
-            JOIN supply_norm_items sni ON sni.norm_id = p.norm_id
+            JOIN personnel_norms pn ON pn.personnel_id = p.id
+            JOIN supply_norm_items sni ON sni.norm_id = pn.norm_id
             WHERE p.id IN ({placeholders})
               AND (
                 -- Не видавалось взагалі
@@ -294,6 +283,7 @@ def add():
                 units=units, platoons=platoons,
                 ranks=_get_ranks(), is_edit=False,
                 supply_norms=supply_norms,
+                person_norms=[],
             )
 
         # Автовибір групи: якщо не обрано — ставимо "Картотека" (type='active')
@@ -312,8 +302,8 @@ def add():
                 size_head, size_height, size_underwear, size_suit,
                 size_jacket, size_pants, size_shoes, size_vest,
                 enroll_date, enroll_order, dismiss_date, dismiss_order,
-                draft_date, draft_by, norm_id)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                draft_date, draft_by, norm_id, service_type)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 data["last_name"], data["first_name"], data["middle_name"],
                 data["rank"], data["position"], data["category"],
@@ -324,22 +314,37 @@ def add():
                 data["enroll_date"], data["enroll_order"],
                 data["dismiss_date"], data["dismiss_order"],
                 data["draft_date"], data["draft_by"], data["norm_id"],
+                data["service_type"],
             )
         )
-        conn.commit()
         new_id = cur.lastrowid
+        # Якщо обрана норма — додати в personnel_norms
+        if data["norm_id"]:
+            norm_cat = int(request.form.get("norm_cat") or 1)
+            try:
+                conn.execute(
+                    """INSERT OR IGNORE INTO personnel_norms
+                       (personnel_id, norm_id, personnel_cat, created_at)
+                       VALUES (?, ?, ?, datetime('now','localtime'))""",
+                    (new_id, data["norm_id"], norm_cat)
+                )
+            except Exception:
+                pass
+        conn.commit()
         log_action("add", "personnel", new_id, None, data)
         conn.close()
         emit("personnel.created", person_id=new_id, data=data)
         return redirect(url_for("personnel.card", person_id=new_id))
 
     # GET
+    from core.settings import get_setting
     groups     = _get_all_groups(conn)
     battalions = _get_all_battalions(conn)
     default_group_id = _get_default_active_group_id(conn)
     supply_norms = conn.execute(
         "SELECT id, name FROM supply_norms WHERE is_active=1 ORDER BY name"
     ).fetchall()
+    default_service_type = get_setting("default_service_type", "mobilized")
     conn.close()
 
     return render_template(
@@ -349,6 +354,8 @@ def add():
         units=[], platoons=[],
         ranks=_get_ranks(), is_edit=False,
         supply_norms=supply_norms,
+        person_norms=[],
+        default_service_type=default_service_type,
     )
 
 
@@ -407,6 +414,26 @@ def card(person_id):
     # Групи для кнопки "архівувати"
     archive_reasons = ARCHIVE_REASONS
 
+    # Insignia для звання (з rank_presets)
+    from core.settings import get_setting as _get_setting
+    rank_mode = _get_setting("rank_mode", "army")
+    rank_row = conn.execute(
+        "SELECT insignia, category FROM rank_presets WHERE name=? AND mode=? LIMIT 1",
+        (dict(person).get("rank") or "", rank_mode)
+    ).fetchone()
+    rank_insignia = rank_row["insignia"] if rank_row else ""
+    rank_category = rank_row["category"] if rank_row else (dict(person).get("category") or "")
+
+    # Норми особи
+    person_norms = conn.execute(
+        """SELECT pn.id, sn.name AS norm_name, sn.service_type AS norm_service_type, pn.personnel_cat
+           FROM personnel_norms pn
+           JOIN supply_norms sn ON sn.id = pn.norm_id
+           WHERE pn.personnel_id = ?
+           ORDER BY pn.id""",
+        (person_id,)
+    ).fetchall()
+
     conn.close()
 
     return render_template(
@@ -416,6 +443,9 @@ def card(person_id):
         total_sum=total_sum,
         archive_reasons=archive_reasons,
         property_card=property_card,
+        rank_insignia=rank_insignia,
+        rank_category=rank_category,
+        person_norms=[dict(r) for r in person_norms],
     )
 
 
@@ -423,56 +453,92 @@ def _build_property_card(conn, person_id: int) -> dict:
     """
     Будує дані для матричної картки речового майна.
     Рядки = всі позиції норми особи (навіть без видачі) + видане без норми.
-    Кольорова логіка:
-      green  — видано >= норми І строк носіння ще не вийшов (> 1 міс залишилось)
-      yellow — видано >= норми АЛЕ строк носіння закінчується (<=1 міс) або вже вийшов
-      orange — видано часткову кількість
+    Кольорова логіка через core/military_logic.py:
+      green  — видано >= норми, строк не вийшов
+      yellow — строк закінчується або вийшов
+      orange — видано часткову кількість (борг)
       red    — не видавалось взагалі
     """
     from datetime import date, timedelta
+    from core.military_logic import get_cycle_status
     today = date.today()
 
-    # Категорія особи
+    # Категорія та тип служби особи
     person_row = conn.execute(
-        "SELECT category, norm_id FROM personnel WHERE id=?", (person_id,)
+        "SELECT category, service_type, enroll_date FROM personnel WHERE id=?", (person_id,)
     ).fetchone()
-    is_officer = person_row and person_row["category"] == "officer"
-    norm_id = person_row["norm_id"] if person_row else None
+    is_officer   = person_row and person_row["category"] == "officer"
+    service_type = (person_row["service_type"] if person_row else None) or "mobilized"
+    norm_date    = person_row["enroll_date"] if person_row else None
 
-    # --- Рядки норми (supply_norm_items) ---
+    # --- Норми особи (personnel_norms, може бути кілька) ---
+    pn_rows = conn.execute("""
+        SELECT pn.norm_id, pn.personnel_cat
+        FROM personnel_norms pn
+        WHERE pn.personnel_id = ?
+    """, (person_id,)).fetchall()
+
+    # --- Рядки норм (supply_norm_items для всіх норм) ---
     norm_rows = {}  # nd_id -> dict
-    if norm_id:
-        sni_rows = conn.execute("""
-            SELECT sni.norm_dict_id, sni.quantity AS norm_qty,
-                   sni.wear_years, sni.category AS norm_cat,
-                   nd.name AS nd_name, nd.unit AS nd_unit,
-                   ndg.name AS nd_group_name,
-                   ndg.sort_order AS g_order,
-                   nd.sort_order AS nd_order
-            FROM supply_norm_items sni
-            JOIN norm_dictionary nd ON sni.norm_dict_id = nd.id
-            LEFT JOIN norm_dict_groups ndg ON nd.group_id = ndg.id
-            WHERE sni.norm_id = ?
-            ORDER BY ndg.sort_order, nd.sort_order
-        """, (norm_id,)).fetchall()
-        for r in sni_rows:
-            nd_id = r["norm_dict_id"]
-            norm_rows[nd_id] = {
-                "norm_id":    nd_id,
-                "norm_name":  r["nd_name"],
-                "group_name": r["nd_group_name"] or "Без групи",
-                "g_order":    r["g_order"] or 999,
-                "nd_order":   r["nd_order"] or 999,
-                "unit":       r["nd_unit"] or "шт",
-                "norm_qty":   r["norm_qty"] or 0,
-                "wear_years": r["wear_years"] or 0,
-                "cells": {},
-                "total_qty": 0.0,
-                "total_active": 0.0,
-                "last_issue_date": None,
-                "color": "red",  # буде перераховано
-                "from_norm": True,
-            }
+    if pn_rows:
+        # Для кожного nd_id збираємо мінімальний wear_months з усіх норм по категорії особи
+        for pn in pn_rows:
+            pn_norm_id = pn["norm_id"]
+            pn_cat = pn["personnel_cat"]
+            sni_rows = conn.execute("""
+                SELECT sni.id AS sni_id, sni.norm_dict_id, sni.quantity AS norm_qty,
+                       sni.wear_years, sni.category AS norm_cat,
+                       nd.name AS nd_name, nd.unit AS nd_unit,
+                       ndg.name AS nd_group_name,
+                       ndg.sort_order AS g_order,
+                       nd.sort_order AS nd_order
+                FROM supply_norm_items sni
+                JOIN norm_dictionary nd ON sni.norm_dict_id = nd.id
+                LEFT JOIN norm_dict_groups ndg ON nd.group_id = ndg.id
+                WHERE sni.norm_id = ?
+                ORDER BY ndg.sort_order, nd.sort_order
+            """, (pn_norm_id,)).fetchall()
+            for r in sni_rows:
+                nd_id = r["norm_dict_id"]
+                # Строк носіння і к-сть: з supply_norm_item_wear по категорії
+                wear_row = conn.execute(
+                    "SELECT wear_months, qty FROM supply_norm_item_wear WHERE norm_item_id=? AND personnel_cat=?",
+                    (r["sni_id"], pn_cat)
+                ).fetchone()
+                if wear_row and wear_row["wear_months"] > 0:
+                    wear_years_eff = wear_row["wear_months"] / 12.0
+                else:
+                    wear_years_eff = r["wear_years"] or 0
+                # Якщо для категорії задана своя к-сть — використовуємо її
+                cat_norm_qty = float(wear_row["qty"]) if wear_row and wear_row["qty"] is not None else None
+
+                if nd_id not in norm_rows:
+                    norm_rows[nd_id] = {
+                        "norm_id":    nd_id,
+                        "norm_name":  r["nd_name"],
+                        "group_name": r["nd_group_name"] or "Без групи",
+                        "g_order":    r["g_order"] or 999,
+                        "nd_order":   r["nd_order"] or 999,
+                        "unit":       r["nd_unit"] or "шт",
+                        "norm_qty":   cat_norm_qty if cat_norm_qty is not None else (r["norm_qty"] or 0),
+                        "wear_years": wear_years_eff,
+                        "cells": {},
+                        "total_qty": 0.0,
+                        "total_active": 0.0,
+                        "last_issue_date": None,
+                        "color": "red",
+                        "from_norm": True,
+                    }
+                else:
+                    # Якщо позиція вже є з іншої норми — беремо мінімальний строк (більш суворий)
+                    if wear_years_eff > 0:
+                        existing_wear = norm_rows[nd_id]["wear_years"]
+                        if existing_wear <= 0 or wear_years_eff < existing_wear:
+                            norm_rows[nd_id]["wear_years"] = wear_years_eff
+                    # Кількість — беремо максимальну (щедрішу норму), враховуємо cat_norm_qty
+                    eff_qty = cat_norm_qty if cat_norm_qty is not None else (r["norm_qty"] or 0)
+                    if eff_qty > norm_rows[nd_id]["norm_qty"]:
+                        norm_rows[nd_id]["norm_qty"] = eff_qty
 
     # --- Фактичне майно особи ---
     raw = conn.execute("""
@@ -618,51 +684,32 @@ def _build_property_card(conn, person_id: int) -> dict:
             if r["issue_date"] and (not row["last_issue_date"] or r["issue_date"] > row["last_issue_date"]):
                 row["last_issue_date"] = r["issue_date"]
 
-    # Розраховуємо колір для кожного рядка
+    # Розраховуємо колір, дати і борг через military_logic
     for row in norms_map.values():
         if not row["from_norm"]:
-            row["color"] = "grey"
+            row["color"]       = "grey"
+            row["days_left"]   = None
+            row["expiry_date"] = None
+            row["debt_qty"]    = 0.0
             continue
-        norm_qty   = row["norm_qty"] or 0
-        wear_years = row["wear_years"] or 0
-        active     = row["total_active"]
-        last_date  = row["last_issue_date"]
 
-        if active <= 0:
-            row["color"] = "red"
-        elif norm_qty > 0 and active < norm_qty:
-            row["color"] = "orange"
-        else:
-            # Видано норму або більше — перевіряємо строк носіння
-            if wear_years <= 0 or not last_date:
-                # до зносу або дата невідома — вважаємо зеленим
-                row["color"] = "green"
-            else:
-                # Коли закінчується строк
-                try:
-                    issue_dt = datetime.strptime(last_date, "%Y-%m-%d").date()
-                    wear_days = int(wear_years * 365.25)
-                    expiry_dt = issue_dt + timedelta(days=wear_days)
-                    days_left = (expiry_dt - today).days
-                    if days_left < 0:
-                        row["color"] = "yellow"   # строк вийшов — потребує заміни
-                    elif days_left <= 30:
-                        row["color"] = "yellow"   # залишилось < 1 міс
-                    else:
-                        row["color"] = "green"
-                except Exception:
-                    row["color"] = "green"
+        from core.military_logic import wear_years_to_months
+        wear_months = wear_years_to_months(row["wear_years"])
+        cycle_start = row.get("last_issue_date")  # дата першої/останньої видачі
 
-        row["days_left"] = None
-        if wear_years > 0 and last_date:
-            try:
-                issue_dt  = datetime.strptime(last_date, "%Y-%m-%d").date()
-                wear_days = int(wear_years * 365.25)
-                expiry_dt = issue_dt + timedelta(days=wear_days)
-                row["days_left"] = (expiry_dt - today).days
-                row["expiry_date"] = expiry_dt.isoformat()
-            except Exception:
-                pass
+        cs = get_cycle_status(
+            service_type  = service_type,
+            cycle_start_date = cycle_start,
+            norm_date     = norm_date,
+            wear_months   = wear_months,
+            issued_qty    = row["total_active"],
+            norm_qty      = row["norm_qty"] or 0,
+            today         = today,
+        )
+        row["color"]       = cs["color"]
+        row["days_left"]   = cs["days_left"]
+        row["expiry_date"] = cs["next_issue_date"]
+        row["debt_qty"]    = cs["debt_qty"]
 
     rows = sorted(norms_map.values(), key=lambda x: (x["g_order"], x["nd_order"]))
     return {"docs": docs, "rows": rows}
@@ -676,7 +723,7 @@ def _count_words(n: int) -> str:
     """Ціле число від 0 до 999 прописом (українська, називний відмінок)."""
     if n == 0:
         return ''
-    ones  = ['', 'одне', 'два', 'три', 'чотири', "п'ять", 'шість', 'сім',
+    ones  = ['', 'один', 'два', 'три', 'чотири', "п'ять", 'шість', 'сім',
              'вісім', "дев'ять", 'десять', 'одинадцять', 'дванадцять',
              'тринадцять', 'чотирнадцять', "п'ятнадцять", 'шістнадцять',
              'сімнадцять', 'вісімнадцять', "дев'ятнадцять"]
@@ -706,13 +753,11 @@ def property_card_print(person_id):
         """SELECT p.*,
                   b.name  AS battalion_name,
                   u.name  AS unit_name,
-                  pl.name AS platoon_name,
-                  sn.name AS norm_name
+                  pl.name AS platoon_name
            FROM personnel p
            LEFT JOIN battalions   b  ON p.battalion_id = b.id
            LEFT JOIN units        u  ON p.unit_id      = u.id
            LEFT JOIN platoons     pl ON p.platoon_id   = pl.id
-           LEFT JOIN supply_norms sn ON p.norm_id      = sn.id
            WHERE p.id = ?""",
         (person_id,)
     ).fetchone()
@@ -720,6 +765,22 @@ def property_card_print(person_id):
     if not person:
         conn.close()
         return "Особу не знайдено", 404
+
+    # Список норм особи з категоріями (для заголовку)
+    person_norms_names = conn.execute("""
+        SELECT sn.name, pn.personnel_cat FROM personnel_norms pn
+        JOIN supply_norms sn ON sn.id = pn.norm_id
+        WHERE pn.personnel_id = ? ORDER BY pn.id
+    """, (person_id,)).fetchall()
+    person = dict(person)
+    # Формат: "Норма 1 кат. 5; Норма 2 кат. 3"
+    norm_parts = []
+    for r in person_norms_names:
+        part = r["name"]
+        if r["personnel_cat"]:
+            part += f" кат. {r['personnel_cat']}"
+        norm_parts.append(part)
+    person["norm_name"] = "; ".join(norm_parts) or None
 
     property_card = _build_property_card(conn, person_id)
     from core.settings import get_setting
@@ -769,6 +830,12 @@ def edit(person_id):
             supply_norms = conn.execute(
                 "SELECT id, name FROM supply_norms WHERE is_active=1 ORDER BY name"
             ).fetchall()
+            person_norms = conn.execute("""
+                SELECT pn.id, pn.norm_id, pn.personnel_cat, sn.name AS norm_name
+                FROM personnel_norms pn
+                JOIN supply_norms sn ON sn.id = pn.norm_id
+                WHERE pn.personnel_id = ? ORDER BY pn.id
+            """, (person_id,)).fetchall()
             conn.close()
             return render_template(
                 "personnel/form.html",
@@ -778,8 +845,10 @@ def edit(person_id):
                 ranks=_get_ranks(), is_edit=True,
                 person_id=person_id,
                 supply_norms=supply_norms,
+                person_norms=[dict(r) for r in person_norms],
             )
 
+        old_service_type = old_data.get("service_type") if old_data else None
         conn.execute(
             """UPDATE personnel SET
                last_name=?, first_name=?, middle_name=?,
@@ -789,7 +858,7 @@ def edit(person_id):
                size_head=?, size_height=?, size_underwear=?, size_suit=?,
                size_jacket=?, size_pants=?, size_shoes=?, size_vest=?,
                enroll_date=?, enroll_order=?, dismiss_date=?, dismiss_order=?,
-               draft_date=?, draft_by=?, norm_id=?,
+               draft_date=?, draft_by=?, norm_id=?, service_type=?,
                updated_at=datetime('now','localtime')
                WHERE id=?""",
             (
@@ -801,7 +870,7 @@ def edit(person_id):
                 data["size_jacket"], data["size_pants"], data["size_shoes"], data["size_vest"],
                 data["enroll_date"], data["enroll_order"],
                 data["dismiss_date"], data["dismiss_order"],
-                data["draft_date"], data["draft_by"], data["norm_id"],
+                data["draft_date"], data["draft_by"], data["norm_id"], data["service_type"],
                 person_id,
             )
         )
@@ -809,9 +878,14 @@ def edit(person_id):
         log_action("edit", "personnel", person_id, old_data, data)
         conn.close()
         emit("personnel.updated", person_id=person_id, old=old_data, new=data)
+        if old_service_type and old_service_type != data["service_type"]:
+            from core.hooks import emit as _emit
+            _emit("personnel.service_type_changed", person_id=person_id,
+                  old_type=old_service_type, new_type=data["service_type"])
         return redirect(url_for("personnel.card", person_id=person_id))
 
     # GET — заповнити форму поточними даними
+    from core.settings import get_setting as _get_setting
     person = dict(person_row)
     groups     = _get_all_groups(conn)
     battalions = _get_all_battalions(conn)
@@ -820,6 +894,14 @@ def edit(person_id):
     supply_norms = conn.execute(
         "SELECT id, name FROM supply_norms WHERE is_active=1 ORDER BY name"
     ).fetchall()
+    person_norms = conn.execute("""
+        SELECT pn.id, pn.norm_id, pn.personnel_cat, sn.name AS norm_name
+        FROM personnel_norms pn
+        JOIN supply_norms sn ON sn.id = pn.norm_id
+        WHERE pn.personnel_id = ?
+        ORDER BY pn.id
+    """, (person_id,)).fetchall()
+    default_service_type = _get_setting("default_service_type", "mobilized")
     conn.close()
 
     return render_template(
@@ -830,6 +912,8 @@ def edit(person_id):
         ranks=_get_ranks(), is_edit=True,
         person_id=person_id,
         supply_norms=supply_norms,
+        person_norms=[dict(r) for r in person_norms],
+        default_service_type=default_service_type,
     )
 
 
@@ -849,18 +933,19 @@ def archive(person_id):
 
     if not person:
         conn.close()
-        return jsonify({"error": "Особу не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Особу не знайдено"}), 404
 
     if not person["is_active"]:
         conn.close()
-        return jsonify({"error": "Особа вже заархівована"}), 400
+        return jsonify({"ok": False, "msg": "Особа вже заархівована"}), 400
 
     # Перевірка інвентарного майна
     inv_items = _active_inventory_items(conn, person_id)
     if inv_items:
         conn.close()
         return jsonify({
-            "error": "Є не здане інвентарне майно",
+            "ok": False,
+            "msg": "Є не здане інвентарне майно",
             "items": inv_items,
         }), 409
 
@@ -907,11 +992,11 @@ def restore(person_id):
 
     if not person:
         conn.close()
-        return jsonify({"error": "Особу не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Особу не знайдено"}), 404
 
     if person["is_active"]:
         conn.close()
-        return jsonify({"error": "Особа вже активна"}), 400
+        return jsonify({"ok": False, "msg": "Особа вже активна"}), 400
 
     # Знайти групу "БЕЗ ГРУПИ"
     no_group = conn.execute(
@@ -951,16 +1036,16 @@ def move():
     platoon_id = body.get("platoon_id") or None
 
     if not ids:
-        return jsonify({"error": "Не обрано жодної особи"}), 400
+        return jsonify({"ok": False, "msg": "Не обрано жодної особи"}), 400
 
     if not isinstance(ids, list):
-        return jsonify({"error": "ids має бути масивом"}), 400
+        return jsonify({"ok": False, "msg": "ids має бути масивом"}), 400
 
     # Безпечний список id (тільки int)
     try:
         ids = [int(i) for i in ids]
     except (ValueError, TypeError):
-        return jsonify({"error": "Невірний формат ids"}), 400
+        return jsonify({"ok": False, "msg": "Невірний формат ids"}), 400
 
     conn = get_connection()
 
@@ -1047,6 +1132,28 @@ def api_ranks():
     Використовується в формі: при виборі звання — автоматично виставляти category.
     """
     return jsonify(_get_ranks())
+
+
+@bp.route("/api/check-card-number")
+@login_required
+def api_check_card_number():
+    """Returns: {"ok": true, "taken": bool, "owner": str}"""
+    num        = request.args.get("num", "").strip()
+    exclude_id = request.args.get("exclude_id", type=int)
+    if not num:
+        return jsonify({"ok": False})
+    conn = get_connection()
+    sql = "SELECT id, last_name, first_name FROM personnel WHERE card_number = ?"
+    params = [num]
+    if exclude_id:
+        sql += " AND id != ?"
+        params.append(exclude_id)
+    row = conn.execute(sql, params).fetchone()
+    conn.close()
+    if row:
+        owner = f"{row['last_name'].upper()} {row['first_name']} (#{row['id']})"
+        return jsonify({"ok": True, "taken": True, "owner": owner})
+    return jsonify({"ok": True, "taken": False, "owner": ""})
 
 
 @bp.route("/api/list")
@@ -1137,17 +1244,17 @@ def upload_photo(person_id):
     person = conn.execute("SELECT * FROM personnel WHERE id=?", (person_id,)).fetchone()
     if not person:
         conn.close()
-        return jsonify({"error": "Особу не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Особу не знайдено"}), 404
 
     file = request.files.get("photo")
     if not file or not file.filename:
         conn.close()
-        return jsonify({"error": "Файл не обрано"}), 400
+        return jsonify({"ok": False, "msg": "Файл не обрано"}), 400
 
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in (".jpg", ".jpeg", ".png"):
         conn.close()
-        return jsonify({"error": "Дозволені формати: jpg, jpeg, png"}), 400
+        return jsonify({"ok": False, "msg": "Дозволені формати: jpg, jpeg, png"}), 400
 
     from core.settings import get_storage_path
     folder_name = _person_folder_name(person)
@@ -1188,7 +1295,7 @@ def delete_photo(person_id):
     person = conn.execute("SELECT photo_path FROM personnel WHERE id=?", (person_id,)).fetchone()
     if not person:
         conn.close()
-        return jsonify({"error": "Особу не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Особу не знайдено"}), 404
 
     if person["photo_path"]:
         from core.settings import get_storage_path
@@ -1209,6 +1316,37 @@ def delete_photo(person_id):
     return jsonify({"ok": True})
 
 
+@bp.route("/<int:person_id>/sizes", methods=["POST"])
+@login_required
+def save_size(person_id):
+    """Inline-збереження одного поля розміру.
+    Returns: {"ok": bool, "msg": str}
+    """
+    ALLOWED = {
+        "size_height", "size_head", "size_suit", "size_jacket",
+        "size_pants", "size_shoes", "size_underwear", "size_vest",
+    }
+    data = request.get_json(silent=True) or {}
+    field = data.get("field", "")
+    value = (data.get("value") or "").strip()[:20]
+
+    if field not in ALLOWED:
+        return jsonify({"ok": False, "msg": "Невідоме поле"}), 400
+
+    conn = get_connection()
+    if not conn.execute("SELECT id FROM personnel WHERE id=?", (person_id,)).fetchone():
+        conn.close()
+        return jsonify({"ok": False, "msg": "Особу не знайдено"}), 404
+
+    conn.execute(
+        f"UPDATE personnel SET {field}=?, updated_at=datetime('now','localtime') WHERE id=?",
+        (value or None, person_id)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
 # ─────────────────────────────────────────────────────────────
 #  Файли наказів (зарахування / вибуття)
 # ─────────────────────────────────────────────────────────────
@@ -1219,17 +1357,17 @@ def _order_file_upload(person_id: int, field: str):
     person = conn.execute("SELECT * FROM personnel WHERE id=?", (person_id,)).fetchone()
     if not person:
         conn.close()
-        return jsonify({"error": "Особу не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Особу не знайдено"}), 404
 
     file = request.files.get("file")
     if not file or not file.filename:
         conn.close()
-        return jsonify({"error": "Файл не вибрано"}), 400
+        return jsonify({"ok": False, "msg": "Файл не вибрано"}), 400
 
     ext = Path(file.filename).suffix.lower()
     if ext not in (".pdf", ".jpg", ".jpeg", ".png"):
         conn.close()
-        return jsonify({"error": "Дозволені формати: PDF, JPG, PNG"}), 400
+        return jsonify({"ok": False, "msg": "Дозволені формати: PDF, JPG, PNG"}), 400
 
     from core.settings import get_storage_path
     folder_name = _person_folder_name(person)
@@ -1268,7 +1406,7 @@ def _order_file_delete(person_id: int, field: str):
     person = conn.execute("SELECT * FROM personnel WHERE id=?", (person_id,)).fetchone()
     if not person:
         conn.close()
-        return jsonify({"error": "Особу не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Особу не знайдено"}), 404
 
     db_field = f"{field}_order_file"
     old_val  = person[db_field]
@@ -1353,6 +1491,268 @@ def api_documents(person_id):
 
 
 # ─────────────────────────────────────────────────────────────
+#  API: Журнал змін
+# ─────────────────────────────────────────────────────────────
+
+@bp.route("/<int:person_id>/history")
+@login_required
+def api_history(person_id):
+    """
+    API: журнал подій для картки о/с.
+    Об'єднує: audit_log по personnel/personnel_items + накладні + РВ.
+    """
+    import json as _json
+    conn = get_connection()
+
+    # audit_log по картці особи + її майну
+    audit_rows = conn.execute("""
+        SELECT al.action, al.table_name, al.record_id,
+               al.new_data, al.old_data, al.created_at,
+               u.username
+        FROM audit_log al
+        LEFT JOIN users u ON al.user_id = u.id
+        WHERE (al.table_name = 'personnel' AND al.record_id = ?)
+           OR (al.table_name = 'personnel_items' AND al.record_id IN (
+               SELECT id FROM personnel_items WHERE personnel_id = ?
+           ))
+        ORDER BY al.created_at DESC
+        LIMIT 200
+    """, (person_id, person_id)).fetchall()
+
+    # Накладні де особа є отримувачем/відправником
+    invoices = conn.execute("""
+        SELECT i.id, i.number, i.status, i.created_at, i.issued_date,
+               ii_sum.total_sum, ii_sum.item_count
+        FROM invoices i
+        LEFT JOIN (
+            SELECT invoice_id,
+                   SUM(COALESCE(actual_qty, planned_qty) * price) AS total_sum,
+                   COUNT(*) AS item_count
+            FROM invoice_items GROUP BY invoice_id
+        ) ii_sum ON ii_sum.invoice_id = i.id
+        WHERE i.recipient_personnel_id = ? OR i.sender_personnel_id = ?
+        ORDER BY i.created_at DESC
+        LIMIT 50
+    """, (person_id, person_id)).fetchall()
+
+    # РВ (роздавальні відомості) де особа є отримувачем
+    rv_sheets = conn.execute("""
+        SELECT s.id, s.number, s.status, s.created_at, s.doc_date,
+               (SELECT SUM(dsi.price * dsr2.received)
+                FROM distribution_sheet_rows dsr2
+                JOIN distribution_sheet_items dsi ON dsi.sheet_id = dsr2.sheet_id
+                WHERE dsr2.sheet_id = s.id AND dsr2.personnel_id = ?) AS total_sum,
+               (SELECT COUNT(*) FROM distribution_sheet_items WHERE sheet_id = s.id) AS item_count
+        FROM distribution_sheets s
+        WHERE s.id IN (
+            SELECT DISTINCT sheet_id FROM distribution_sheet_rows
+            WHERE personnel_id = ?
+        )
+        ORDER BY s.created_at DESC
+        LIMIT 50
+    """, (person_id, person_id)).fetchall()
+
+    conn.close()
+
+    ACTION_LABELS = {
+        "add":    "Додано",
+        "edit":   "Змінено",
+        "delete": "Видалено",
+        "archive": "Архівовано",
+    }
+    TABLE_LABELS = {
+        "personnel":       "Картка особи",
+        "personnel_items": "Майно о/с",
+    }
+
+    events = []
+
+    for r in audit_rows:
+        new_d = {}
+        old_d = {}
+        try:
+            if r["new_data"]: new_d = _json.loads(r["new_data"])
+        except Exception: pass
+        try:
+            if r["old_data"]: old_d = _json.loads(r["old_data"])
+        except Exception: pass
+
+        desc = ""
+        if r["table_name"] == "personnel_items":
+            if r["action"] == "add":
+                src = new_d.get("source", "")
+                cnt = new_d.get("count", "")
+                desc = f"Додано майно ({src})" + (f", {cnt} поз." if cnt else "")
+            elif r["action"] == "edit":
+                desc = "Змінено майно"
+            elif r["action"] == "delete":
+                desc = "Майно видалено/списано"
+        elif r["table_name"] == "personnel":
+            if r["action"] == "add":
+                desc = "Особу додано до системи"
+            elif r["action"] == "edit":
+                changed = [k for k in new_d if new_d.get(k) != old_d.get(k)]
+                if changed:
+                    desc = "Змінено: " + ", ".join(changed[:5])
+                    if len(changed) > 5:
+                        desc += f" та ще {len(changed)-5}"
+                else:
+                    desc = "Дані оновлено"
+            elif r["action"] == "archive":
+                desc = "Особу архівовано"
+
+        events.append({
+            "type":       "audit",
+            "action":     r["action"],
+            "table":      r["table_name"],
+            "table_label": TABLE_LABELS.get(r["table_name"], r["table_name"]),
+            "action_label": ACTION_LABELS.get(r["action"], r["action"]),
+            "description": desc,
+            "user":       r["username"] or "система",
+            "date":       r["created_at"][:16] if r["created_at"] else "",
+        })
+
+    INV_STATUS_LABELS = {
+        "draft": "Чернетка", "created": "Створено",
+        "issued": "Видано", "processed": "Проведено",
+        "cancelled": "Скасовано",
+    }
+    RV_STATUS_LABELS = {
+        "draft": "Чернетка", "active": "Активна",
+        "closed": "Закрита", "cancelled": "Скасовано",
+    }
+
+    for inv in invoices:
+        eff_date = inv["issued_date"] or inv["created_at"] or ""
+        events.append({
+            "type":        "invoice",
+            "id":          inv["id"],
+            "number":      inv["number"] or f"Накладна #{inv['id']}",
+            "status":      inv["status"],
+            "status_label": INV_STATUS_LABELS.get(inv["status"], inv["status"]),
+            "total_sum":   round(inv["total_sum"] or 0, 2),
+            "item_count":  inv["item_count"] or 0,
+            "date":        eff_date[:16] if eff_date else "",
+        })
+
+    for rv in rv_sheets:
+        eff_date = rv["doc_date"] or rv["created_at"] or ""
+        events.append({
+            "type":        "rv",
+            "id":          rv["id"],
+            "number":      rv["number"] or f"РВ #{rv['id']}",
+            "status":      rv["status"],
+            "status_label": RV_STATUS_LABELS.get(rv["status"], rv["status"]),
+            "total_sum":   round(rv["total_sum"] or 0, 2),
+            "item_count":  rv["item_count"] or 0,
+            "date":        eff_date[:16] if eff_date else "",
+        })
+
+    # Сортуємо всі події по даті
+    events.sort(key=lambda e: e["date"], reverse=True)
+
+    return jsonify({"events": events})
+
+
+# ─────────────────────────────────────────────────────────────
+#  API — норми особи (personnel_norms)
+# ─────────────────────────────────────────────────────────────
+
+@bp.route("/<int:person_id>/norms", methods=["GET"])
+@login_required
+def api_norms_list(person_id):
+    """Повертає список норм призначених особі."""
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT pn.id, pn.norm_id, pn.personnel_cat,
+               sn.name AS norm_name, sn.is_active AS norm_is_active
+        FROM personnel_norms pn
+        JOIN supply_norms sn ON sn.id = pn.norm_id
+        WHERE pn.personnel_id = ?
+        ORDER BY pn.id
+    """, (person_id,)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@bp.route("/<int:person_id>/norms/add", methods=["POST"])
+@login_required
+def api_norm_add(person_id):
+    """Додати норму особі."""
+    conn = get_connection()
+    person = conn.execute("SELECT id FROM personnel WHERE id=?", (person_id,)).fetchone()
+    if not person:
+        conn.close()
+        return jsonify({"ok": False, "error": "Особу не знайдено"}), 404
+
+    data = request.get_json(silent=True) or {}
+    norm_id = data.get("norm_id")
+    personnel_cat = int(data.get("personnel_cat") or 1)
+    if not norm_id:
+        conn.close()
+        return jsonify({"ok": False, "error": "Оберіть норму"}), 400
+    if not (1 <= personnel_cat <= 5):
+        conn.close()
+        return jsonify({"ok": False, "error": "Категорія 1–5"}), 400
+
+    try:
+        cur = conn.execute("""
+            INSERT INTO personnel_norms (personnel_id, norm_id, personnel_cat,
+                                         created_at)
+            VALUES (?, ?, ?, datetime('now','localtime'))
+        """, (person_id, norm_id, personnel_cat))
+        new_id = cur.lastrowid
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        if "UNIQUE" in str(e):
+            return jsonify({"ok": False, "error": "Ця норма вже призначена"}), 400
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    row = conn.execute("""
+        SELECT pn.id, pn.norm_id, pn.personnel_cat,
+               sn.name AS norm_name, sn.is_active AS norm_is_active
+        FROM personnel_norms pn
+        JOIN supply_norms sn ON sn.id = pn.norm_id
+        WHERE pn.id = ?
+    """, (new_id,)).fetchone()
+    conn.close()
+    return jsonify({"ok": True, "norm": dict(row)})
+
+
+@bp.route("/<int:person_id>/norms/<int:pn_id>/delete", methods=["POST"])
+@login_required
+def api_norm_delete(person_id, pn_id):
+    """Видалити норму у особи."""
+    conn = get_connection()
+    conn.execute(
+        "DELETE FROM personnel_norms WHERE id=? AND personnel_id=?",
+        (pn_id, person_id)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@bp.route("/<int:person_id>/norms/<int:pn_id>/cat", methods=["POST"])
+@login_required
+def api_norm_cat(person_id, pn_id):
+    """Змінити категорію норми для особи."""
+    data = request.get_json(silent=True) or {}
+    personnel_cat = int(data.get("personnel_cat") or 1)
+    if not (1 <= personnel_cat <= 5):
+        return jsonify({"ok": False, "error": "Категорія 1–5"}), 400
+    conn = get_connection()
+    conn.execute(
+        "UPDATE personnel_norms SET personnel_cat=? WHERE id=? AND personnel_id=?",
+        (personnel_cat, pn_id, person_id)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+# ─────────────────────────────────────────────────────────────
 #  Речовий атестат
 # ─────────────────────────────────────────────────────────────
 
@@ -1386,46 +1786,66 @@ def attestat(person_id):
 
     from core.settings import get_setting
     person = dict(person)
-    norm_id = person.get("norm_id")
 
-    # ── 1. Позиції норми (якщо призначена) ──────────────────────
+    # ── 1. Позиції норм особи (може бути кілька норм) ──────────
     group_order = {}
     positions_map = OrderedDict()
     pos_group = {}
     pos_order = {}
     seq = [0]
 
-    if norm_id:
-        norm_rows = conn.execute(
-            """SELECT sni.norm_dict_id AS nd_id, sni.quantity AS norm_qty,
-                      nd.name AS norm_name, nd.sort_order AS nd_order,
-                      nd.unit AS nd_uom,
-                      ndg.name AS group_name, ndg.sort_order AS g_order
-               FROM supply_norm_items sni
-               JOIN norm_dictionary nd ON nd.id = sni.norm_dict_id
-               LEFT JOIN norm_dict_groups ndg ON nd.group_id = ndg.id
-               WHERE sni.norm_id = ?
-               ORDER BY ndg.sort_order NULLS LAST, nd.sort_order NULLS LAST, nd.name""",
-            (norm_id,)
-        ).fetchall()
-        for r in norm_rows:
-            nd_id  = r["nd_id"]
-            gname  = r["group_name"] or "Інше"
-            go     = r["g_order"] if r["g_order"] is not None else 9999
-            if gname not in group_order:
-                group_order[gname] = go
-            seq[0] += 1
-            positions_map[nd_id] = {
-                "seq":       seq[0],
-                "name":      r["norm_name"],
-                "unit":      r["nd_uom"] or "шт",
-                "norm_qty":  r["norm_qty"] or 0,
-                "issuances": [],
-                "total_qty": 0.0,
-                "total_sum": 0.0,
-            }
-            pos_group[nd_id] = gname
-            pos_order[nd_id] = (go, r["nd_order"] if r["nd_order"] is not None else 9999)
+    pn_rows = conn.execute(
+        "SELECT norm_id FROM personnel_norms WHERE personnel_id=? ORDER BY id",
+        (person_id,)
+    ).fetchall()
+    norm_ids = [r["norm_id"] for r in pn_rows]
+
+    # Отримуємо pn_cat для цієї особи (для COALESCE per-category qty)
+    _pn_cat_for_norm = conn.execute(
+        "SELECT personnel_cat FROM personnel_norms WHERE personnel_id=? LIMIT 1", (person_id,)
+    ).fetchone()
+    _pn_cat_val = int(_pn_cat_for_norm["personnel_cat"]) if _pn_cat_for_norm else 5
+
+    if norm_ids:
+        for norm_id_iter in norm_ids:
+            norm_rows = conn.execute(
+                """SELECT sni.norm_dict_id AS nd_id,
+                          COALESCE(sniw.qty, sni.quantity) AS norm_qty,
+                          nd.name AS norm_name, nd.sort_order AS nd_order,
+                          nd.unit AS nd_uom,
+                          ndg.name AS group_name, ndg.sort_order AS g_order
+                   FROM supply_norm_items sni
+                   JOIN norm_dictionary nd ON nd.id = sni.norm_dict_id
+                   LEFT JOIN norm_dict_groups ndg ON nd.group_id = ndg.id
+                   LEFT JOIN supply_norm_item_wear sniw
+                          ON sniw.norm_item_id = sni.id AND sniw.personnel_cat = ?
+                   WHERE sni.norm_id = ?
+                   ORDER BY ndg.sort_order NULLS LAST, nd.sort_order NULLS LAST, nd.name""",
+                (_pn_cat_val, norm_id_iter)
+            ).fetchall()
+            for r in norm_rows:
+                nd_id  = r["nd_id"]
+                if nd_id in positions_map:
+                    # Якщо позиція вже є з іншої норми — беремо максимальну кількість
+                    if (r["norm_qty"] or 0) > positions_map[nd_id]["norm_qty"]:
+                        positions_map[nd_id]["norm_qty"] = r["norm_qty"] or 0
+                    continue
+                gname  = r["group_name"] or "Інше"
+                go     = r["g_order"] if r["g_order"] is not None else 9999
+                if gname not in group_order:
+                    group_order[gname] = go
+                seq[0] += 1
+                positions_map[nd_id] = {
+                    "seq":       seq[0],
+                    "name":      r["norm_name"],
+                    "unit":      r["nd_uom"] or "шт",
+                    "norm_qty":  r["norm_qty"] or 0,
+                    "issuances": [],
+                    "total_qty": 0.0,
+                    "total_sum": 0.0,
+                }
+                pos_group[nd_id] = gname
+                pos_order[nd_id] = (go, r["nd_order"] if r["nd_order"] is not None else 9999)
 
     # ── 2. Реальні видачі ──────────────────────────────────────
     rows = conn.execute(
@@ -1495,7 +1915,75 @@ def attestat(person_id):
         groups_out[gname] = [positions_map[k] for k in keys_in_group]
 
     total_sum = sum(p["total_sum"] for p in positions_map.values())
-    has_norm = bool(norm_id)
+    has_norm = bool(norm_ids)
+
+    # ── 3. Розраховуємо рядки атестату через military_logic ───
+    from core.military_logic import calc_attestat_row as _calc_att
+    from datetime import date as _date
+    service_type = person.get("service_type") or "mobilized"
+    norm_date    = person.get("enroll_date")
+
+    # Категорія та wear_months для кожної nd_id
+    pn_cat = _pn_cat_val  # вже отримано вище для COALESCE-запиту
+
+    # Завантажуємо wear_months для всіх nd_id позицій
+    nd_ids = [k for k in positions_map.keys() if isinstance(k, int)]
+    nd_wear_map: dict = {}  # nd_id -> wear_months
+    if nd_ids:
+        placeholders = ",".join("?" * len(nd_ids))
+        wear_rows_att = conn.execute(f"""
+            SELECT sni.norm_dict_id, sniw.wear_months
+            FROM supply_norm_items sni
+            JOIN personnel_norms pn ON pn.norm_id = sni.norm_id AND pn.personnel_id = ?
+            LEFT JOIN supply_norm_item_wear sniw
+                   ON sniw.norm_item_id = sni.id AND sniw.personnel_cat = ?
+            WHERE sni.norm_dict_id IN ({placeholders})
+        """, [person_id, pn_cat] + nd_ids).fetchall()
+        for w in wear_rows_att:
+            if w["norm_dict_id"] and w["wear_months"]:
+                nd_wear_map[w["norm_dict_id"]] = int(w["wear_months"])
+
+    for nd_id, pos in positions_map.items():
+        if not isinstance(nd_id, int):
+            pos["att_show"]  = pos["total_qty"] > 0
+            pos["att_qty"]   = pos["total_qty"]
+            pos["att_date"]  = pos["issuances"][0]["date"] if pos["issuances"] else None
+            pos["att_date_label"] = ""
+            pos["att_is_partial"] = False
+            continue
+
+        wear_months  = nd_wear_map.get(nd_id, 0)
+        last_iss     = pos["issuances"][-1]["date"] if pos["issuances"] else None
+        cycle_start  = pos["issuances"][0]["date"] if pos["issuances"] else None
+
+        att = _calc_att(
+            service_type     = service_type,
+            cycle_start_date = cycle_start,
+            norm_date        = norm_date,
+            wear_months      = wear_months,
+            issued_qty       = pos["total_qty"],
+            norm_qty         = pos["norm_qty"],
+            last_issue_date  = last_iss,
+        )
+        pos["att_show"]       = att["att_show"]
+        pos["att_qty"]        = att["att_qty"]
+        pos["att_date"]       = att["att_date"]
+        pos["att_date_label"] = att["att_date_label"]
+        pos["att_is_partial"] = att["is_partial"]
+
+    # Кількість кожної позиції прописом (ключ = seq) — по att_qty для показаних
+    total_qty_words = {}
+    for pos in positions_map.values():
+        qty = int(pos.get("att_qty") or pos["total_qty"] or 0)
+        total_qty_words[pos["seq"]] = _count_words(qty)
+
+    # Загальна кількість предметів — тільки показані позиції, по att_qty
+    total_items_count = sum(
+        int(p.get("att_qty") or p["total_qty"] or 0)
+        for p in positions_map.values()
+        if p.get("att_show")
+    )
+    total_items_words = _count_words(total_items_count)
 
     settings = {
         "unit_name":      get_setting("company_name", ""),
@@ -1508,6 +1996,10 @@ def attestat(person_id):
         "clerk_rank":     get_setting("clerk_rank", ""),
     }
 
+    attestat_service = get_setting("attestat_service", "РСТ")
+    basis_list       = json.loads(get_setting("attestat_basis_list",     "[]") or "[]")
+    recipient_list   = json.loads(get_setting("attestat_recipient_list", "[]") or "[]")
+
     conn.close()
 
     return render_template(
@@ -1518,8 +2010,181 @@ def attestat(person_id):
         max_issuances=max_issuances,
         settings=settings,
         has_norm=has_norm,
+        total_qty_words=total_qty_words,
+        total_items_count=total_items_count,
+        total_items_words=total_items_words,
         today=date.today().strftime("%d.%m.%Y"),
+        attestat_service=attestat_service,
+        basis_list=basis_list,
+        recipient_list=recipient_list,
     )
+
+
+# ─────────────────────────────────────────────────────────────
+#  Атестат — збереження / завантаження реєстраційних полів
+# ─────────────────────────────────────────────────────────────
+
+ATTESTAT_FIELDS = {"reg_number", "reg_sheet", "reg_doc_number", "reg_doc_date",
+                   "reg_basis", "reg_service", "reg_recipient", "reg_font_size"}
+
+
+@bp.route("/<int:person_id>/attestat/data", methods=["GET"])
+@login_required
+def attestat_data_get(person_id):
+    """Returns: {"ok": true, "data": {field: value, ...}}"""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM attestat_data WHERE personnel_id=?", (person_id,)
+    ).fetchone()
+    conn.close()
+    return jsonify({"ok": True, "data": dict(row) if row else {}})
+
+
+@bp.route("/<int:person_id>/attestat/data", methods=["POST"])
+@login_required
+def attestat_data_save(person_id):
+    """Returns: {"ok": true}"""
+    body = request.get_json(silent=True) or {}
+    field = body.get("field", "")
+    value = body.get("value", "")
+    if field not in ATTESTAT_FIELDS:
+        return jsonify({"ok": False, "msg": "Невідоме поле"}), 400
+    conn = get_connection()
+    conn.execute(
+        f"""INSERT INTO attestat_data (personnel_id, {field}, updated_at)
+            VALUES (?, ?, datetime('now','localtime'))
+            ON CONFLICT(personnel_id) DO UPDATE SET
+                {field}=excluded.{field},
+                updated_at=excluded.updated_at""",
+        (person_id, value)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+# ─────────────────────────────────────────────────────────────
+#  Чернетка накладної "Заповнити по нормі"
+# ─────────────────────────────────────────────────────────────
+
+@bp.route("/<int:person_id>/create-invoice-by-norm", methods=["POST"])
+@login_required
+def create_invoice_by_norm(person_id):
+    """
+    POST /personnel/<person_id>/create-invoice-by-norm
+    Створює чернетку накладної з позиціями що ще не видані по нормі.
+    Returns: {"ok": true, "inv_id": int} або {"ok": false, "msg": str}
+    """
+    import time
+    from datetime import date as _date
+    from core.military_logic import get_cycle_status as _cs
+    from core.settings import get_setting
+
+    conn = get_connection()
+
+    person = conn.execute(
+        "SELECT service_type, enroll_date, norm_id FROM personnel WHERE id=?", (person_id,)
+    ).fetchone()
+    if not person:
+        conn.close()
+        return jsonify({"ok": False, "msg": "Особу не знайдено"}), 404
+
+    # Позиції з норми особи
+    norm_items = conn.execute("""
+        SELECT sni.item_id,
+               COALESCE(sniw_inv.qty, sni.quantity) AS norm_qty,
+               sni.wear_years,
+               sni.category, nd.name AS norm_name,
+               pn.personnel_cat,
+               COALESCE((
+                   SELECT SUM(pi.quantity) FROM personnel_items pi
+                   WHERE pi.personnel_id=? AND pi.item_id=sni.item_id AND pi.status='active'
+               ), 0) AS issued_qty,
+               (
+                   SELECT pi.cycle_start_date FROM personnel_items pi
+                   WHERE pi.personnel_id=? AND pi.item_id=sni.item_id AND pi.status='active'
+                   ORDER BY COALESCE(pi.issue_date, pi.created_at) DESC LIMIT 1
+               ) AS cycle_start_date
+        FROM personnel p
+        JOIN personnel_norms pn ON pn.personnel_id = p.id
+        JOIN supply_norm_items sni ON sni.norm_id = pn.norm_id
+        LEFT JOIN norm_dictionary nd ON nd.id = sni.norm_dict_id
+        LEFT JOIN supply_norm_item_wear sniw_inv
+               ON sniw_inv.norm_item_id = sni.id AND sniw_inv.personnel_cat = pn.personnel_cat
+        WHERE p.id = ? AND sni.item_id IS NOT NULL
+    """, (person_id, person_id, person_id)).fetchall()
+
+    if not norm_items:
+        conn.close()
+        return jsonify({"ok": False, "msg": "Норму не призначено або позицій немає"}), 400
+
+    # Wear_months
+    sni_ids = []
+    pn_cat  = None
+    for r in norm_items:
+        if pn_cat is None:
+            pn_cat = r["personnel_cat"]
+    wear_map: dict = {}
+
+    # Відбираємо тільки ті позиції де є борг
+    service_type = person["service_type"] or "mobilized"
+    norm_date    = person["enroll_date"]
+    need_items   = []
+    for r in norm_items:
+        norm_qty   = float(r["norm_qty"] or 0)
+        issued_qty = float(r["issued_qty"] or 0)
+        if norm_qty <= 0:
+            continue
+        from core.military_logic import wear_years_to_months as _wym
+        wear_months = _wym(r["wear_years"])
+        cs = _cs(service_type, r["cycle_start_date"], norm_date, wear_months, issued_qty, norm_qty)
+        if cs["debt_qty"] > 0:
+            need_items.append({
+                "item_id":  r["item_id"],
+                "qty":      cs["debt_qty"],
+                "category": r["category"] or "I",
+            })
+
+    if not need_items:
+        conn.close()
+        return jsonify({"ok": False, "msg": "Боргів по нормі немає — все видано"}), 200
+
+    # Створюємо чернетку накладної
+    s = get_setting
+    today = _date.today().isoformat()
+    conn.execute("""
+        INSERT INTO invoices
+            (number, direction, status, doc_date,
+             recipient_type, recipient_personnel_id,
+             given_by_rank, given_by_name,
+             chief_rank, chief_name, chief_is_tvo,
+             clerk_rank, clerk_name,
+             service_name, supplier_name,
+             base_document, notes, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+                datetime('now','localtime'), datetime('now','localtime'))
+    """, (
+        f"ЧЕРНЕТКА-{int(time.time())}",
+        "issue", "draft", today,
+        "personnel", person_id,
+        s("warehouse_chief_rank", ""), s("warehouse_chief_name", ""),
+        s("chief_rank", ""), s("chief_name", ""), 1 if s("chief_is_tvo") == "1" else 0,
+        s("clerk_rank", ""), s("clerk_name", ""),
+        s("service_name", ""), s("company_name", ""),
+        "Заповнення по нормі", "",
+    ))
+    conn.commit()
+    inv_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    for i, it in enumerate(need_items):
+        conn.execute("""
+            INSERT INTO invoice_items (invoice_id, item_id, planned_qty, price, category, sort_order)
+            VALUES (?,?,?,?,?,?)
+        """, (inv_id, it["item_id"], it["qty"], 0.0, it["category"], i * 10))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "inv_id": inv_id})
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1578,6 +2243,7 @@ def _collect_form() -> dict:
         "draft_date":     _str("draft_date"),
         "draft_by":       _str("draft_by"),
         "norm_id":        _int("norm_id"),
+        "service_type":   request.form.get("service_type", "mobilized"),
     }
 
 

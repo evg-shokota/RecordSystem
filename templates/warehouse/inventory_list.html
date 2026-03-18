@@ -32,7 +32,7 @@
                     {% for r in rows %}
                     <tr>
                         <td class="text-muted">{{ loop.index }}</td>
-                        <td>{{ r.date }}</td>
+                        <td>{{ r.date | fdate }}</td>
                         <td>{{ r.notes or '—' }}</td>
                         <td class="text-muted small">{{ r.commission_members or '—' }}</td>
                         <td>
@@ -59,7 +59,7 @@
                                 </a>
                                 <form method="POST"
                                       action="{{ url_for('warehouse.inventory_delete', inv_id=r.id) }}"
-                                      onsubmit="return confirm('Видалити інвентаризацію?')">
+                                      data-confirm="Видалити інвентаризацію?">
                                     <button type="submit" class="btn btn-sm btn-outline-danger py-0">
                                         <i class="bi bi-trash"></i>
                                     </button>

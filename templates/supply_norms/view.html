@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}{{ norm.name }} — Норма видачі — {{ unit_name }}{% endblock %}
+{% block page_title %}{{ norm.name }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('supply_norms.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>До списку
+</a>
+<a href="{{ url_for('supply_norms.edit', norm_id=norm.id) }}" class="btn btn-sm btn-primary">
+    <i class="bi bi-pencil me-1"></i>Редагувати
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Шапка ── #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+        <div class="d-flex align-items-start gap-3">
+            <div class="bg-warning bg-opacity-10 rounded-3 p-3 flex-shrink-0">
+                <i class="bi bi-card-checklist text-warning fs-4"></i>
+            </div>
+            <div class="flex-grow-1">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <h2 class="mb-0 fw-bold" style="font-size:1.3rem;">{{ norm.name }}</h2>
+                    {% if not norm.is_active %}
+                    <span class="badge bg-secondary">Архів</span>
+                    {% else %}
+                    <span class="badge bg-success">Активна</span>
+                    {% endif %}
+                </div>
+                {% if norm.description %}
+                <p class="text-muted mb-1">{{ norm.description }}</p>
+                {% endif %}
+                <div class="d-flex gap-3 text-muted small">
+                    <span><i class="bi bi-list-check me-1"></i>{{ items | length }} позицій</span>
+                    {% if norm.service_type and norm.service_type != 'all' %}
+                    <span><i class="bi bi-person-badge me-1"></i>
+                        {{ 'Мобілізовані' if norm.service_type == 'mobilized' else 'Контрактники' }}
+                    </span>
+                    {% endif %}
+                    {% if norm.assigned_count %}
+                    <span><i class="bi bi-people me-1"></i>Призначено {{ norm.assigned_count }} в/с</span>
+                    {% endif %}
+                    {% if norm.created_at %}
+                    <span><i class="bi bi-calendar me-1"></i>Створено {{ norm.created_at | fdate }}</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Перелік позицій ── #}
+{% if items %}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent py-2 d-flex align-items-center justify-content-between">
+        <span class="fw-medium"><i class="bi bi-list-check me-2 text-warning"></i>Перелік майна за нормою</span>
+        <span class="d-flex align-items-center gap-3">
+            <small class="text-muted">Строк носіння — місяців по категоріях (0 = до зносу)</small>
+            <small class="text-muted"><i class="bi bi-info-circle me-1"></i>Кат.5 (мобілізовані) — борг згорає по закінченні циклу</small>
+        </span>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:36px">#</th>
+                    <th>Найменування майна</th>
+                    <th style="width:70px" class="text-center">К-сть</th>
+                    <th style="width:50px" class="text-center">Кат.</th>
+                    <th style="width:55px" class="text-center">Кат.1<br><small class="fw-normal text-muted" style="font-size:10px">міс.</small></th>
+                    <th style="width:55px" class="text-center">Кат.2<br><small class="fw-normal text-muted" style="font-size:10px">міс.</small></th>
+                    <th style="width:55px" class="text-center">Кат.3<br><small class="fw-normal text-muted" style="font-size:10px">міс.</small></th>
+                    <th style="width:55px" class="text-center">Кат.4<br><small class="fw-normal text-muted" style="font-size:10px">міс.</small></th>
+                    <th style="width:55px" class="text-center">Кат.5<br><small class="fw-normal text-muted" style="font-size:10px">міс.</small></th>
+                    <th>Примітки</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set ns = namespace(row_num=0, cur_group='') %}
+                {% for item in items %}
+                {% if item.group_name != ns.cur_group %}
+                {% set ns.cur_group = item.group_name %}
+                <tr class="table-secondary">
+                    <td colspan="10" class="fw-semibold small py-1 px-3">
+                        {{ item.group_name or 'Без групи' }}
+                    </td>
+                </tr>
+                {% endif %}
+                {% set ns.row_num = ns.row_num + 1 %}
+                <tr>
+                    <td class="text-muted text-center">{{ ns.row_num }}</td>
+                    <td class="fw-medium">{{ item.item_name }}</td>
+                    <td class="text-center">
+                        {{ item.quantity | int if item.quantity == item.quantity | int else item.quantity }}
+                        <span class="text-muted small">{{ item.unit_of_measure or 'шт' }}</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-light text-dark border">{{ item.category or '—' }}</span>
+                    </td>
+                    {% for cat in range(1, 6) %}
+                    <td class="text-center small">
+                        {% set wc = item.wear_by_cat[cat] %}
+                        {% set m = wc.months if wc is mapping else wc %}
+                        {% set q = wc.qty if wc is mapping else None %}
+                        {% if m and m > 0 %}
+                            <span class="text-body">{{ m }}</span>
+                            {%- if q is not none %}<br><small class="text-info">{{ q | int if q == q | int else q }} шт</small>{%- endif %}
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                    <td class="text-muted small">{{ item.notes or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot class="table-light">
+                <tr>
+                    <td colspan="2" class="fw-semibold text-end small pe-2">Разом позицій:</td>
+                    <td class="text-center fw-bold">{{ items | length }}</td>
+                    <td colspan="7"></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-4 text-muted">
+        <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+        Позицій майна не додано.
+        <a href="{{ url_for('supply_norms.edit', norm_id=norm.id) }}">Додати →</a>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -33,7 +33,7 @@
                     {% set is_draft = r.status == 'draft' %}
                     <tr class="{{ 'table-warning' if is_draft }}">
                         <td class="text-muted">{{ loop.index }}</td>
-                        <td>{{ r.date or '—' }}</td>
+                        <td>{{ r.date | fdate }}</td>
                         <td>
                             <div>
                                 {% if r.doc_type_name %}
@@ -76,7 +76,7 @@
                                 {# Видалення чернетки #}
                                 <form method="POST"
                                       action="{{ url_for('warehouse.income_draft_delete', doc_id=r.doc_id) }}"
-                                      onsubmit="return confirm('Видалити чернетку?')">
+                                      data-confirm="Видалити чернетку?">
                                     <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1"
                                             title="Видалити чернетку">
                                         <i class="bi bi-trash"></i>
@@ -106,7 +106,7 @@
                                 {# Видалення #}
                                 <form method="POST"
                                       action="{{ url_for('warehouse.income_delete', income_id=r.id) }}"
-                                      onsubmit="return confirm('Видалити запис приходу? Майно буде знято зі складу.')">
+                                      data-confirm="Видалити запис приходу? Майно буде знято зі складу.">
                                     <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1"
                                             title="Видалити">
                                         <i class="bi bi-trash"></i>

@@ -339,7 +339,7 @@ def set_default(tpl_id):
     t = conn.execute("SELECT doc_type FROM doc_templates WHERE id=?", (tpl_id,)).fetchone()
     if not t:
         conn.close()
-        return jsonify({"error": "not found"}), 404
+        return jsonify({"ok": False, "msg": "not found"}), 404
     # Скинути default у всіх шаблонів цього типу
     conn.execute(
         "UPDATE doc_templates SET default_for_type=0 WHERE doc_type=?", (t["doc_type"],)
@@ -363,7 +363,7 @@ def api_get(tpl_id):
     t = conn.execute("SELECT * FROM doc_templates WHERE id=?", (tpl_id,)).fetchone()
     conn.close()
     if not t:
-        return jsonify({"error": "not found"}), 404
+        return jsonify({"ok": False, "msg": "not found"}), 404
     grid = json.loads(t["grid_data"] or "{}")
     return jsonify({
         "id": t["id"], "name": t["name"], "doc_type": t["doc_type"],
@@ -388,7 +388,7 @@ def api_default(doc_type):
     ).fetchone()
     conn.close()
     if not t:
-        return jsonify({"error": "no default"}), 404
+        return jsonify({"ok": False, "msg": "no default"}), 404
     grid = json.loads(t["grid_data"] or "{}")
     return jsonify({"id": t["id"], "name": t["name"], "html": grid.get("html", "")})
 

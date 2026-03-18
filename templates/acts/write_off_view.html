@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}Акт списання {{ act.number }} — {{ unit_name }}{% endblock %}
+{% block page_title %}Акт списання {{ act.number }}{% endblock %}
+
+{% block topbar_actions %}
+{% if act.status == 'draft' %}
+<a href="{{ url_for('acts.write_off_edit', wid=act.id) }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-pencil me-1"></i>Редагувати
+</a>
+<button class="btn btn-sm btn-success" onclick="confirmAction('Оформити акт списання?', doConfirm)">
+    <i class="bi bi-check-lg me-1"></i>Оформити
+</button>
+{% endif %}
+{% if act.status in ('draft', 'created') %}
+<form method="post" action="{{ url_for('acts.write_off_cancel', wid=act.id) }}"
+      data-confirm="Скасувати акт {{ act.number }}?" data-confirm-class="btn-warning">
+    <button type="submit" class="btn btn-sm btn-outline-warning">
+        <i class="bi bi-x-circle me-1"></i>Скасувати
+    </button>
+</form>
+{% endif %}
+{% if act.status in ('draft', 'cancelled') %}
+<form method="post" action="{{ url_for('acts.write_off_delete', wid=act.id) }}"
+      data-confirm="Видалити акт {{ act.number }}?" data-confirm-class="btn-danger">
+    <button type="submit" class="btn btn-sm btn-outline-danger">
+        <i class="bi bi-trash me-1"></i>Видалити
+    </button>
+</form>
+{% endif %}
+<a href="{{ url_for('acts.write_off_list') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>До списку
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+    {# Ліва колонка: дані акта #}
+    <div class="col-lg-4">
+        <div class="card mb-3">
+            <div class="card-header">Реквізити</div>
+            <div class="card-body">
+                <dl class="row mb-0 small">
+                    <dt class="col-5 text-muted">Номер</dt>
+                    <dd class="col-7 font-monospace fw-semibold">{{ act.number }}</dd>
+
+                    <dt class="col-5 text-muted">Дата акта</dt>
+                    <dd class="col-7">{{ act.act_date | fdate }}</dd>
+
+                    <dt class="col-5 text-muted">Статус</dt>
+                    <dd class="col-7">
+                        <span class="badge bg-{{ status_colors.get(act.status, 'secondary') }}">
+                            {{ status_labels.get(act.status, act.status) }}
+                        </span>
+                    </dd>
+
+                    <dt class="col-5 text-muted">Підрозділ</dt>
+                    <dd class="col-7">{{ act.unit_name or '—' }}</dd>
+
+                    {% if act.chief_name %}
+                    <dt class="col-5 text-muted">Голова комісії</dt>
+                    <dd class="col-7">
+                        {{ act.chief_rank }} {{ act.chief_name }}
+                        {% if act.chief_is_tvo %}<span class="badge bg-secondary ms-1">в.о.</span>{% endif %}
+                    </dd>
+                    {% endif %}
+
+                    {% if act.commission_members %}
+                    <dt class="col-5 text-muted">Члени комісії</dt>
+                    <dd class="col-7">{{ act.commission_members }}</dd>
+                    {% endif %}
+
+                    {% if act.base_document %}
+                    <dt class="col-5 text-muted">Підстава</dt>
+                    <dd class="col-7">{{ act.base_document }}</dd>
+                    {% endif %}
+
+                    {% if act.notes %}
+                    <dt class="col-5 text-muted">Примітки</dt>
+                    <dd class="col-7">{{ act.notes }}</dd>
+                    {% endif %}
+
+                    <dt class="col-5 text-muted fw-bold">Загальна сума</dt>
+                    <dd class="col-7 fw-bold">
+                        {% if act.total_sum %}{{ "%.2f"|format(act.total_sum) }} грн{% else %}—{% endif %}
+                    </dd>
+                </dl>
+            </div>
+        </div>
+
+        {# Скан #}
+        <div class="card">
+            <div class="card-header">Скан документа</div>
+            <div class="card-body">
+                {% if act.scan_path %}
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <i class="bi bi-file-earmark-check text-success fs-5"></i>
+                    <a href="{{ url_for('serve_storage', filename=act.scan_path) }}"
+                       target="_blank" class="small">Переглянути скан</a>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger w-100"
+                        onclick="deleteScan()">
+                    <i class="bi bi-trash me-1"></i>Видалити скан
+                </button>
+                {% else %}
+                <p class="text-muted small mb-2">Скан не завантажено</p>
+                {% endif %}
+                <div class="mt-2">
+                    <label class="form-label small mb-1">Завантажити скан</label>
+                    <input type="file" id="scanFile" class="form-control form-control-sm"
+                           accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif"
+                           onchange="uploadScan(this)">
+                </div>
+                <div id="scanStatus" class="small mt-1"></div>
+            </div>
+        </div>
+    </div>
+
+    {# Права колонка: позиції #}
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <span>Майно до списання</span>
+                <span class="text-muted small">{{ items | length }} позицій</span>
+            </div>
+            {% if items %}
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Найменування</th>
+                            <th class="text-center" style="width:80px">К-сть</th>
+                            <th class="text-end" style="width:90px">Ціна, грн</th>
+                            <th class="text-end" style="width:90px">Сума, грн</th>
+                            <th style="width:60px">Кат.</th>
+                            <th>Причина</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr>
+                            <td>{{ item.item_name }}
+                                <span class="text-muted small">({{ item.item_unit }})</span>
+                            </td>
+                            <td class="text-center">{{ item.quantity }}</td>
+                            <td class="text-end">{{ "%.2f"|format(item.price) }}</td>
+                            <td class="text-end fw-semibold">{{ "%.2f"|format(item.quantity * item.price) }}</td>
+                            <td><span class="badge bg-secondary">{{ item.category }}</span></td>
+                            <td class="text-muted small">{{ item.reason or '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-light">
+                        <tr>
+                            <td colspan="3" class="text-end fw-bold">Всього:</td>
+                            <td class="text-end fw-bold">
+                                {{ "%.2f"|format(items | sum(attribute='quantity') * 0 + act.total_sum) }}
+                            </td>
+                            <td colspan="2"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state py-4">
+                <i class="bi bi-list-ul"></i>
+                <p class="text-muted small mb-0">
+                    {% if act.status == 'draft' %}
+                    Позицій немає.
+                    <a href="{{ url_for('acts.write_off_edit', wid=act.id) }}">Додати в редакторі</a>.
+                    {% else %}
+                    Позицій немає.
+                    {% endif %}
+                </p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function doConfirm() {
+    fetch("{{ url_for('acts.write_off_confirm', wid=act.id) }}", {method:'POST'})
+        .then(r => r.json())
+        .then(d => {
+            if (d.ok) { showToast('Акт оформлено', 'success'); setTimeout(() => location.reload(), 800); }
+            else showToast(d.msg || 'Помилка', 'danger');
+        });
+}
+
+function uploadScan(input) {
+    if (!input.files.length) return;
+    const fd = new FormData();
+    fd.append('scan', input.files[0]);
+    const st = document.getElementById('scanStatus');
+    st.textContent = 'Завантаження…';
+    fetch("{{ url_for('acts.write_off_scan_upload', wid=act.id) }}", {method:'POST', body:fd})
+        .then(r => r.json())
+        .then(d => {
+            if (d.ok) { showToast('Скан завантажено', 'success'); setTimeout(() => location.reload(), 600); }
+            else { st.textContent = d.msg || 'Помилка'; showToast(d.msg || 'Помилка', 'danger'); }
+        });
+}
+
+function deleteScan() {
+    showConfirm('Видалити скан?', () => {
+        fetch("{{ url_for('acts.write_off_scan_delete', wid=act.id) }}", {method:'POST'})
+            .then(r => r.json())
+            .then(d => { if (d.ok) location.reload(); });
+    }, { confirmClass: 'btn-danger' });
+}
+</script>
+{% endblock %}

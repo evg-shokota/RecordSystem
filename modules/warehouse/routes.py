@@ -15,7 +15,7 @@ from core.auth import login_required
 from core.db import get_connection
 from core.audit import log_action
 from core.hooks import emit
-from core.warehouse import get_stock as _get_stock
+from core.warehouse import get_stock as _get_stock, get_norm_groups as _get_norm_groups
 
 ALLOWED_SCAN_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tiff", ".tif"}
 
@@ -145,25 +145,7 @@ def income_list():
 #  ПРИХІД — форма
 # ─────────────────────────────────────────────────────────────
 
-def _get_norm_groups(conn) -> list:
-    """Групи словника норм для вибору при додаванні позиції майна."""
-    nd_rows = conn.execute("""
-        SELECT g.id AS group_id, g.name AS group_name, g.sort_order,
-               nd.id, nd.name, nd.unit, nd.sort_order AS item_order
-        FROM norm_dict_groups g
-        JOIN norm_dictionary nd ON nd.group_id = g.id
-        WHERE g.is_active=1 AND nd.is_active=1
-        ORDER BY g.sort_order, nd.sort_order
-    """).fetchall()
-    groups_dict = {}
-    for r in nd_rows:
-        gid = r["group_id"]
-        if gid not in groups_dict:
-            groups_dict[gid] = {"id": gid, "name": r["group_name"], "norms": []}
-        groups_dict[gid]["norms"].append({
-            "id": r["id"], "name": r["name"], "unit": r["unit"] or "шт",
-        })
-    return list(groups_dict.values())
+# _get_norm_groups імпортується з core.warehouse (вище)
 
 
 def _parse_income_rows(form, save_as_draft: bool, conn) -> tuple[list, list]:
@@ -601,7 +583,7 @@ def api_item_incomes(item_id):
     ).fetchone()
     if not item:
         conn.close()
-        return jsonify({"error": "Не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Не знайдено"}), 404
     rows = conn.execute("""
         SELECT wi.id, wi.date, wi.document_number, wi.supplier,
                dt.name AS doc_type_name, wi.quantity, wi.price, wi.category,
@@ -811,14 +793,16 @@ def inventory_delete(inv_id):
 @login_required
 def inventory_print(inv_id):
     conn = get_connection()
-    inv   = conn.execute("SELECT * FROM inventories WHERE id = ?", (inv_id,)).fetchone()
-    items = conn.execute(
-        "SELECT * FROM inventory_items WHERE inventory_id = ? ORDER BY item_name_snapshot, category",
-        (inv_id,)
-    ).fetchall()
-    from core.settings import get_setting
-    unit_name = get_setting("company_name", "") or ""
-    conn.close()
+    try:
+        inv   = conn.execute("SELECT * FROM inventories WHERE id = ?", (inv_id,)).fetchone()
+        items = conn.execute(
+            "SELECT * FROM inventory_items WHERE inventory_id = ? ORDER BY item_name_snapshot, category",
+            (inv_id,)
+        ).fetchall()
+        from core.settings import get_setting
+        unit_name = get_setting("company_name", "") or ""
+    finally:
+        conn.close()
 
     total_expected = sum(r["qty_expected"] * r["price"] for r in items)
     total_actual   = sum(r["qty_actual"]   * r["price"] for r in items)
@@ -837,14 +821,16 @@ def inventory_print(inv_id):
 def inventory_export_xlsx(inv_id):
     """Вивантаження інвентаризації в Excel."""
     conn = get_connection()
-    inv   = conn.execute("SELECT * FROM inventories WHERE id = ?", (inv_id,)).fetchone()
-    items = conn.execute(
-        "SELECT * FROM inventory_items WHERE inventory_id = ? ORDER BY item_name_snapshot, category",
-        (inv_id,)
-    ).fetchall()
-    from core.settings import get_setting
-    unit_name = get_setting("company_name", "") or ""
-    conn.close()
+    try:
+        inv   = conn.execute("SELECT * FROM inventories WHERE id = ?", (inv_id,)).fetchone()
+        items = conn.execute(
+            "SELECT * FROM inventory_items WHERE inventory_id = ? ORDER BY item_name_snapshot, category",
+            (inv_id,)
+        ).fetchall()
+        from core.settings import get_setting
+        unit_name = get_setting("company_name", "") or ""
+    finally:
+        conn.close()
 
     try:
         import openpyxl
@@ -951,20 +937,21 @@ def inventory_export_pdf(inv_id):
 @bp.route("/api/item/<int:item_id>")
 @login_required
 def api_item(item_id):
-    """Повертає дані позиції словника + доступні ціни/категорії зі складу."""
+    """Повертає дані позиції словника + доступні ціни/категорії зі складу.
+    Returns: {"ok": bool, "data": {..., "stock_prices": [...]}, "msg": str}
+    """
     conn = get_connection()
-    row = conn.execute(
-        "SELECT id, name, unit_of_measure, has_serial_number, is_inventory "
-        "FROM item_dictionary WHERE id = ?",
-        (item_id,)
-    ).fetchone()
-    if not row:
+    try:
+        row = conn.execute(
+            "SELECT id, name, unit_of_measure, has_serial_number, is_inventory "
+            "FROM item_dictionary WHERE id = ?",
+            (item_id,)
+        ).fetchone()
+        if not row:
+            return jsonify({"ok": False, "data": None, "msg": "not found"}), 404
+        stock = _get_stock(conn, only_positive=True)
+    finally:
         conn.close()
-        return jsonify({"error": "not found"}), 404
-
-    # Доступні партії зі складу (qty_free > 0)
-    stock = _get_stock(conn, only_positive=True)
-    conn.close()
 
     prices = [
         {"price": s["price"], "category": s["category"], "qty_free": s["qty_free"]}
@@ -973,11 +960,6 @@ def api_item(item_id):
 
     result = dict(row)
     result["stock_prices"] = prices
-    # Перша доступна ціна для автопідстановки
-    if prices:
-        result["default_price"] = prices[0]["price"]
-        result["default_category"] = prices[0]["category"]
-    else:
-        result["default_price"] = 0
-        result["default_category"] = "I"
-    return jsonify(result)
+    result["default_price"]    = prices[0]["price"]    if prices else 0
+    result["default_category"] = prices[0]["category"] if prices else "I"
+    return jsonify({"ok": True, "data": result, "msg": ""})

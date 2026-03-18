@@ -272,21 +272,22 @@ document.getElementById('btnSaveEdit').addEventListener('click', async () => {
         editModal.hide();
         showToast('Збережено', 'success');
     } else {
-        showToast(data.error, 'danger');
+        showToast(data.msg || data.error, 'danger');
     }
 });
 
 function setupDelete(btnClass, urlTemplate) {
     document.querySelectorAll(btnClass).forEach(btn => {
-        btn.addEventListener('click', async () => {
-            if (!confirm(`Видалити "${btn.dataset.name}"?`)) return;
-            const res = await fetch(urlTemplate.replace('__ID__', btn.dataset.id), { method: 'POST' });
+        btn.addEventListener('click', () => {
+            showConfirm(`Видалити "${btn.dataset.name}"?`, async () => {
+            const res = await fetch(urlTemplate.replace('__ID__', btn.dataset.id), { method: 'POST'            });
+        });
             const data = await res.json();
             if (data.ok) {
                 btn.closest('li').remove();
                 showToast('Видалено', 'success');
             } else {
-                showToast(data.error, 'danger');
+                showToast(data.msg || data.error, 'danger');
             }
         });
     });

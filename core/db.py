@@ -1295,6 +1295,30 @@ def _migrate(conn: sqlite3.Connection) -> None:
     cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('default_theme', 'default')")
     conn.commit()
 
+    # Атестат: списки підстав і отримувачів (JSON-масиви)
+    cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('attestat_basis_list', '[]')")
+    cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('attestat_recipient_list', '[]')")
+    cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('attestat_service', 'РСТ')")
+    conn.commit()
+
+    # Атестат: збереження реєстраційних полів по особі (серверне, доступно всім)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS attestat_data (
+            personnel_id INTEGER PRIMARY KEY REFERENCES personnel(id) ON DELETE CASCADE,
+            reg_number     TEXT NOT NULL DEFAULT '',
+            reg_sheet      TEXT NOT NULL DEFAULT '1',
+            reg_doc_number TEXT NOT NULL DEFAULT '',
+            reg_doc_date   TEXT NOT NULL DEFAULT '',
+            reg_basis      TEXT NOT NULL DEFAULT '',
+            reg_service    TEXT NOT NULL DEFAULT '',
+            reg_recipient  TEXT NOT NULL DEFAULT '',
+            reg_font_size  TEXT NOT NULL DEFAULT '12',
+            updated_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    add_column_if_missing("attestat_data", "reg_font_size", "TEXT NOT NULL DEFAULT '12'")
+    conn.commit()
+
     # income_docs: підтримка attestat_import — прив'язка до особи
     add_column_if_missing("income_docs", "person_id", "INTEGER REFERENCES personnel(id)")
 
@@ -1321,6 +1345,66 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.commit()
     except Exception:
         pass
+
+    # ══════════════════════════════════════════════════════════════
+    #  ЛОГІКА НОСКИ: service_type, цикли, норми, борги
+    # ══════════════════════════════════════════════════════════════
+
+    # 1. Тип служби на особі: mobilized | contract
+    add_column_if_missing("personnel", "service_type", "TEXT NOT NULL DEFAULT 'mobilized'")
+
+    # 2. supply_norm_item_wear — таблиця строків носки по категоріях
+    #    (використовувалась в коді але не існувала в БД)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS supply_norm_item_wear (
+            norm_item_id INTEGER NOT NULL REFERENCES supply_norm_items(id) ON DELETE CASCADE,
+            personnel_cat INTEGER NOT NULL,
+            wear_months   INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (norm_item_id, personnel_cat)
+        )
+    """)
+
+    # 2b. Кількість по категорії персоналу (NULL = використовувати supply_norm_items.quantity)
+    add_column_if_missing("supply_norm_item_wear", "qty", "REAL")
+
+    # 3. Тип служби для якого призначена норма: all | mobilized | contract
+    add_column_if_missing("supply_norms", "service_type", "TEXT NOT NULL DEFAULT 'all'")
+
+    # 4. personnel_norm_history — історія норм для контрактників
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS personnel_norm_history (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            personnel_id  INTEGER NOT NULL REFERENCES personnel(id) ON DELETE CASCADE,
+            norm_id       INTEGER NOT NULL REFERENCES supply_norms(id),
+            personnel_cat INTEGER NOT NULL DEFAULT 5,
+            date_from     TEXT NOT NULL,
+            date_to       TEXT,
+            notes         TEXT NOT NULL DEFAULT '',
+            created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_norm_history_person
+        ON personnel_norm_history(personnel_id)
+    """)
+
+    # 5. personnel_items — нові поля для циклів і розрахунків
+    #    cycle_start_date — дата першої видачі в поточному циклі
+    #    cycle_closed     — 1 якщо норму закрито в повному обсязі
+    #    norm_qty_at_issue — кількість по нормі на момент видачі (знімок)
+    #    wear_months_at_issue — строк носки на момент видачі (знімок)
+    #    next_issue_date  — розрахункова дата наступного отримання
+    add_column_if_missing("personnel_items", "cycle_start_date",    "TEXT")
+    add_column_if_missing("personnel_items", "cycle_closed",        "INTEGER NOT NULL DEFAULT 0")
+    add_column_if_missing("personnel_items", "norm_qty_at_issue",   "REAL NOT NULL DEFAULT 0")
+    add_column_if_missing("personnel_items", "wear_months_at_issue","INTEGER NOT NULL DEFAULT 0")
+    add_column_if_missing("personnel_items", "next_issue_date",     "TEXT")
+
+    # 6. Налаштування за замовченням для нової логіки
+    cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('default_service_type', 'mobilized')")
+    cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('wear_warning_days', '30')")
+
+    conn.commit()
 
 
 def _update_norm_dict_data(cur) -> None:

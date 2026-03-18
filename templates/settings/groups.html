@@ -146,7 +146,7 @@ document.getElementById('btnAddGroup').addEventListener('click', async () => {
         addGroupModal.hide();
         showToast('Групу додано', 'success');
         bindGroupButtons();
-    } else { showToast(data.error, 'danger'); }
+    } else { showToast(data.msg || data.error, 'danger'); }
 });
 
 // Редагувати / Видалити
@@ -160,12 +160,13 @@ function bindGroupButtons() {
         };
     });
     document.querySelectorAll('.btn-del-group').forEach(btn => {
-        btn.onclick = async () => {
-            if (!confirm(`Видалити групу "${btn.dataset.name}"?`)) return;
-            const res = await fetch(`/settings/groups/${btn.dataset.id}/delete`, { method: 'POST' });
-            const data = await res.json();
-            if (data.ok) { btn.closest('tr').remove(); showToast('Видалено', 'success'); }
-            else showToast(data.error, 'danger');
+        btn.onclick = () => {
+            showConfirm(`Видалити групу "${btn.dataset.name}"?`, async () => {
+                const res = await fetch(`/settings/groups/${btn.dataset.id}/delete`, { method: 'POST' });
+                const data = await res.json();
+                if (data.ok) { btn.closest('tr').remove(); showToast('Видалено', 'success'); }
+                else showToast(data.msg || data.error, 'danger');
+            });
         };
     });
 }
@@ -182,7 +183,7 @@ document.getElementById('btnSaveGroup').addEventListener('click', async () => {
         editGroupRow.querySelector('.btn-edit-group').dataset.name = name;
         editGroupModal.hide();
         showToast('Збережено', 'success');
-    } else showToast(data.error, 'danger');
+    } else showToast(data.msg || data.error, 'danger');
 });
 </script>
 {% endblock %}

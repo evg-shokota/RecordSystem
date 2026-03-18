@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Звіт по боргу — {{ unit_name }}{% endblock %}
+{% block page_title %}Звіт по боргу речового майна{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-sm btn-outline-secondary" onclick="window.print()">
+    <i class="bi bi-printer me-1"></i>Друк
+</button>
+<a href="{{ url_for('reports.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>До звітів
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Фільтри ── #}
+<form method="GET" class="card border-0 shadow-sm mb-3 no-print">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label form-label-sm mb-1">Підрозділ</label>
+                <select name="unit_id" class="form-select form-select-sm">
+                    <option value="">— всі підрозділи —</option>
+                    {% for u in units %}
+                    <option value="{{ u.id }}" {{ 'selected' if unit_id == u.id }}>
+                        {{ u.bat_name }} / {{ u.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label form-label-sm mb-1">Тип служби</label>
+                <select name="service_type" class="form-select form-select-sm">
+                    <option value="" {{ 'selected' if not service_type_f }}>— всі —</option>
+                    <option value="mobilized" {{ 'selected' if service_type_f == 'mobilized' }}>Мобілізовані</option>
+                    <option value="contract"  {{ 'selected' if service_type_f == 'contract'  }}>Контрактники</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="bi bi-funnel me-1"></i>Застосувати
+                </button>
+            </div>
+        </div>
+    </div>
+</form>
+
+{% if not result %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-check-circle fs-1 d-block mb-2 text-success"></i>
+        <p class="mb-0">Боргів не виявлено — всі отримали майно по нормі.</p>
+    </div>
+</div>
+{% else %}
+
+{# ── Зведення по позиціях ── #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-transparent py-2 d-flex align-items-center justify-content-between">
+        <span class="fw-medium"><i class="bi bi-bar-chart-line me-2 text-danger"></i>Зведення по позиціях</span>
+        <small class="text-muted">Осіб з боргом: <strong>{{ total_debt_persons }}</strong></small>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>#</th>
+                    <th>Найменування</th>
+                    <th class="text-center" style="width:60px;">Од.</th>
+                    <th class="text-end" style="width:90px;">Разом борг</th>
+                    <th class="text-center" style="width:80px;">Осіб</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for g in by_norm %}
+                <tr>
+                    <td class="text-muted">{{ loop.index }}</td>
+                    <td class="fw-medium">{{ g.name }}</td>
+                    <td class="text-center text-muted small">{{ g.unit }}</td>
+                    <td class="text-end text-danger fw-semibold">{{ g.total_debt | int if g.total_debt == g.total_debt | int else g.total_debt }}</td>
+                    <td class="text-center">{{ g.persons | length }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{# ── Детальний список ── #}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent py-2">
+        <span class="fw-medium"><i class="bi bi-list-check me-2 text-warning"></i>Детальний список</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>#</th>
+                    <th>Військовослужбовець</th>
+                    <th>Підрозділ</th>
+                    <th>Тип</th>
+                    <th>Позиція</th>
+                    <th class="text-center">Норма</th>
+                    <th class="text-center">Видано</th>
+                    <th class="text-center text-danger">Борг</th>
+                    <th class="text-center">Наст. видача</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in result %}
+                <tr>
+                    <td class="text-muted">{{ loop.index }}</td>
+                    <td>
+                        <a href="{{ url_for('personnel.card', person_id=r.personnel_id) }}" class="text-decoration-none">
+                            {{ r.rank }} {{ r.full_name }}
+                        </a>
+                    </td>
+                    <td class="text-muted small">{{ r.unit_name }}</td>
+                    <td class="text-muted small">
+                        <span class="badge {{ 'bg-warning-subtle text-warning' if r.service_type == 'mobilized' else 'bg-info-subtle text-info' }} border">
+                            {{ 'Моб.' if r.service_type == 'mobilized' else 'Контр.' }}
+                        </span>
+                    </td>
+                    <td>{{ r.norm_dict_name }}</td>
+                    <td class="text-center small">{{ r.norm_qty | int if r.norm_qty == r.norm_qty | int else r.norm_qty }} {{ r.unit }}</td>
+                    <td class="text-center small">{{ r.issued_qty | int if r.issued_qty == r.issued_qty | int else r.issued_qty }}</td>
+                    <td class="text-center fw-semibold text-danger">
+                        -{{ r.debt_qty | int if r.debt_qty == r.debt_qty | int else r.debt_qty }}
+                    </td>
+                    <td class="text-center small">
+                        {% if r.next_issue_date %}
+                            {% if r.days_left is not none and r.days_left < 0 %}
+                            <span class="text-danger" title="Прострочено {{ r.days_left | abs }} дн.">{{ r.next_issue_date | fdate }}</span>
+                            {% elif r.days_left is not none and r.days_left <= 30 %}
+                            <span class="text-warning">{{ r.next_issue_date | fdate }}</span>
+                            {% else %}
+                            <span class="text-muted">{{ r.next_issue_date | fdate }}</span>
+                            {% endif %}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+@media print {
+    .no-print { display: none !important; }
+    .app-sidebar, .app-topbar, .btn { display: none !important; }
+}
+</style>
+{% endblock %}

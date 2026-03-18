@@ -38,13 +38,13 @@
             </div>
             <div class="card-body">
                 <form method="POST" enctype="multipart/form-data"
-                      onsubmit="return confirm('Ви впевнені? Поточна база даних буде замінена!')">
+                      data-confirm="Ви впевнені? Поточна база даних буде замінена!">
                     <div class="mb-3">
                         <label class="form-label">Файл бази даних (.db) <span class="text-danger">*</span></label>
                         <input type="file" name="db_file" class="form-control" accept=".db" required>
                         <div class="form-text">Файл повинен бути сумісним з поточною версією системи</div>
                     </div>
-                    <button type="submit" class="btn btn-danger">
+                    <button type="submit" class="btn btn-outline-danger">
                         <i class="bi bi-exclamation-triangle me-1"></i>Замінити базу даних
                     </button>
                 </form>

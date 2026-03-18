@@ -93,6 +93,14 @@
                     <i class="bi bi-arrow-up-left"></i> Визначено автоматично по званню
                 </div>
             </div>
+            <div class="col-md-3">
+                <label class="form-label form-label-sm">Тип служби</label>
+                <select name="service_type" class="form-select form-select-sm">
+                    <option value="mobilized" {% if (person.service_type or default_service_type) != 'contract' %}selected{% endif %}>Мобілізований</option>
+                    <option value="contract"  {% if (person.service_type or default_service_type) == 'contract' %}selected{% endif %}>Контрактник</option>
+                </select>
+                <div class="form-text text-muted">Впливає на розрахунок строків носки</div>
+            </div>
         </div>
     </div>
 </div>
@@ -172,12 +180,13 @@
                     <input type="text" name="card_number" id="cardNumber"
                            class="form-control form-control-sm"
                            value="{{ person.card_number or '' }}"
-                           placeholder="{% if not is_edit %}авто{% endif %}">
-                    {% if not is_edit %}
-                    <span class="input-group-text text-muted" style="font-size:11px;"
-                          title="Буде присвоєно автоматично якщо не вказати">авто</span>
-                    {% endif %}
+                           placeholder="авто"
+                           autocomplete="off">
+                    <span class="input-group-text" id="cardNumberStatus" title="Буде присвоєно автоматично якщо не вказати">
+                        <i class="bi bi-hash text-muted" style="font-size:11px;"></i>
+                    </span>
                 </div>
+                <div id="cardNumberFeedback" class="form-text" style="min-height:1.2em;"></div>
             </div>
             <div class="col-md-3">
                 <label class="form-label form-label-sm">Телефон</label>
@@ -323,36 +332,86 @@
 </div>
 
 {# ══════════════════════════════════════════════════════════
-   Норма видачі майна
+   Норми видачі майна
 ══════════════════════════════════════════════════════════ #}
 <div class="card mb-3">
     <div class="card-header py-2 fw-semibold">
-        <i class="bi bi-list-check me-2 text-primary"></i>Норма видачі майна
+        <i class="bi bi-list-check me-2 text-primary"></i>Норми видачі майна
     </div>
     <div class="card-body">
+        {% if is_edit %}
+        {# Режим редагування: мультивибір норм через AJAX #}
+        <div id="normsWidget">
+            <div id="normsList">
+                {% for pn in person_norms %}
+                <div class="d-flex align-items-center gap-2 mb-2 pn-row" data-pn-id="{{ pn.id }}">
+                    <span class="flex-grow-1 fw-medium">{{ pn.norm_name }}</span>
+                    <select class="form-select form-select-sm pn-cat-sel" style="width:90px"
+                            title="Категорія особи для цієї норми">
+                        {% for c in range(1,6) %}
+                        <option value="{{ c }}" {{ 'selected' if pn.personnel_cat == c }}>Кат.{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                    <a href="{{ url_for('supply_norms.view', norm_id=pn.norm_id) }}"
+                       class="btn btn-sm btn-outline-secondary py-0" target="_blank" title="Переглянути норму">
+                        <i class="bi bi-box-arrow-up-right"></i>
+                    </a>
+                    <button type="button" class="btn btn-sm btn-outline-danger py-0 pn-del-btn" title="Видалити норму">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+                {% endfor %}
+                {% if not person_norms %}
+                <p class="text-muted small mb-2" id="normsEmptyMsg">Норм не призначено</p>
+                {% endif %}
+            </div>
+            <div class="d-flex gap-2 mt-2 align-items-end border-top pt-2">
+                <div style="flex:1">
+                    <label class="form-label form-label-sm mb-1">Додати норму</label>
+                    <select id="addNormSelect" class="form-select form-select-sm">
+                        <option value="">— оберіть зі списку —</option>
+                        {% for n in supply_norms %}
+                        <option value="{{ n.id }}">{{ n.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="width:90px">
+                    <label class="form-label form-label-sm mb-1">Категорія</label>
+                    <select id="addNormCat" class="form-select form-select-sm">
+                        {% for c in range(1,6) %}
+                        <option value="{{ c }}">Кат.{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="button" class="btn btn-sm btn-primary" id="btnAddNorm">
+                    <i class="bi bi-plus-lg me-1"></i>Додати
+                </button>
+            </div>
+        </div>
+        <div class="form-text mt-1">Одна особа може мати кілька норм. Категорія визначає строк носіння зі таблиці норми.</div>
+        {% else %}
+        {# Режим створення: призначити першу норму одразу #}
         <div class="row g-3 align-items-end">
             <div class="col-md-5">
-                <label class="form-label form-label-sm">Норма видачі</label>
+                <label class="form-label form-label-sm">Норма видачі (необов'язково)</label>
                 <select name="norm_id" class="form-select form-select-sm">
                     <option value="">— не призначено —</option>
                     {% for n in supply_norms %}
-                    <option value="{{ n.id }}"
-                        {{ 'selected' if person.norm_id and person.norm_id == n.id }}>
-                        {{ n.name }}
-                    </option>
+                    <option value="{{ n.id }}">{{ n.name }}</option>
                     {% endfor %}
                 </select>
-                <div class="form-text">Визначає перелік майна що належить до видачі цій особі (для картки речового майна).</div>
+                <div class="form-text">Можна додати кілька норм після збереження картки.</div>
             </div>
-            {% if person.norm_id %}
-            <div class="col-md-3">
-                <a href="{{ url_for('supply_norms.edit', norm_id=person.norm_id) }}"
-                   class="btn btn-sm btn-outline-secondary" target="_blank">
-                    <i class="bi bi-box-arrow-up-right me-1"></i>Переглянути норму
-                </a>
+            <div class="col-md-2">
+                <label class="form-label form-label-sm">Категорія</label>
+                <select name="norm_cat" class="form-select form-select-sm">
+                    {% for c in range(1,6) %}
+                    <option value="{{ c }}">Кат.{{ c }}</option>
+                    {% endfor %}
+                </select>
             </div>
-            {% endif %}
         </div>
+        {% endif %}
     </div>
 </div>
 
@@ -377,6 +436,89 @@
 {% if is_edit %}
 const PERSON_ID = {{ person_id }};
 
+// ── Мультинорми ──────────────────────────────────────────────
+function escH(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function bindNormRow(row) {
+    const pnId = row.dataset.pnId;
+    // Зміна категорії
+    row.querySelector('.pn-cat-sel').addEventListener('change', async function() {
+        await fetch(`/personnel/${PERSON_ID}/norms/${pnId}/cat`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({personnel_cat: parseInt(this.value)})
+        });
+    });
+    // Видалення норми
+    row.querySelector('.pn-del-btn').addEventListener('click', () => {
+        showConfirm('Видалити цю норму у особи?', async () => {
+            const resp = await fetch(`/personnel/${PERSON_ID}/norms/${pnId}/delete`, {method:'POST'});
+            const d = await resp.json();
+            if (d.ok) {
+                row.remove();
+                if (!document.querySelector('.pn-row')) {
+                    const list = document.getElementById('normsList');
+                    if (!list.querySelector('#normsEmptyMsg')) {
+                        const p = document.createElement('p');
+                        p.id = 'normsEmptyMsg';
+                        p.className = 'text-muted small mb-2';
+                        p.textContent = 'Норм не призначено';
+                        list.appendChild(p);
+                    }
+                }
+            }
+        });
+    });
+}
+
+// Прив'язати до існуючих рядків
+document.querySelectorAll('.pn-row').forEach(bindNormRow);
+
+// Додати нову норму
+document.getElementById('btnAddNorm').addEventListener('click', async () => {
+    const normId = document.getElementById('addNormSelect').value;
+    const cat    = parseInt(document.getElementById('addNormCat').value) || 1;
+    if (!normId) { showToast('Оберіть норму зі списку', 'warning'); return; }
+
+    const resp = await fetch(`/personnel/${PERSON_ID}/norms/add`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({norm_id: parseInt(normId), personnel_cat: cat})
+    });
+    const d = await resp.json();
+    if (!d.ok) { showToast(d.error || 'Помилка', 'danger'); return; }
+
+    // Видалити "порожньо"
+    const em = document.getElementById('normsEmptyMsg');
+    if (em) em.remove();
+
+    // Вставити новий рядок
+    const list = document.getElementById('normsList');
+    const div = document.createElement('div');
+    div.className = 'd-flex align-items-center gap-2 mb-2 pn-row';
+    div.dataset.pnId = d.norm.id;
+    let catOpts = '';
+    for (let c = 1; c <= 5; c++) {
+        catOpts += `<option value="${c}"${c===d.norm.personnel_cat?' selected':''}>Кат.${c}</option>`;
+    }
+    div.innerHTML = `
+        <span class="flex-grow-1 fw-medium">${escH(d.norm.norm_name)}</span>
+        <select class="form-select form-select-sm pn-cat-sel" style="width:90px" title="Категорія">${catOpts}</select>
+        <a href="/supply-norms/${d.norm.norm_id}/" class="btn btn-sm btn-outline-secondary py-0" target="_blank" title="Переглянути">
+            <i class="bi bi-box-arrow-up-right"></i>
+        </a>
+        <button type="button" class="btn btn-sm btn-outline-danger py-0 pn-del-btn" title="Видалити">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    `;
+    list.appendChild(div);
+    bindNormRow(div);
+
+    // Скинути вибір
+    document.getElementById('addNormSelect').value = '';
+});
+
+
 async function uploadOrderFile(input, kind) {
     if (!input.files || !input.files[0]) return;
     const fd = new FormData();
@@ -388,27 +530,28 @@ async function uploadOrderFile(input, kind) {
         if (data.ok) {
             location.reload();
         } else {
-            alert('Помилка: ' + (data.error || 'невідома'));
+            alert('Помилка: ' + (data.msg || data.error || 'невідома'));
         }
     } catch(e) {
         alert('Помилка завантаження');
     }
 }
 
-async function deleteOrderFile(kind) {
-    if (!confirm('Видалити файл наказу?')) return;
-    const url = `/personnel/${PERSON_ID}/${kind}-order-file/delete`;
-    try {
-        const resp = await fetch(url, { method: 'POST' });
-        const data = await resp.json();
-        if (data.ok) {
-            location.reload();
-        } else {
-            alert('Помилка: ' + (data.error || 'невідома'));
+function deleteOrderFile(kind) {
+    showConfirm('Видалити файл наказу?', async () => {
+        const url = `/personnel/${PERSON_ID}/${kind}-order-file/delete`;
+        try {
+            const resp = await fetch(url, { method: 'POST' });
+            const data = await resp.json();
+            if (data.ok) {
+                location.reload();
+            } else {
+                showToast('Помилка: ' + (data.msg || data.error || 'невідома'), 'danger');
+            }
+        } catch(e) {
+            showToast('Помилка видалення', 'danger');
         }
-    } catch(e) {
-        alert('Помилка видалення');
-    }
+    });
 }
 {% endif %}
 
@@ -474,5 +617,63 @@ async function loadPlatoons(unitId) {
         platSel.disabled = true;
     }
 }
+
+// ── AJAX перевірка номера картки ──────────────────────────────
+(function() {
+    const inp      = document.getElementById('cardNumber');
+    const statusEl = document.getElementById('cardNumberStatus');
+    const feedEl   = document.getElementById('cardNumberFeedback');
+    if (!inp) return;
+
+    const currentPersonId = {{ person.id if is_edit and person else 'null' }};
+    let debounceTimer = null;
+
+    inp.addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        const val = this.value.trim();
+        if (!val) {
+            setStatus('idle', '');
+            return;
+        }
+        setStatus('checking', '');
+        debounceTimer = setTimeout(() => checkCardNumber(val), 400);
+    });
+
+    async function checkCardNumber(num) {
+        try {
+            const params = new URLSearchParams({ num });
+            if (currentPersonId) params.set('exclude_id', currentPersonId);
+            const resp = await fetch('/personnel/api/check-card-number?' + params);
+            const d = await resp.json();
+            if (!d.ok) { setStatus('idle', ''); return; }
+            if (d.taken) {
+                setStatus('taken', `Зайнятий: ${d.owner}`);
+                inp.classList.add('is-invalid');
+                inp.classList.remove('is-valid');
+            } else {
+                setStatus('free', 'Вільний');
+                inp.classList.add('is-valid');
+                inp.classList.remove('is-invalid');
+            }
+        } catch(e) {
+            setStatus('idle', '');
+        }
+    }
+
+    function setStatus(state, msg) {
+        const iconMap = {
+            idle:     '<i class="bi bi-hash text-muted" style="font-size:11px;"></i>',
+            checking: '<span class="spinner-border spinner-border-sm text-secondary" style="width:12px;height:12px;"></span>',
+            free:     '<i class="bi bi-check-circle-fill text-success" style="font-size:13px;"></i>',
+            taken:    '<i class="bi bi-x-circle-fill text-danger" style="font-size:13px;"></i>',
+        };
+        statusEl.innerHTML = iconMap[state] || iconMap.idle;
+        feedEl.textContent = msg;
+        feedEl.className = 'form-text ' + (state === 'free' ? 'text-success' : state === 'taken' ? 'text-danger' : 'text-muted');
+        if (state === 'idle') {
+            inp.classList.remove('is-valid', 'is-invalid');
+        }
+    }
+})();
 </script>
 {% endblock %}

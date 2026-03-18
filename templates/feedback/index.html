@@ -97,7 +97,7 @@ const FB_DATA = {
                           id="fbbadge-{{ item.id }}">{{ stat_label }}</span>
                 </td>
                 <td class="text-muted small">{{ item.username or '—' }}</td>
-                <td class="text-muted small text-end">{{ item.created_at[:10] }}</td>
+                <td class="text-muted small text-end">{{ item.created_at | fdate }}</td>
                 <td class="text-end" onclick="event.stopPropagation()">
                     <button class="btn btn-sm btn-outline-danger py-0 px-1"
                             onclick="deleteFb({{ item.id }})" title="Видалити">
@@ -204,6 +204,11 @@ const STATUSES    = {{ statuses | tojson }};
 const CATEGORIES  = {{ categories | tojson }};
 const PRIORITIES  = { low:'Низький', normal:'Нормальний', high:'Високий' };
 
+function fmtDate(s) {
+    if (!s || s.length < 10) return s || '—';
+    return s.slice(8,10)+'.'+s.slice(5,7)+'.'+s.slice(2,4)+(s.length>=16?' '+s.slice(11,16):'');
+}
+
 // ══════════════════════════════════════════════════════════════
 //  Пошук + фільтри
 // ══════════════════════════════════════════════════════════════
@@ -265,7 +270,7 @@ function _renderTree(nodes, fid, depth = 0) {
             <div class="flex-grow-1">
                 <div class="d-flex align-items-center gap-1 flex-wrap">
                     <span class="fw-medium small">${_escHtml(c.username || '—')}</span>
-                    <span class="text-muted" style="font-size:.72rem">${c.created_at.slice(0,16)}</span>
+                    <span class="text-muted" style="font-size:.72rem">${fmtDate(c.created_at)}</span>
                     <button class="btn btn-link btn-sm p-0 text-muted ms-1" style="font-size:.72rem"
                             onclick="threadStartReply(${c.id}, '${_escHtml(c.username || '')}')">
                         <i class="bi bi-reply"></i> відповісти
@@ -304,7 +309,7 @@ function openThread(item, flatComments) {
         <span class="text-muted small">${_escHtml(catLabel)}</span>
         ${item.priority === 'high' ? '<span class="badge bg-danger-subtle text-danger small">Високий пріоритет</span>' : `<span class="text-muted small">${_escHtml(priLabel)}</span>`}
         <span class="text-muted small"><i class="bi bi-person me-1"></i>${_escHtml(item.username || '—')}</span>
-        <span class="text-muted small"><i class="bi bi-clock me-1"></i>${item.created_at.slice(0,16)}</span>
+        <span class="text-muted small"><i class="bi bi-clock me-1"></i>${fmtDate(item.created_at)}</span>
         ${item.page_url ? `<span class="text-muted small font-monospace">${_escHtml(item.page_url)}</span>` : ''}`;
 
     // Sync select
@@ -321,7 +326,7 @@ function openThread(item, flatComments) {
     const resolvedEl = document.getElementById('threadResolved');
     if (item.resolved_by) {
         resolvedEl.innerHTML = `<i class="bi bi-check2-circle me-1"></i><strong>${_escHtml(statLabel)}</strong> — ${_escHtml(item.resolved_by)}` +
-            (item.resolved_at ? ` · ${item.resolved_at.slice(0,16)}` : '') +
+            (item.resolved_at ? ` · ${fmtDate(item.resolved_at)}` : '') +
             (item.resolve_note ? `: <em>${_escHtml(item.resolve_note)}</em>` : '');
         resolvedEl.style.display = '';
     } else resolvedEl.style.display = 'none';
@@ -365,7 +370,7 @@ async function threadSubmitComment() {
         body: JSON.stringify({body, parent_id: _threadParentId})
     });
     const d = await r.json();
-    if (!d.ok) { showToast(d.error || 'Помилка', 'danger'); return; }
+    if (!d.ok) { showToast(d.msg || d.error || 'Помилка', 'danger'); return; }
 
     ta.value = '';
     const c = d.comment;
@@ -450,7 +455,7 @@ async function setStatus(id, status, note, selectEl) {
         body: JSON.stringify({status, note})
     });
     const d = await r.json();
-    if (!d.ok) { showToast(d.error || 'Помилка', 'danger'); return; }
+    if (!d.ok) { showToast(d.msg || d.error || 'Помилка', 'danger'); return; }
 
     if (selectEl) { selectEl.dataset.current = status; }
 
@@ -482,14 +487,15 @@ async function setStatus(id, status, note, selectEl) {
     applyFilters();
 }
 
-async function deleteFb(id) {
-    if (!confirm('Видалити повідомлення разом з коментарями?')) return;
-    const r = await fetch(`/feedback/${id}/delete`, {method: 'POST'});
-    if ((await r.json()).ok) {
-        document.getElementById(`fbrow-${id}`)?.remove();
-        if (_threadFid === id) _threadModal.hide();
-        applyFilters();
-    }
+function deleteFb(id) {
+    showConfirm('Видалити повідомлення разом з коментарями?', async () => {
+        const r = await fetch(`/feedback/${id}/delete`, {method: 'POST'});
+        if ((await r.json()).ok) {
+            document.getElementById(`fbrow-${id}`)?.remove();
+            if (_threadFid === id) _threadModal.hide();
+            applyFilters();
+        }
+    });
 }
 </script>
 {% endblock %}

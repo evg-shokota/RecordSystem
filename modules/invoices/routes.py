@@ -22,6 +22,7 @@ from core.audit import log_action
 from core.hooks import emit
 from core.settings import get_setting, get_all_settings
 from core.warehouse import get_stock_for_invoice as _get_stock
+from core.military_logic import get_next_issue_date
 
 
 def _default_signatories(settings: dict, direction: str = "issue",
@@ -241,7 +242,7 @@ def _form_data_for_invoice(conn, settings, exclude_invoice_id=None):
     """).fetchall()
     units_list = conn.execute("SELECT id, name FROM units ORDER BY name").fetchall()
     stock = _get_stock(conn, exclude_invoice_id=exclude_invoice_id)
-    from modules.warehouse.routes import _get_norm_groups
+    from core.warehouse import get_norm_groups as _get_norm_groups
     norm_groups = _get_norm_groups(conn)
     return personnel_list, units_list, stock, norm_groups
 
@@ -755,6 +756,8 @@ def issue(inv_id):
         conn.commit()
         log_action("status_change", "invoices", inv_id,
                    old_data={"status": "created"}, new_data={"status": "issued"})
+        if not inv["is_external"] and not inv["scan_path"]:
+            flash("Накладну видано без скану. Рекомендується завантажити скан документа.", "warning")
     conn.close()
     return redirect(url_for("invoices.view", inv_id=inv_id))
 
@@ -914,8 +917,8 @@ def process(inv_id):
         WHERE ii.invoice_id = ?
     """, (inv_id,)).fetchall()
 
-    today = date.today().isoformat()
-    errors = []
+    today    = date.today().isoformat()
+    errors   = []
 
     # Перевірка залишків через централізовану логіку складу
     from core.warehouse import get_stock
@@ -940,6 +943,21 @@ def process(inv_id):
         flash(" | ".join(errors), "danger")
         return redirect(url_for("invoices.view", inv_id=inv_id))
 
+    # Дані особи для розрахунку циклів (якщо видача на о/с)
+    person_info: dict = {}
+    if inv["direction"] == "issue" and inv["recipient_type"] == "personnel" and inv["recipient_personnel_id"]:
+        pid = inv["recipient_personnel_id"]
+        p = conn.execute(
+            "SELECT service_type, enroll_date FROM personnel WHERE id=?", (pid,)
+        ).fetchone()
+        person_info = {
+            "service_type": (p["service_type"] if p else None) or "mobilized",
+            "norm_date":    p["enroll_date"] if p else None,
+        }
+
+    # Кеш wear_months/norm_qty по item_id для цієї особи
+    wear_cache: dict[int, dict] = {}
+
     # Проводимо — всі записи в одній транзакції
     try:
         for item in items:
@@ -963,21 +981,62 @@ def process(inv_id):
                 # Категорія I при видачі стає II (майно введено в експлуатацію)
                 issued_category = "II" if item["category"] == "I" else item["category"]
                 if inv["recipient_type"] == "personnel" and inv["recipient_personnel_id"]:
+                    pid          = inv["recipient_personnel_id"]
+                    service_type = person_info.get("service_type", "mobilized")
+                    norm_date    = person_info.get("norm_date")
+                    item_id      = item["item_id"]
+
+                    # Отримати wear_months і norm_qty з норми особи
+                    if item_id not in wear_cache:
+                        w = conn.execute("""
+                            SELECT sniw.wear_months,
+                                   COALESCE(sniw.qty, sni.quantity) AS quantity
+                            FROM personnel p
+                            JOIN personnel_norms pn ON pn.personnel_id = p.id
+                            JOIN supply_norm_items sni ON sni.norm_id = pn.norm_id AND sni.item_id = ?
+                            LEFT JOIN supply_norm_item_wear sniw
+                                   ON sniw.norm_item_id = sni.id
+                                  AND sniw.personnel_cat = p.personnel_cat
+                            WHERE p.id = ?
+                            LIMIT 1
+                        """, (item_id, pid)).fetchone()
+                        wear_cache[item_id] = {
+                            "wear_months": int(w["wear_months"] or 0) if w else 0,
+                            "norm_qty":    float(w["quantity"] or 0)  if w else 0.0,
+                        }
+
+                    wdata        = wear_cache[item_id]
+                    wear_months  = wdata["wear_months"]
+                    norm_qty_val = wdata["norm_qty"]
+                    cycle_start  = today
+
+                    next_dt = get_next_issue_date(
+                        service_type     = service_type,
+                        cycle_start_date = cycle_start,
+                        norm_date        = norm_date,
+                        wear_months      = wear_months,
+                    )
+                    next_issue = next_dt.isoformat() if next_dt else None
+
                     conn.execute("""
                         INSERT INTO personnel_items
                             (personnel_id, item_id, quantity, price, category,
                              invoice_id, source_type, issue_date,
-                             wear_started_date, status, created_at, updated_at)
+                             wear_started_date, status,
+                             cycle_start_date, norm_qty_at_issue,
+                             wear_months_at_issue, next_issue_date,
+                             created_at, updated_at)
                         VALUES (?,?,?,?,?,?,'invoice',?,?,
-                                'active', datetime('now','localtime'), datetime('now','localtime'))
+                                'active', ?,?,?,?,
+                                datetime('now','localtime'), datetime('now','localtime'))
                     """, (
-                        inv["recipient_personnel_id"],
-                        item["item_id"], qty, item["price"], issued_category,
+                        pid, item_id, qty, item["price"], issued_category,
                         inv_id, today, today,
+                        cycle_start, norm_qty_val, wear_months, next_issue,
                     ))
                     emit("item.issued",
-                         personnel_id=inv["recipient_personnel_id"],
-                         item_id=item["item_id"], quantity=qty)
+                         personnel_id=pid,
+                         item_id=item_id, quantity=qty)
 
                 elif inv["recipient_type"] == "unit" and inv["recipient_unit_id"]:
                     conn.execute("""
@@ -1067,7 +1126,7 @@ def set_actual(inv_id):
     inv = conn.execute("SELECT status FROM invoices WHERE id=?", (inv_id,)).fetchone()
     if not inv or inv["status"] == "processed":
         conn.close()
-        return jsonify({"error": "Накладна вже проведена"}), 400
+        return jsonify({"ok": False, "msg": "Накладна вже проведена"}), 400
 
     data = request.get_json(silent=True) or {}
     # data = {"items": [{"id": item_id, "actual_qty": qty, "serial_numbers": "..."}]}
@@ -1173,7 +1232,7 @@ def preview(inv_id):
     ).fetchone()
     if not inv:
         conn.close()
-        return jsonify({"error": "Накладну не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Накладну не знайдено"}), 404
 
     items = conn.execute(
         """SELECT ii.*, d.name AS item_name, d.unit_of_measure
@@ -1199,7 +1258,7 @@ def preview(inv_id):
 
     if not html_tpl:
         conn.close()
-        return jsonify({"error": "no_template", "message": "Шаблон не налаштовано"}), 404
+        return jsonify({"ok": False, "msg": "Шаблон не налаштовано", "code": "no_template"}), 404
 
     data = {
         "html":    html_tpl,
@@ -1223,10 +1282,10 @@ def save_body(inv_id):
     inv = conn.execute("SELECT id, status FROM invoices WHERE id=?", (inv_id,)).fetchone()
     if not inv:
         conn.close()
-        return jsonify({"error": "Накладну не знайдено"}), 404
+        return jsonify({"ok": False, "msg": "Накладну не знайдено"}), 404
     if inv["status"] == "processed":
         conn.close()
-        return jsonify({"error": "Проведену накладну не можна редагувати"}), 400
+        return jsonify({"ok": False, "msg": "Проведену накладну не можна редагувати"}), 400
 
     body = request.get_json(silent=True) or {}
     html = body.get("html", "").strip()
@@ -1264,7 +1323,7 @@ def get_body(inv_id):
     inv = conn.execute("SELECT body_html FROM invoices WHERE id=?", (inv_id,)).fetchone()
     if not inv:
         conn.close()
-        return jsonify({"error": "not found"}), 404
+        return jsonify({"ok": False, "msg": "not found"}), 404
     html = inv["body_html"]
     if not html:
         html, _ = get_template_html(conn, "invoice", None)

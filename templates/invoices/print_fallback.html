@@ -44,7 +44,7 @@ th { background: #f0f0f0; font-weight: bold; text-align: center; }
 <table class="no-border" style="margin-bottom:12px">
     <tr>
         <td style="width:50%">Підстава: {{ inv.base_document or '—' }}</td>
-        <td class="right">Дата: {{ inv.doc_date or inv.created_at[:10] if inv.created_at else '—' }}</td>
+        <td class="right">Дата: {{ (inv.doc_date or inv.created_at) | fdate }}</td>
     </tr>
     <tr>
         <td>
@@ -55,7 +55,7 @@ th { background: #f0f0f0; font-weight: bold; text-align: center; }
                 {{ inv.recipient_unit_name or '—' }}
             {% endif %}
         </td>
-        <td class="right">Дійсна до: {{ inv.valid_until or '—' }}</td>
+        <td class="right">Дійсна до: {{ inv.valid_until | fdate }}</td>
     </tr>
 </table>
 

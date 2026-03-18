@@ -13,6 +13,50 @@ Author: White
 """
 
 
+# ─────────────────────────────────────────────────────────────
+#  Спільні query-хелпери (раніше дублювались у modules/)
+# ─────────────────────────────────────────────────────────────
+
+def get_norm_groups(conn) -> list:
+    """
+    Групи словника норм з позиціями — для вибору майна у формах.
+    Повертає: [{"id", "name", "norms": [{"id", "name", "unit"}, ...]}, ...]
+    """
+    nd_rows = conn.execute("""
+        SELECT g.id AS group_id, g.name AS group_name, g.sort_order,
+               nd.id, nd.name, nd.unit, nd.sort_order AS item_order
+        FROM norm_dict_groups g
+        JOIN norm_dictionary nd ON nd.group_id = g.id
+        WHERE g.is_active = 1 AND nd.is_active = 1
+        ORDER BY g.sort_order, nd.sort_order
+    """).fetchall()
+    groups: dict = {}
+    for r in nd_rows:
+        gid = r["group_id"]
+        if gid not in groups:
+            groups[gid] = {"id": gid, "name": r["group_name"], "norms": []}
+        groups[gid]["norms"].append({
+            "id": r["id"], "name": r["name"], "unit": r["unit"] or "шт",
+        })
+    return list(groups.values())
+
+
+def get_units_by_battalion(conn, battalion_id: int) -> list:
+    """Підрозділи батальйону, відсортовані за назвою."""
+    return conn.execute(
+        "SELECT id, name FROM units WHERE battalion_id = ? ORDER BY name",
+        (battalion_id,)
+    ).fetchall()
+
+
+def get_platoons_by_unit(conn, unit_id: int) -> list:
+    """Взводи підрозділу, відсортовані за назвою."""
+    return conn.execute(
+        "SELECT id, name FROM platoons WHERE unit_id = ? ORDER BY name",
+        (unit_id,)
+    ).fetchall()
+
+
 def get_stock_for_invoice(conn, exclude_invoice_id=None) -> list:
     """
     Залишки для форми накладної: повертає всі позиції з qty_free > 0

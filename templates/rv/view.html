@@ -5,7 +5,7 @@
 {% block topbar_actions %}
 {% if sheet.status == 'draft' %}
 <form method="POST" action="{{ url_for('rv.assign_number', sid=sheet.id) }}" class="d-inline"
-      onsubmit="return confirm('Присвоїти номер РВ?')">
+      data-confirm="Присвоїти номер РВ?">
     <button type="submit" class="btn btn-sm btn-success">
         <i class="bi bi-hash me-1"></i>Присвоїти номер
     </button>
@@ -13,7 +13,7 @@
 {% endif %}
 {% if sheet.status == 'active' %}
 <form method="POST" action="{{ url_for('rv.close', sid=sheet.id) }}" class="d-inline"
-      onsubmit="return confirm('Закрити РВ?')">
+      data-confirm="Закрити РВ?">
     <button type="submit" class="btn btn-sm btn-success">
         <i class="bi bi-check2-all me-1"></i>Закрити
     </button>
@@ -29,7 +29,7 @@
 </a>
 {% if sheet.status in ('draft', 'active') %}
 <form method="POST" action="{{ url_for('rv.cancel', sid=sheet.id) }}" class="d-inline"
-      onsubmit="return confirm('Скасувати РВ?')">
+      data-confirm="Скасувати РВ?">
     <button type="submit" class="btn btn-sm btn-outline-danger">
         <i class="bi bi-x-lg me-1"></i>Скасувати
     </button>
@@ -37,7 +37,7 @@
 {% endif %}
 {% if sheet.status in ('draft', 'cancelled') %}
 <form method="POST" action="{{ url_for('rv.delete', sid=sheet.id) }}" class="d-inline"
-      onsubmit="return confirm('Видалити РВ назавжди?')">
+      data-confirm="Видалити РВ назавжди?">
     <button type="submit" class="btn btn-sm btn-outline-danger">
         <i class="bi bi-trash me-1"></i>Видалити
     </button>
@@ -55,7 +55,7 @@
     <strong>{{ status_labels.get(sheet.status) }}</strong>
     {% if sheet.unit_name %} — {{ sheet.unit_name }}
     {% elif sheet.unit_text %} — {{ sheet.unit_text }}{% endif %}
-    {% if sheet.doc_date %} | Дата: {{ sheet.doc_date }}{% endif %}
+    {% if sheet.doc_date %} | Дата: {{ sheet.doc_date | fdate }}{% endif %}
     {% if sheet.total_sum %} | Сума: <strong>{{ "%.2f"|format(sheet.total_sum) }}</strong> грн{% endif %}
 </div>
 
@@ -76,7 +76,7 @@
                     </tr>
                     <tr>
                         <td class="text-muted">Дата:</td>
-                        <td>{{ sheet.doc_date or '—' }}</td>
+                        <td>{{ sheet.doc_date | fdate }}</td>
                     </tr>
                     <tr>
                         <td class="text-muted">Підстава:</td>

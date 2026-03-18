@@ -562,7 +562,7 @@ document.getElementById('btnAdd').addEventListener('click', async () => {
     });
     const data = await res.json();
     if (data.ok) showToast('Збережено', 'success');
-    else showToast(data.error, 'danger');
+    else showToast(data.msg || data.error, 'danger');
 });
 &lt;/script&gt;
 {% endblock %}{% endraw %}</code></pre>

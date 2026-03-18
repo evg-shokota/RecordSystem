@@ -93,7 +93,7 @@
             {% endif %}
         </div>
         <div class="card-footer bg-transparent text-muted small py-1">
-            Створено: {{ role.created_at[:10] if role.created_at else '—' }}
+            Створено: {{ role.created_at | fdate }}
         </div>
     </div>
 </div>
@@ -198,15 +198,16 @@ async function saveEditRole() {
     const r = await fetch(`/settings/roles/${_editRoleId}/edit`, { method: 'POST', body: fd });
     const d = await r.json();
     if (d.ok) { _editRoleModal.hide(); location.reload(); }
-    else showToast(d.error || 'Помилка', 'danger');
+    else showToast(d.msg || d.error || 'Помилка', 'danger');
 }
 
-async function deleteRole(rid, name) {
-    if (!confirm(`Видалити роль «${name}»?`)) return;
-    const r = await fetch(`/settings/roles/${rid}/delete`, { method: 'POST' });
-    const d = await r.json();
-    if (d.ok) document.getElementById(`rcard-${rid}`)?.remove();
-    else showToast(d.error || 'Помилка', 'danger');
+function deleteRole(rid, name) {
+    showConfirm(`Видалити роль «${name}»?`, async () => {
+        const r = await fetch(`/settings/roles/${rid}/delete`, { method: 'POST' });
+        const d = await r.json();
+        if (d.ok) document.getElementById(`rcard-${rid}`)?.remove();
+        else showToast(d.msg || d.error || 'Помилка', 'danger');
+    });
 }
 </script>
 {% endblock %}
