@@ -205,6 +205,8 @@ def index():
             FROM personnel p
             JOIN personnel_norms pn ON pn.personnel_id = p.id
             JOIN supply_norm_items sni ON sni.norm_id = pn.norm_id
+            LEFT JOIN supply_norm_item_wear sniw
+                   ON sniw.norm_item_id = sni.id AND sniw.personnel_cat = pn.personnel_cat
             WHERE p.id IN ({placeholders})
               AND (
                 -- Не видавалось взагалі
@@ -216,15 +218,17 @@ def index():
                       AND pi.status = 'active'
                 )
                 OR
-                -- Строк носіння вийшов (wear_years > 0)
-                (sni.wear_years > 0 AND EXISTS (
+                -- Строк носіння вийшов (wear_months > 0)
+                (COALESCE(sniw.wear_months, CAST(sni.wear_years * 12 AS INT)) > 0 AND EXISTS (
                     SELECT 1 FROM personnel_items pi
                     JOIN item_dictionary d ON pi.item_id = d.id
                     WHERE pi.personnel_id = p.id
                       AND d.norm_dict_id = sni.norm_dict_id
                       AND pi.status = 'active'
                       AND pi.issue_date IS NOT NULL
-                      AND date(pi.issue_date, '+' || CAST(CAST(sni.wear_years * 365 AS INT) AS TEXT) || ' days') <= ?
+                      AND date(pi.issue_date, '+' || CAST(
+                              COALESCE(sniw.wear_months, CAST(sni.wear_years * 12 AS INT)) * 30
+                          AS TEXT) || ' days') <= ?
                 ))
               )
             GROUP BY p.id

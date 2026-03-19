@@ -156,22 +156,9 @@
         <div class="card border-0 shadow-sm h-100">
             <div class="card-header bg-transparent fw-medium">Підписанти</div>
             <div class="card-body">
+                {% from "components/signatories.html" import signatories_table %}
                 {% set sigs = inv.signatories | fromjson if inv.signatories else [] %}
-                {% if sigs %}
-                <table class="table table-sm table-borderless mb-0">
-                    {% for s in sigs %}
-                    <tr>
-                        <td class="text-muted" style="width:160px">{{ s.role or '—' }}:</td>
-                        <td>
-                            {% if s.is_tvo %}<em>В.о. </em>{% endif %}
-                            {{ s.rank or '' }} {{ s.name or '—' }}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </table>
-                {% else %}
-                <p class="text-muted small mb-0">Підписантів не вказано</p>
-                {% endif %}
+                {{ signatories_table(sigs) }}
             </div>
         </div>
     </div>

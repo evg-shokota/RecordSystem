@@ -100,26 +100,14 @@
         <div class="card border-0 shadow-sm h-100">
             <div class="card-header bg-transparent fw-medium">Підписанти</div>
             <div class="card-body">
-                <table class="table table-sm table-borderless mb-0">
-                    {% if sheet.given_by_name %}
-                    <tr>
-                        <td class="text-muted" style="width:130px">Видав:</td>
-                        <td>{{ sheet.given_by_rank or '' }} {{ sheet.given_by_name }}</td>
-                    </tr>
-                    {% endif %}
-                    {% if sheet.chief_name %}
-                    <tr>
-                        <td class="text-muted">Начальник:</td>
-                        <td>{% if sheet.chief_is_tvo %}В.о. {% endif %}{{ sheet.chief_rank or '' }} {{ sheet.chief_name }}</td>
-                    </tr>
-                    {% endif %}
-                    {% if sheet.clerk_name %}
-                    <tr>
-                        <td class="text-muted">Діловод:</td>
-                        <td>{{ sheet.clerk_rank or '' }} {{ sheet.clerk_name }}</td>
-                    </tr>
-                    {% endif %}
-                </table>
+                {% from "components/signatories.html" import signatories_table %}
+                {% set sigs = [
+                    {"role": "Видав",            "rank": sheet.given_by_rank,   "name": sheet.given_by_name,   "is_tvo": false},
+                    {"role": "Прийняв",          "rank": sheet.received_by_rank,"name": sheet.received_by_name,"is_tvo": false},
+                    {"role": "Начальник служби", "rank": sheet.chief_rank,      "name": sheet.chief_name,      "is_tvo": sheet.chief_is_tvo},
+                    {"role": "Діловод РС",       "rank": sheet.clerk_rank,      "name": sheet.clerk_name,      "is_tvo": false},
+                ] %}
+                {{ signatories_table(sigs) }}
             </div>
         </div>
     </div>
