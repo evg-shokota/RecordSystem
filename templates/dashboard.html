@@ -151,40 +151,43 @@
 
 {{ slot('dashboard.widgets') | safe }}
 
-{# ── Графіки ── #}
-<div class="row g-3 mb-4">
+{# ── Графік: видачі + потреби за рік ── #}
+<div class="card border-0 shadow-sm mb-4" id="yearChartCard">
+    <div class="card-header bg-transparent py-2 d-flex align-items-center gap-2 flex-wrap">
+        <i class="bi bi-bar-chart-line-fill text-primary me-1"></i>
+        <span class="fw-medium me-auto">Видачі та потреби за рік</span>
 
-    {# Видачі за 6 місяців #}
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-transparent py-2 fw-medium">
-                <i class="bi bi-bar-chart-fill me-2 text-primary"></i>Видачі майна (останні 6 міс.)
-            </div>
-            <div class="card-body" style="height:180px; position:relative">
-                <canvas id="chartPast"></canvas>
-            </div>
+        {# Підказки-бейджі #}
+        <span class="badge border d-flex align-items-center gap-1" id="chartBadgeIssued"
+              style="background:rgba(13,110,253,.12); color:#0d6efd; border-color:rgba(13,110,253,.3) !important">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#0d6efd"></span>
+            Видано: <strong id="chartTotalIssued">—</strong>
+        </span>
+        <span class="badge border d-flex align-items-center gap-1" id="chartBadgeNeeds"
+              style="background:rgba(255,193,7,.12); color:#b38600; border-color:rgba(255,193,7,.4) !important">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#ffc107"></span>
+            Потреби: <strong id="chartTotalNeeds">—</strong>
+        </span>
+
+        {# Перемикач року #}
+        <div class="d-flex align-items-center gap-1 ms-2">
+            <button class="btn btn-sm btn-outline-secondary px-2 py-0" id="chartYearPrev" title="Попередній рік">‹</button>
+            <select class="form-select form-select-sm" id="chartYearSelect" style="width:90px"></select>
+            <button class="btn btn-sm btn-outline-secondary px-2 py-0" id="chartYearNext" title="Наступний рік">›</button>
         </div>
     </div>
-
-    {# Потреби на наступні 6 місяців #}
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-transparent py-2 fw-medium">
-                <i class="bi bi-bar-chart me-2 text-warning"></i>Потреби у видачі (наступні 6 міс.)
-            </div>
-            <div class="card-body" style="height:180px; position:relative">
-                <canvas id="chartFuture"></canvas>
-            </div>
+    <div class="card-body" style="height:280px; position:relative">
+        <div id="chartYearSpinner" class="position-absolute top-50 start-50 translate-middle d-none">
+            <span class="spinner-border spinner-border-sm text-secondary"></span>
         </div>
+        <canvas id="chartYear"></canvas>
     </div>
-
 </div>
 
 <script>
-window._chartPastData  = {{ chart_past  | tojson }};
-window._chartFutureData = {{ chart_future | tojson }};
 window._urlInvoices = {{ url_for('invoices.index', status='issued') | tojson }};
 window._urlPlanning = {{ url_for('planning.index', view='calendar') | tojson }};
+window._currentYear = {{ today_year }};
 </script>
 
 {# ── Блок: документи без скану ── #}
@@ -426,58 +429,208 @@ window._urlPlanning = {{ url_for('planning.index', view='calendar') | tojson }};
 </script>
 <script>
 (function() {
-    // Зчитати CSS-змінні ПІСЛЯ завантаження теми
-    const st = getComputedStyle(document.documentElement);
-    const colorText   = st.getPropertyValue('--text-muted').trim()    || '#6c757d';
-    const colorGrid   = st.getPropertyValue('--card-border').trim()   || '#dee2e6';
-    const colorBody   = st.getPropertyValue('--body-bg').trim()       || '#ffffff';
+    const st        = getComputedStyle(document.documentElement);
+    const colorText = st.getPropertyValue('--text-muted').trim()  || '#6c757d';
+    const colorGrid = st.getPropertyValue('--card-border').trim() || '#dee2e6';
 
-    // Глобальні дефолти Chart.js — колір підписів і сітки
-    Chart.defaults.color = colorText;
+    Chart.defaults.color       = colorText;
     Chart.defaults.borderColor = colorGrid;
 
-    function buildChart(canvasId, data, color, clickUrl) {
-        const canvas = document.getElementById(canvasId);
-        if (!canvas) return;
-        canvas.dataset.clickUrl = clickUrl;
-        new Chart(canvas, {
-            type: 'bar',
-            data: {
-                labels: data.map(d => d.label),
-                datasets: [{
-                    data: data.map(d => d.value),
-                    backgroundColor: color + 'b3',
-                    borderColor: color,
-                    borderWidth: 1,
-                    borderRadius: 4,
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { callbacks: { label: ctx => ' ' + ctx.parsed.y + ' осіб' } }
-                },
-                scales: {
-                    x: {
-                        grid: { color: colorGrid },
-                        ticks: { color: colorText, font: { size: 11 } }
-                    },
-                    y: {
-                        beginAtZero: true,
-                        grid: { color: colorGrid },
-                        ticks: { color: colorText, font: { size: 11 }, stepSize: 1, precision: 0 }
-                    }
-                },
-                onClick: (evt, elements, chart) => { if (chart.canvas.dataset.clickUrl) location.href = chart.canvas.dataset.clickUrl; },
-                onHover: (evt, elements) => { evt.native.target.style.cursor = elements.length ? 'pointer' : 'default'; }
-            }
+    const C_ISSUED = '#0d6efd';
+    const C_NEEDS  = '#ffc107';
+    const C_TREND  = '#20c997';
+
+    // Ковзне середнє (вікно 3)
+    function rollingAvg(arr, win) {
+        return arr.map((_, i) => {
+            const sl = arr.slice(Math.max(0, i - win + 1), i + 1);
+            return Math.round(sl.reduce((s, v) => s + v, 0) / sl.length * 10) / 10;
         });
     }
 
-    buildChart('chartPast',   window._chartPastData,   '#0d6efd', window._urlInvoices);
-    buildChart('chartFuture', window._chartFutureData, '#ffc107', window._urlPlanning);
+    let yearChart   = null;
+    let availYears  = [];
+    let currentYear = window._currentYear || new Date().getFullYear();
+
+    function buildOrUpdate(data) {
+        const canvas = document.getElementById('chartYear');
+        if (!canvas) return;
+
+        const labels   = data.map(d => d.label);
+        const issued   = data.map(d => d.issued);
+        const needs    = data.map(d => d.needs);
+        const trendArr = rollingAvg(issued, 3);
+
+        const totalIssued = issued.reduce((s, v) => s + v, 0);
+        const totalNeeds  = needs.reduce((s, v) => s + v, 0);
+        document.getElementById('chartTotalIssued').textContent = totalIssued + ' ос.';
+        document.getElementById('chartTotalNeeds').textContent  = totalNeeds  + ' ос.';
+
+        const datasets = [
+            {
+                type: 'bar',
+                label: 'Видано',
+                data: issued,
+                backgroundColor: C_ISSUED + '99',
+                borderColor:     C_ISSUED,
+                borderWidth: 1,
+                borderRadius: 5,
+                borderSkipped: false,
+                order: 3,
+            },
+            {
+                type: 'bar',
+                label: 'Потреби',
+                data: needs,
+                backgroundColor: C_NEEDS + '88',
+                borderColor:     C_NEEDS,
+                borderWidth: 1,
+                borderRadius: 5,
+                borderSkipped: false,
+                order: 2,
+            },
+            {
+                type: 'line',
+                label: 'Тренд видач',
+                data: trendArr,
+                borderColor:          C_TREND,
+                backgroundColor:      C_TREND + '22',
+                borderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                pointBackgroundColor: C_TREND,
+                tension: 0.4,
+                fill: false,
+                order: 1,
+            }
+        ];
+
+        if (yearChart) {
+            // Оновлення з анімацією переходу
+            yearChart.data.labels   = labels;
+            yearChart.data.datasets[0].data = issued;
+            yearChart.data.datasets[1].data = needs;
+            yearChart.data.datasets[2].data = trendArr;
+            yearChart.update('active');
+        } else {
+            yearChart = new Chart(canvas, {
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 700,
+                        easing: 'easeOutQuart',
+                        delay: (ctx) =>
+                            ctx.type === 'data' && ctx.mode === 'default'
+                                ? ctx.dataIndex * 55
+                                : 0,
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            align: 'end',
+                            labels: {
+                                color: colorText,
+                                boxWidth: 12,
+                                boxHeight: 12,
+                                padding: 12,
+                                font: { size: 11 },
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => {
+                                    if (ctx.dataset.label === 'Тренд видач')
+                                        return ' Тренд: ' + ctx.parsed.y;
+                                    return ' ' + ctx.dataset.label + ': ' + ctx.parsed.y + ' ос.';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: colorGrid },
+                            ticks: { color: colorText, font: { size: 11 } }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: colorGrid },
+                            ticks: { color: colorText, font: { size: 11 }, stepSize: 1, precision: 0 }
+                        }
+                    },
+                    onClick: (evt, elements) => {
+                        if (!elements.length) return;
+                        const idx = elements[0].index;
+                        const url = elements[0].datasetIndex === 0
+                            ? window._urlInvoices
+                            : window._urlPlanning;
+                        location.href = url;
+                    },
+                    onHover: (evt, elements) => {
+                        evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+                    }
+                }
+            });
+        }
+    }
+
+    function loadYear(year) {
+        const spinner = document.getElementById('chartYearSpinner');
+        if (spinner) spinner.classList.remove('d-none');
+        fetch('/api/dashboard/chart?year=' + year)
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) return;
+                // Заповнити select роками (тільки перший раз)
+                const sel = document.getElementById('chartYearSelect');
+                if (sel.options.length === 0 && d.years && d.years.length) {
+                    availYears = d.years;
+                    d.years.forEach(y => {
+                        const opt = document.createElement('option');
+                        opt.value = y;
+                        opt.textContent = y;
+                        if (y === year) opt.selected = true;
+                        sel.appendChild(opt);
+                    });
+                } else {
+                    sel.value = year;
+                }
+                buildOrUpdate(d.data);
+            })
+            .catch(() => {})
+            .finally(() => {
+                if (spinner) spinner.classList.add('d-none');
+            });
+    }
+
+    // Перемикач через select
+    document.getElementById('chartYearSelect').addEventListener('change', function() {
+        currentYear = parseInt(this.value);
+        loadYear(currentYear);
+    });
+
+    // Стрілки
+    document.getElementById('chartYearPrev').addEventListener('click', function() {
+        const sel = document.getElementById('chartYearSelect');
+        const idx = Array.from(sel.options).findIndex(o => parseInt(o.value) === currentYear);
+        if (idx > 0) {
+            currentYear = parseInt(sel.options[idx - 1].value);
+            loadYear(currentYear);
+        }
+    });
+    document.getElementById('chartYearNext').addEventListener('click', function() {
+        const sel = document.getElementById('chartYearSelect');
+        const idx = Array.from(sel.options).findIndex(o => parseInt(o.value) === currentYear);
+        if (idx < sel.options.length - 1) {
+            currentYear = parseInt(sel.options[idx + 1].value);
+            loadYear(currentYear);
+        }
+    });
+
+    // Початкове завантаження
+    loadYear(currentYear);
 })();
 </script>
 {% endblock %}

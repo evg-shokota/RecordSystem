@@ -1,0 +1,167 @@
+{% extends "base_mw.html" %}
+{% block title %}{{ person.last_name | upper }} {{ person.first_name }}{% endblock %}
+
+{% block topbar %}
+<div class="mw-topbar">
+    <div style="display:flex;align-items:center;gap:.5rem;min-width:0">
+        <a href="/personnel/mw/" class="btn btn-sm btn-outline-secondary py-0 px-2 flex-shrink-0">
+            <i class="bi bi-arrow-left"></i>
+        </a>
+        <h6 class="mb-0 text-truncate">
+            {{ person.last_name | upper }} {{ person.first_name }}
+            {% if person.middle_name %} {{ person.middle_name }}{% endif %}
+        </h6>
+    </div>
+    <div style="display:flex;gap:.4rem;flex-shrink:0">
+        <a href="/personnel/{{ person.id }}" target="_top" class="btn btn-sm btn-outline-primary py-0" title="Відкрити повну картку">
+            <i class="bi bi-box-arrow-up-right"></i>
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+{%- set _accent = 'danger' if not person.is_active else
+    ('warning' if person.group_type in ('szch','missing') else
+    ('secondary' if person.group_type == 'deceased' else 'primary')) %}
+
+{# ── Профіль ── #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2 px-3">
+        <div class="d-flex align-items-center gap-3">
+            {# Аватар #}
+            {% if person.photo_path %}
+            <img src="{{ person.photo_path }}" alt="фото"
+                 style="width:52px;height:52px;object-fit:cover;border-radius:50%;flex-shrink:0">
+            {% else %}
+            <div style="width:52px;height:52px;border-radius:50%;flex-shrink:0;
+                        display:flex;align-items:center;justify-content:center;
+                        font-weight:700;font-size:1.1rem;color:#fff;
+                        background:var(--bs-{{ _accent }},#6c757d)">
+                {{ person.last_name[0] | upper }}{{ person.first_name[0] | upper if person.first_name else '' }}
+            </div>
+            {% endif %}
+            <div style="min-width:0">
+                <div class="fw-semibold">
+                    {{ person.last_name | upper }} {{ person.first_name }}{% if person.middle_name %} {{ person.middle_name }}{% endif %}
+                </div>
+                <div class="text-muted small">
+                    {% if person.rank %}{{ person.rank }}{% endif %}
+                    {% if person.position %} · {{ person.position }}{% endif %}
+                </div>
+                <div class="text-muted small">
+                    {% if person.battalion_name %}{{ person.battalion_name }}{% endif %}
+                    {% if person.unit_name %} / {{ person.unit_name }}{% endif %}
+                    {% if person.platoon_name %} / {{ person.platoon_name }}{% endif %}
+                </div>
+            </div>
+            <div class="ms-auto flex-shrink-0">
+                {% if not person.is_active %}
+                <span class="badge bg-secondary">АРХІВ</span>
+                {% elif person.group_name %}
+                {%- set gc = {'active':'success','dismissed':'secondary','szch':'warning','deceased':'dark','missing':'danger'} %}
+                <span class="badge bg-{{ gc.get(person.group_type,'secondary') }}">{{ person.group_name }}</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Особисті дані ── #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-transparent fw-medium py-1 px-3 small">Особисті дані</div>
+    <div class="card-body py-2 px-3">
+        <table class="table table-sm table-borderless mb-0" style="font-size:.82rem">
+            {% if person.ipn %}
+            <tr>
+                <td class="text-muted" style="width:110px">ІПН</td>
+                <td>{{ person.ipn }}</td>
+            </tr>
+            {% endif %}
+            {% if person.enroll_date %}
+            <tr>
+                <td class="text-muted">Зарахування</td>
+                <td>{{ person.enroll_date | fdate }}</td>
+            </tr>
+            {% endif %}
+            {% if person.card_number %}
+            <tr>
+                <td class="text-muted">№ картки</td>
+                <td>{{ person.card_number }}</td>
+            </tr>
+            {% endif %}
+            {% if person.dismiss_date %}
+            <tr>
+                <td class="text-muted text-danger">Вибуття</td>
+                <td class="text-danger">{{ person.dismiss_date | fdate }}</td>
+            </tr>
+            {% endif %}
+        </table>
+    </div>
+</div>
+
+{# ── Речове майно ── #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-transparent fw-medium py-1 px-3 small d-flex justify-content-between align-items-center">
+        <span>Речове майно</span>
+        {% set active_items = items | selectattr('status', 'equalto', 'active') | list %}
+        <span class="badge bg-primary rounded-pill">{{ active_items | length }}</span>
+    </div>
+    {% if items %}
+    <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0 align-middle" style="font-size:.82rem">
+            <thead>
+                <tr>
+                    <th>Найменування</th>
+                    <th class="text-center">Кат.</th>
+                    <th class="text-end">К-сть</th>
+                    <th>Від</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                {% if item.status == 'active' %}
+                <tr>
+                    <td>{{ item.item_name }}</td>
+                    <td class="text-center"><span class="badge bg-secondary">{{ item.category or '—' }}</span></td>
+                    <td class="text-end">{{ item.quantity | int }}</td>
+                    <td class="text-muted">{{ item.issue_date | fdate if item.issue_date else '—' }}</td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+            {% if total_sum %}
+            <tfoot class="table-light">
+                <tr>
+                    <td colspan="3" class="text-end fw-medium">Сума:</td>
+                    <td class="fw-medium">{{ "%.2f"|format(total_sum) }} грн</td>
+                </tr>
+            </tfoot>
+            {% endif %}
+        </table>
+    </div>
+    {% else %}
+    <div class="card-body py-3 text-center text-muted small">
+        <i class="bi bi-inbox d-block mb-1 fs-4 opacity-25"></i>Майна не закріплено
+    </div>
+    {% endif %}
+</div>
+
+{# ── Норми ── #}
+{% if person_norms %}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent fw-medium py-1 px-3 small">Норми постачання</div>
+    <div class="card-body py-2 px-3">
+        {% for n in person_norms %}
+        <div class="d-flex align-items-center gap-2 {% if not loop.last %}mb-1{% endif %}">
+            <i class="bi bi-list-check text-primary" style="font-size:.75rem"></i>
+            <span style="font-size:.82rem">{{ n.norm_name }}</span>
+            {% if n.personnel_cat %}
+            <span class="badge bg-light text-secondary ms-auto" style="font-size:.7rem">{{ n.personnel_cat }}</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

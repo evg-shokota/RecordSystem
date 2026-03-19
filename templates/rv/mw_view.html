@@ -1,0 +1,136 @@
+{% extends "base_mw.html" %}
+{% block title %}РВ {{ sheet.number }}{% endblock %}
+
+{% block topbar %}
+<div class="mw-topbar">
+    <div style="display:flex;align-items:center;gap:.5rem;min-width:0">
+        <a href="/rv/mw/" class="btn btn-sm btn-outline-secondary py-0 px-2 flex-shrink:0">
+            <i class="bi bi-arrow-left"></i>
+        </a>
+        <h6 class="mb-0 text-truncate">РВ {{ sheet.number }}</h6>
+    </div>
+    <div style="display:flex;gap:.4rem;flex-shrink:0">
+        <a href="/rv/{{ sheet.id }}/view" target="_top" class="btn btn-sm btn-outline-primary py-0" title="Відкрити повний перегляд">
+            <i class="bi bi-box-arrow-up-right"></i>
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+{# Статус #}
+<div class="alert alert-{{ status_colors.get(sheet.status,'secondary') }} py-2 mb-3">
+    <strong>{{ status_labels.get(sheet.status, sheet.status) }}</strong>
+    {% if sheet.unit_name %} — {{ sheet.unit_name }}{% endif %}
+    {% if sheet.doc_date %} | {{ sheet.doc_date | fdate }}{% endif %}
+    {% if sheet.total_sum %} | <strong>{{ "%.2f"|format(sheet.total_sum) }}</strong> грн{% endif %}
+</div>
+
+{# Реквізити #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-transparent fw-medium py-1 px-3 small">Реквізити</div>
+    <div class="card-body py-2 px-3">
+        <table class="table table-sm table-borderless mb-0" style="font-size:.82rem">
+            <tr>
+                <td class="text-muted" style="width:110px">Номер</td>
+                <td><strong>{{ sheet.number }}</strong></td>
+            </tr>
+            <tr>
+                <td class="text-muted">Підрозділ</td>
+                <td>{{ sheet.unit_name or sheet.unit_text or '—' }}</td>
+            </tr>
+            {% if sheet.doc_date %}
+            <tr>
+                <td class="text-muted">Дата</td>
+                <td>{{ sheet.doc_date | fdate }}</td>
+            </tr>
+            {% endif %}
+            {% if sheet.base_document %}
+            <tr>
+                <td class="text-muted">Підстава</td>
+                <td>{{ sheet.base_document }}</td>
+            </tr>
+            {% endif %}
+            <tr>
+                <td class="text-muted">Сума</td>
+                <td><strong>{{ "%.2f"|format(sheet.total_sum) }} грн</strong></td>
+            </tr>
+        </table>
+    </div>
+</div>
+
+{# Матриця видачі #}
+{% if matrix.rows and matrix.cols %}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent fw-medium py-1 px-3 small d-flex justify-content-between">
+        <span>Матриця видачі</span>
+        <span class="text-muted small">{{ matrix.rows | length }} ос. × {{ matrix.cols | length }} поз.</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-bordered table-sm mb-0 align-middle" style="font-size:.78rem">
+            <thead class="table-light">
+                <tr>
+                    <th style="min-width:140px">ПІБ / Звання</th>
+                    {% for item in matrix.cols %}
+                    <th class="text-center" style="min-width:65px">
+                        <div style="font-size:.72rem;line-height:1.2">{{ item.item_name }}</div>
+                        <div class="text-muted" style="font-size:.67rem">{{ item.unit_of_measure }}</div>
+                    </th>
+                    {% endfor %}
+                    <th class="text-end" style="min-width:70px">Сума</th>
+                    <th class="text-center" style="width:70px">Отримав</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in matrix.rows %}
+                {% set row_sum = namespace(val=0) %}
+                <tr>
+                    <td>
+                        <a href="/personnel/mw/{{ row.personnel_id }}" class="text-decoration-none text-body">
+                            <div class="fw-medium" style="font-size:.8rem">
+                                {{ row.last_name }} {{ row.first_name[0] }}.{% if row.middle_name %} {{ row.middle_name[0] }}.{% endif %}
+                            </div>
+                        </a>
+                        <div class="text-muted" style="font-size:.72rem">{{ row.rank or '' }}</div>
+                    </td>
+                    {% for item in matrix.cols %}
+                    {% set cell = matrix.qty.get((row.id, item.item_id), {}) %}
+                    {% set qty = cell.get('quantity', 0) or 0 %}
+                    {% set row_sum.val = row_sum.val + qty * item.price %}
+                    <td class="text-center">{{ qty if qty else '—' }}</td>
+                    {% endfor %}
+                    <td class="text-end">{{ "%.2f"|format(row_sum.val) }}</td>
+                    <td class="text-center">
+                        <span class="badge bg-{{ 'success' if row.received else 'secondary' }}">
+                            {{ row.received_date if row.received_date else ('✓' if row.received else '—') }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot class="table-light fw-semibold">
+                <tr>
+                    <td>Разом</td>
+                    {% for item in matrix.cols %}
+                    {% set col_total = namespace(val=0) %}
+                    {% for row in matrix.rows %}
+                        {% set cell = matrix.qty.get((row.id, item.item_id), {}) %}
+                        {% set col_total.val = col_total.val + (cell.get('quantity', 0) or 0) %}
+                    {% endfor %}
+                    <td class="text-center">{{ col_total.val if col_total.val else '—' }}</td>
+                    {% endfor %}
+                    <td class="text-end" colspan="2">{{ "%.2f"|format(sheet.total_sum) }} грн</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body py-4 text-center text-muted small">
+        <i class="bi bi-grid fs-2 d-block mb-2 opacity-25"></i>
+        Матриця порожня
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -138,7 +138,9 @@
                     {% set row_sum = namespace(val=0) %}
                     <tr>
                         <td>
-                            <div class="fw-medium">{{ row.last_name }} {{ row.first_name[0] }}.{% if row.middle_name %} {{ row.middle_name[0] }}.{% endif %}</div>
+                            <a href="{{ url_for('personnel.card', person_id=row.personnel_id) }}" class="text-decoration-none text-body">
+                                <div class="fw-medium">{{ row.last_name }} {{ row.first_name[0] }}.{% if row.middle_name %} {{ row.middle_name[0] }}.{% endif %}</div>
+                            </a>
                             <div class="text-muted small">{{ row.rank or '' }}</div>
                         </td>
                         {% for item in matrix.cols %}

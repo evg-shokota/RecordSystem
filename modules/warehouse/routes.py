@@ -724,9 +724,37 @@ def inventory_new():
         conn.execute(
             "UPDATE inventories SET status='done' WHERE id = ?", (inv_id,)
         )
+
+        # Коригування залишків за результатами інвентаризації
+        # Лишок (+) або нестача (−) → запис у warehouse_income з source_type='inventory'
+        adj_count = 0
+        inv_items_saved = conn.execute(
+            "SELECT * FROM inventory_items WHERE inventory_id=?", (inv_id,)
+        ).fetchall()
+        for ii in inv_items_saved:
+            diff = round((ii["qty_actual"] or 0) - (ii["qty_expected"] or 0), 4)
+            if diff == 0:
+                continue
+            conn.execute("""
+                INSERT INTO warehouse_income
+                    (date, document_number, item_id, quantity, price, category,
+                     source_type, notes, created_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'inventory', ?, ?, datetime('now','localtime'))
+            """, (
+                date,
+                f"ІНВ-{inv_id}",
+                ii["item_id"],
+                diff,
+                ii["price"] or 0,
+                ii["category"] or "I",
+                f"Коригування за інвентаризацією №{inv_id}: {'лишок' if diff > 0 else 'нестача'} {abs(diff)} {ii['unit_of_measure']}",
+                session.get("user_id"),
+            ))
+            adj_count += 1
+
         conn.commit()
         log_action("add", "inventories", inv_id,
-                   new_data={"date": date, "items": len(item_ids)})
+                   new_data={"date": date, "items": len(item_ids), "adjustments": adj_count})
         conn.close()
         return redirect(url_for("warehouse.inventory_view", inv_id=inv_id))
 
@@ -963,3 +991,24 @@ def api_item(item_id):
     result["default_price"]    = prices[0]["price"]    if prices else 0
     result["default_category"] = prices[0]["category"] if prices else "I"
     return jsonify({"ok": True, "data": result, "msg": ""})
+
+
+# ─────────────────────────────────────────────────────────────
+#  MW partial — для багатозадачного вікна
+# ─────────────────────────────────────────────────────────────
+
+@bp.route("/mw/")
+@login_required
+def mw_index():
+    """Partial: залишки складу для MW-вікна."""
+    conn = get_connection()
+    search = request.args.get("q", "").strip()
+
+    stock = _get_stock(conn, only_positive=False)
+    if search:
+        sl = search.lower()
+        stock = [s for s in stock if sl in s["item_name"].lower()]
+
+    conn.close()
+    return render_template("warehouse/mw_index.html",
+                           stock=stock, search=search)

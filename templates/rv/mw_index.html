@@ -1,0 +1,74 @@
+{% extends "base_mw.html" %}
+{% block title %}Роздавальні відомості{% endblock %}
+
+{% block topbar %}
+<div class="mw-topbar">
+    <h5><i class="bi bi-list-columns-reverse me-2 opacity-50"></i>Роздавальні відомості</h5>
+</div>
+{% endblock %}
+
+{% block content %}
+<form class="d-flex gap-2 mb-3 flex-wrap" method="get" action="/rv/mw/">
+    <input type="text" class="form-control form-control-sm" name="q"
+           placeholder="Пошук..." value="{{ search }}"
+           style="max-width:200px">
+    <select class="form-select form-select-sm" name="status" style="max-width:150px"
+            onchange="this.form.submit()">
+        <option value="" {% if not status_filter %}selected{% endif %}>Усі статуси</option>
+        <option value="draft"     {% if status_filter=='draft'     %}selected{% endif %}>Чернетка</option>
+        <option value="active"    {% if status_filter=='active'    %}selected{% endif %}>Активна</option>
+        <option value="closed"    {% if status_filter=='closed'    %}selected{% endif %}>Закрита</option>
+        <option value="cancelled" {% if status_filter=='cancelled' %}selected{% endif %}>Скасована</option>
+    </select>
+    <button type="submit" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-search"></i>
+    </button>
+    <a href="/rv/new" class="btn btn-sm btn-primary ms-auto">
+        <i class="bi bi-plus-lg me-1"></i>Нова
+    </a>
+</form>
+
+{% if not rows %}
+<div class="text-center py-5 text-muted">
+    <i class="bi bi-list-columns-reverse fs-1 d-block mb-2 opacity-25"></i>
+    <p class="mb-0">Відомостей не знайдено</p>
+</div>
+{% else %}
+<div class="table-responsive">
+    <table class="table table-hover table-sm mb-0 align-middle">
+        <thead>
+            <tr>
+                <th>№</th>
+                <th>Дата</th>
+                <th>Підрозділ</th>
+                <th>Статус</th>
+                <th class="text-end" style="width:40px"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rv in rows %}
+            <tr>
+                <td>
+                    <a href="/rv/mw/{{ rv.id }}" class="text-decoration-none fw-500">
+                        {{ rv.number or "(чернетка)" }}
+                    </a>
+                </td>
+                <td class="text-muted small">{{ (rv.doc_date or rv.created_at or "")[:10] }}</td>
+                <td class="small">{{ rv.unit_name or "—" }}</td>
+                <td>
+                    {%- set _st = {'draft':'secondary','active':'primary','closed':'success','cancelled':'danger'} -%}
+                    <span class="badge bg-{{ _st.get(rv.status, 'secondary') }}">{{ rv.status }}</span>
+                </td>
+                <td class="text-end">
+                    <a href="/rv/mw/{{ rv.id }}" class="btn btn-sm btn-outline-primary py-0">
+                        <i class="bi bi-eye"></i>
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<div class="text-muted small mt-2">Знайдено: {{ rows | length }} записів</div>
+{% endif %}
+{% endblock %}

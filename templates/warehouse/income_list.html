@@ -58,6 +58,10 @@
                                class="badge bg-warning text-dark text-decoration-none">
                                 <i class="bi bi-pencil me-1"></i>Чернетка
                             </a>
+                            {% elif r.source_type == 'inventory' %}
+                            <span class="badge bg-info text-dark">
+                                <i class="bi bi-clipboard-check me-1"></i>Коригування
+                            </span>
                             {% else %}
                             <span class="badge bg-success">
                                 <i class="bi bi-check-circle me-1"></i>Проведено
@@ -82,6 +86,13 @@
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </form>
+                                {% elif r.source_type == 'inventory' %}
+                                {# Коригування від інвентаризації — тільки перегляд #}
+                                <a href="{{ url_for('warehouse.income_view', income_id=r.id) }}"
+                                   class="btn btn-sm btn-outline-secondary py-0 px-2"
+                                   title="Переглянути">
+                                    <i class="bi bi-eye"></i>
+                                </a>
                                 {% else %}
                                 {# Перегляд підтвердженого #}
                                 <a href="{{ url_for('warehouse.income_view', income_id=r.id) }}"

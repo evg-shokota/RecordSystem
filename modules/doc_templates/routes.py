@@ -6,7 +6,7 @@ Author: White
 """
 import json
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
-from core.auth import login_required
+from core.auth import login_required, permission_required
 from core.db import get_connection
 from core.renderer import render_demo as _render_with_demo_data, get_template_html
 
@@ -267,6 +267,7 @@ def preview(tpl_id):
 
 @bp.route("/<int:tpl_id>/delete", methods=["POST"])
 @login_required
+@permission_required("admin")
 def delete(tpl_id):
     conn = get_connection()
     t = conn.execute("SELECT name, is_system FROM doc_templates WHERE id=?", (tpl_id,)).fetchone()

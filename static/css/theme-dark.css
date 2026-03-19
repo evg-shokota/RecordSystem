@@ -50,6 +50,10 @@
     --input-bg:            #24273a;
     --input-border:        rgba(205,214,244,.12);
     --input-bg-focus:      #2a2d45;
+
+    /* Скролбар */
+    --scrollbar-thumb:       rgba(137,180,250,.25);
+    --scrollbar-thumb-hover: rgba(137,180,250,.45);
 }
 
 /* ── Body ── */
@@ -320,11 +324,6 @@ a:hover { color: #b8d0fc !important; }
     padding-left: 2.5rem !important;
 }
 
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--body-bg); }
-::-webkit-scrollbar-thumb { background: rgba(137,180,250,.2); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(137,180,250,.4); }
 
 /* ── Логін ── */
 .login-wrapper {
@@ -347,9 +346,12 @@ a:hover { color: #b8d0fc !important; }
 .bg-white  { background-color: var(--card-bg) !important; }
 .bg-light  { background-color: var(--table-header-bg) !important; }
 
-/* text-dark, text-black — перетворити на світлий текст */
+/* text-dark, text-black, text-body — перетворити на світлий текст */
 .text-dark  { color: var(--text-primary) !important; }
 .text-black { color: var(--text-primary) !important; }
+.text-body  { color: var(--text-primary) !important; }
+a.text-body { color: var(--text-primary) !important; }
+a.text-body:hover { color: var(--app-primary) !important; }
 
 /* Badge кольори — зробити менш кричущими на темному фоні */
 .badge.bg-info    { background-color: rgba(137,180,250,.20) !important; color: #89b4fa !important; }

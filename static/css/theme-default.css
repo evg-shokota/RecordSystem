@@ -47,6 +47,10 @@
     --input-bg:            #ffffff;
     --input-border:        #dee2e6;
     --input-bg-focus:      #ffffff;
+
+    /* Скролбар */
+    --scrollbar-thumb:       rgba(26,86,160,.22);
+    --scrollbar-thumb-hover: rgba(26,86,160,.4);
 }
 
 a { color: var(--link-color); }

@@ -19,20 +19,22 @@ def log_action(
     """
     user_id = session.get("user_id")
     conn = get_connection()
-    conn.execute(
-        """INSERT INTO audit_log (user_id, action, table_name, record_id, old_data, new_data)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (
-            user_id,
-            action,
-            table_name,
-            record_id,
-            json.dumps(old_data, ensure_ascii=False) if old_data else None,
-            json.dumps(new_data, ensure_ascii=False) if new_data else None,
+    try:
+        conn.execute(
+            """INSERT INTO audit_log (user_id, action, table_name, record_id, old_data, new_data)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                user_id,
+                action,
+                table_name,
+                record_id,
+                json.dumps(old_data, ensure_ascii=False) if old_data else None,
+                json.dumps(new_data, ensure_ascii=False) if new_data else None,
+            )
         )
-    )
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_audit_log(limit: int = 100, offset: int = 0) -> list[dict]:

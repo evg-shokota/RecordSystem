@@ -10,6 +10,17 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme-' ~ (session.get('theme') or 'default') ~ '.css') }}">
     {{ slot('page.head_extra') | safe }}
+    {# Стан сайдбару — максимально рано, до рендеру body, щоб уникнути flash #}
+    <script>if(localStorage.getItem('rs_sidebar_collapsed')==='1')document.documentElement.classList.add('sb-pre-collapsed');</script>
+    <style>
+        /* Заморозка ширини до JS */
+        .sb-pre-collapsed #appSidebar{width:var(--app-sidebar-collapsed-width,52px);min-width:var(--app-sidebar-collapsed-width,52px);}
+        /* Глобальне вимкнення transition під час ініціалізації */
+        .sb-no-transition #appSidebar,
+        .sb-no-transition #appSidebar *,
+        .sb-no-transition #sidebarToggleBtn,
+        .sb-no-transition #sidebarToggleBtn *{ transition:none!important; }
+    </style>
     {# Перехоплення JS-помилок — максимально рано, до будь-яких скриптів #}
     <script>
     (function() {
@@ -52,7 +63,7 @@
 <div class="app-wrapper">
 
     <!-- ===== SIDEBAR ===== -->
-    <nav class="app-sidebar">
+    <nav class="app-sidebar" id="appSidebar">
         <a class="sidebar-brand" href="{{ url_for('dashboard') }}">
             <i class="bi bi-shield-fill sidebar-brand-icon"></i>
             <div class="sidebar-brand-text">
@@ -66,13 +77,14 @@
         {%- set _in_plugins = plugin_menu_items and request.path and plugin_menu_items | selectattr('url') | list | length > 0 %}
         {%- set _sidebar_extra = slot('sidebar.items') %}
         {%- set _in_extra = _sidebar_extra and _sidebar_extra | length > 0 %}
-        {%- set _in_system = request.blueprint in ('import_export','plugins','settings','audit') or request.path.startswith('/settings/') or request.path.startswith('/audit/') %}
+        {%- set _in_system = request.blueprint in ('import_export','plugins','audit') or request.path.startswith('/audit/')
+            or (request.path.startswith('/settings/') and not request.path.startswith('/settings/units')) %}
 
         <ul class="nav flex-column sidebar-nav">
             <li class="nav-item">
                 <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}"
                    href="{{ url_for('dashboard') }}">
-                    <i class="bi bi-speedometer2"></i> Дашборд
+                    <i class="bi bi-speedometer2"></i><span class="nav-link-text"> Дашборд</span>
                 </a>
             </li>
 
@@ -89,19 +101,19 @@
                     <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'personnel' %}active{% endif %}"
                            href="/personnel/">
-                            <i class="bi bi-people-fill"></i> Картотека
+                            <i class="bi bi-people-fill"></i><span class="nav-link-text"> Картотека</span>
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.path == '/units/' or request.path.startswith('/units/') %}active{% endif %}"
-                           href="/units/">
-                            <i class="bi bi-diagram-2-fill"></i> Підрозділи
+                        <a class="nav-link {% if request.path.startswith('/settings/units') %}active{% endif %}"
+                           href="{{ url_for('settings.units') }}">
+                            <i class="bi bi-diagram-2-fill"></i><span class="nav-link-text"> Підрозділи</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'supply_norms' %}active{% endif %}"
                            href="/supply-norms/">
-                            <i class="bi bi-list-check"></i> Норми видачі
+                            <i class="bi bi-list-check"></i><span class="nav-link-text"> Норми видачі</span>
                         </a>
                     </li>
                 </ul>
@@ -120,7 +132,7 @@
                     <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'warehouse' %}active{% endif %}"
                            href="/warehouse/">
-                            <i class="bi bi-box-seam-fill"></i> Склад
+                            <i class="bi bi-box-seam-fill"></i><span class="nav-link-text"> Склад</span>
                         </a>
                     </li>
                 </ul>
@@ -140,49 +152,49 @@
                     <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'registry' %}active{% endif %}"
                            href="{{ url_for('registry.index') }}">
-                            <i class="bi bi-journal-text"></i> Реєстр документів
+                            <i class="bi bi-journal-text"></i><span class="nav-link-text"> Реєстр документів</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'invoices' %}active{% endif %}"
                            href="/invoices/">
-                            <i class="bi bi-receipt"></i> Накладні
+                            <i class="bi bi-receipt"></i><span class="nav-link-text"> Накладні</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'rv' %}active{% endif %}"
                            href="/rv/">
-                            <i class="bi bi-list-columns-reverse"></i> Роздавальні відомості
+                            <i class="bi bi-list-columns-reverse"></i><span class="nav-link-text"> Роздавальні відомості</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'doc_templates' %}active{% endif %}"
                            href="/doc-templates/">
-                            <i class="bi bi-file-earmark-ruled"></i> Шаблони
+                            <i class="bi bi-file-earmark-ruled"></i><span class="nav-link-text"> Шаблони</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'planning' %}active{% endif %}"
                            href="{{ url_for('planning.index') }}">
-                            <i class="bi bi-calendar-check"></i> Планування
+                            <i class="bi bi-calendar-check"></i><span class="nav-link-text"> Планування</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'reports' %}active{% endif %}"
                            href="{{ url_for('reports.index') }}">
-                            <i class="bi bi-file-earmark-bar-graph"></i> Звіти
+                            <i class="bi bi-file-earmark-bar-graph"></i><span class="nav-link-text"> Звіти</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'acts' and '/write-off' in request.path %}active{% endif %}"
                            href="{{ url_for('acts.write_off_list') }}">
-                            <i class="bi bi-file-earmark-x"></i> Акти списання
+                            <i class="bi bi-file-earmark-x"></i><span class="nav-link-text"> Акти списання</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'acts' and '/exploit' in request.path %}active{% endif %}"
                            href="{{ url_for('acts.exploit_list') }}">
-                            <i class="bi bi-file-earmark-check"></i> Акти введення в експл.
+                            <i class="bi bi-file-earmark-check"></i><span class="nav-link-text"> Акти введення в експл.</span>
                         </a>
                     </li>
                 </ul>
@@ -203,10 +215,10 @@
                     <li class="nav-item">
                         <a class="nav-link {% if request.path.startswith(item.url) %}active{% endif %}"
                            href="{{ item.url }}">
-                            <i class="{{ item.icon }}"></i> {{ item.label }}
+                            <i class="{{ item.icon }}"></i><span class="nav-link-text"> {{ item.label }}
                             {% if item.badge %}
                             <span class="badge {{ item.badge.class }} ms-auto">{{ item.badge.text }}</span>
-                            {% endif %}
+                            {% endif %}</span>
                         </a>
                     </li>
                     {% endfor %}
@@ -229,10 +241,10 @@
                     <li class="nav-item">
                         <a class="nav-link {% if request.path.startswith(item.url) %}active{% endif %}"
                            href="{{ item.url }}">
-                            <i class="{{ item.icon }}"></i> {{ item.label }}
+                            <i class="{{ item.icon }}"></i><span class="nav-link-text"> {{ item.label }}
                             {%- if item.badge %}
                             <span class="badge {{ item.badge.class }} ms-auto">{{ item.badge.text }}</span>
-                            {%- endif %}
+                            {%- endif %}</span>
                         </a>
                     </li>
                     {%- endfor %}
@@ -254,31 +266,31 @@
                     <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'import_export' %}active{% endif %}"
                            href="{{ url_for('import_export.index') }}">
-                            <i class="bi bi-arrow-left-right"></i> Імпорт / Експорт
+                            <i class="bi bi-arrow-left-right"></i><span class="nav-link-text"> Імпорт / Експорт</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'plugins' %}active{% endif %}"
                            href="{{ url_for('plugins.index') }}">
-                            <i class="bi bi-puzzle"></i> Модулі розширення
+                            <i class="bi bi-puzzle"></i><span class="nav-link-text"> Модулі розширення</span>
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.path.startswith('/settings/') %}active{% endif %}"
+                        <a class="nav-link {% if request.path.startswith('/settings/') and not request.path.startswith('/settings/units') %}active{% endif %}"
                            href="/settings/">
-                            <i class="bi bi-gear-fill"></i> Налаштування
+                            <i class="bi bi-gear-fill"></i><span class="nav-link-text"> Налаштування</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.path.startswith('/audit/') %}active{% endif %}"
                            href="/audit/">
-                            <i class="bi bi-journal-text"></i> Журнал дій
+                            <i class="bi bi-journal-text"></i><span class="nav-link-text"> Журнал дій</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.path.startswith('/feedback') %}active{% endif %}"
                            href="/feedback/">
-                            <i class="bi bi-chat-dots"></i> Зворотній зв'язок
+                            <i class="bi bi-chat-dots"></i><span class="nav-link-text"> Зворотній зв'язок</span>
                         </a>
                     </li>
                 </ul>
@@ -288,14 +300,122 @@
         <div class="sidebar-footer">
             <a href="{{ url_for('profile') }}" class="sidebar-user-name text-decoration-none"
                title="Особистий кабінет">
-                <i class="bi bi-person-circle me-1"></i>
-                {{ session.get('full_name', '') }}
+                <i class="bi bi-person-circle me-1"></i><span class="sidebar-footer-text">{{ session.get('full_name', '') }}</span>
             </a>
-            <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-light w-100 mt-1">
-                <i class="bi bi-box-arrow-right me-1"></i>Вихід
+            <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-light w-100 mt-1 sidebar-footer-btn">
+                <i class="bi bi-box-arrow-right me-1"></i><span class="sidebar-footer-text">Вихід</span>
             </a>
         </div>
     </nav>
+
+    <!-- "Вушко" toggle — приліплене до правого краю сайдбару -->
+    <button id="sidebarToggleBtn"
+            title="Сховати/показати меню"
+            onclick="toggleSidebar()"
+            style="position:fixed;top:50%;z-index:200;
+                   transform:translateY(-50%);
+                   width:20px;height:48px;
+                   border-radius:0 6px 6px 0;
+                   background:var(--sidebar-bg,var(--app-primary));
+                   border:none;border-left:1px solid rgba(255,255,255,.12);
+                   color:var(--sidebar-text-active,#fff);
+                   display:flex;align-items:center;justify-content:center;
+                   cursor:pointer;font-size:12px;
+                   box-shadow:2px 0 8px rgba(0,0,0,.22);
+                   transition:left .26s cubic-bezier(.4,0,.2,1), background .15s;
+                   padding:0 3px;line-height:1">
+        <i class="bi bi-chevron-left sb-toggle-icon"
+           style="transition:transform .26s cubic-bezier(.4,0,.2,1)"></i>
+    </button>
+
+    <script>
+    // ── Sidebar toggle ──
+    (function() {
+        var KEY      = 'rs_sidebar_collapsed';
+        var sidebar  = document.getElementById('appSidebar');
+        var btn      = document.getElementById('sidebarToggleBtn');
+        var icon     = btn.querySelector('.sb-toggle-icon');
+
+        var cs       = getComputedStyle(document.documentElement);
+        var W_OPEN   = parseInt(cs.getPropertyValue('--app-sidebar-width'))   || 240;
+        var W_CLOSED = parseInt(cs.getPropertyValue('--app-sidebar-collapsed-width')) || 52;
+
+        function positionBtn(collapsed) {
+            btn.style.left = (collapsed ? W_CLOSED : W_OPEN) + 'px';
+            icon.style.transform = collapsed ? 'rotate(180deg)' : '';
+        }
+
+        function applyState(collapsed) {
+            sidebar.classList.toggle('sidebar-collapsed', collapsed);
+            positionBtn(collapsed);
+        }
+
+        // Початковий стан — без анімації
+        var initCollapsed = localStorage.getItem(KEY) === '1';
+        var html = document.documentElement;
+        html.classList.add('sb-no-transition');   // вимикаємо ВСІ transitions в сайдбарі
+        applyState(initCollapsed);
+        // Подвійний rAF: layout → paint → знімаємо заморозку
+        requestAnimationFrame(function() {
+            requestAnimationFrame(function() {
+                html.classList.remove('sb-pre-collapsed');
+                html.classList.remove('sb-no-transition');
+            });
+        });
+
+        window.toggleSidebar = function() {
+            var isCollapsed = sidebar.classList.toggle('sidebar-collapsed');
+            localStorage.setItem(KEY, isCollapsed ? '1' : '0');
+            positionBtn(isCollapsed);
+        };
+
+        // ── Tooltip для collapsed ──
+        // tip отримуємо lazy — елемент ще не в DOM на момент виконання скрипту
+        var tip       = null;
+        var tipTarget = null;
+
+        function getTip() {
+            if (!tip) tip = document.getElementById('sidebarTooltip');
+            return tip;
+        }
+
+        function showTip(el, text, rect) {
+            var t = getTip(); if (!t) return;
+            tipTarget     = el;
+            t.textContent = text;
+            t.style.height  = rect.height + 'px';
+            t.style.top     = rect.top    + 'px';
+            t.style.left    = rect.right  + 'px';
+            t.style.opacity = '1';
+        }
+        function hideTip() {
+            var t = getTip(); if (!t) return;
+            t.style.opacity = '0';
+            tipTarget = null;
+        }
+
+        sidebar.addEventListener('mouseover', function(e) {
+            if (!sidebar.classList.contains('sidebar-collapsed')) return;
+            var link = e.target.closest('.nav-link');
+            if (!link) return;
+            var textEl = link.querySelector('.nav-link-text');
+            if (!textEl) return;
+            var text = textEl.textContent.trim();
+            if (!text) return;
+            showTip(link, text, link.getBoundingClientRect());
+        });
+
+        sidebar.addEventListener('mouseout', function(e) {
+            if (!tipTarget) return;
+            var to = e.relatedTarget;
+            if (to && tipTarget.contains(to)) return;
+            hideTip();
+        });
+    })();
+    </script>
+
+    <!-- Tooltip для collapsed sidebar -->
+    <div id="sidebarTooltip"></div>
 
     <!-- ===== MAIN ===== -->
     <div class="app-main">
@@ -330,7 +450,7 @@
 <!-- Кнопка зворотного зв'язку (фіксована) -->
 {% if session.get('user_id') %}
 <button id="fbFloatBtn" title="Зворотній зв'язок / Повідомити про помилку"
-        data-bs-toggle="modal" data-bs-target="#feedbackModal"
+        onclick="fbOpen()"
         style="position:fixed;bottom:1.5rem;right:1.5rem;z-index:1040;
                width:48px;height:48px;border-radius:50%;
                background:var(--app-primary);color:#fff;border:none;
@@ -338,130 +458,603 @@
                display:flex;align-items:center;justify-content:center;
                transition:transform .15s;">
     <i class="bi bi-chat-dots-fill"></i>
+    <span id="fbErrorCount" class="badge bg-danger"
+          style="display:none;position:absolute;top:-4px;right:-4px;font-size:.6rem;min-width:18px;height:18px;
+                 border-radius:9px;padding:0 4px;line-height:18px;pointer-events:none"></span>
 </button>
 
-<!-- Модаль зворотного зв'язку -->
-<div class="modal fade" id="feedbackModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content">
-            <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title fw-bold">
-                    <i class="bi bi-chat-dots-fill me-2 text-primary"></i>Зворотній зв'язок
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body pt-2">
-                <div class="row g-2 mb-2">
-                    <div class="col-7">
-                        <label class="form-label small text-muted mb-1">Категорія</label>
-                        <select id="fbCategory" class="form-select form-select-sm">
-                            <option value="bug">🐛 Помилка в системі</option>
-                            <option value="feature">💡 Побажання / ідея</option>
-                            <option value="ui">🎨 Проблема з інтерфейсом</option>
-                            <option value="other">📝 Інше</option>
-                        </select>
-                    </div>
-                    <div class="col-5">
-                        <label class="form-label small text-muted mb-1">Пріоритет</label>
-                        <select id="fbPriority" class="form-select form-select-sm">
-                            <option value="normal">Нормальний</option>
-                            <option value="high">🔴 Високий</option>
-                            <option value="low">Низький</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="mb-2">
-                    <label class="form-label small text-muted mb-1">Коротко про що <span class="text-danger">*</span></label>
-                    <input type="text" id="fbTitle" class="form-control form-control-sm"
-                           placeholder="Наприклад: Не зберігається накладна" maxlength="200">
-                </div>
-                <div class="mb-2">
-                    <label class="form-label small text-muted mb-1">Детальний опис</label>
-                    <textarea id="fbBody" class="form-control form-control-sm" rows="3"
-                              placeholder="Опишіть що відбувається, кроки відтворення, що очікується..."></textarea>
-                </div>
-                {# Діагностика — кнопка завжди видима #}
-                <div class="mb-2">
-                    <div class="d-flex align-items-center gap-2">
-                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="fbLoadDiag()">
-                            <i class="bi bi-bug me-1"></i>Зібрати діагностику
-                            <span id="fbErrorCount" class="badge bg-danger ms-1 small" style="display:none"></span>
-                        </button>
-                        <span class="text-muted small">Додає логи помилок, мережу, сторінку</span>
-                    </div>
-                    <div id="fbErrorLogWrap" style="display:none" class="mt-2">
-                        <div class="d-flex align-items-center justify-content-between mb-1">
-                            <span class="form-label small text-muted mb-0">
-                                <i class="bi bi-terminal me-1"></i>Діагностичний лог
-                            </span>
-                            <div class="d-flex gap-2 align-items-center">
-                                <div class="form-check form-check-inline mb-0">
-                                    <input class="form-check-input" type="checkbox" id="fbIncludeErrors" checked>
-                                    <label class="form-check-label small text-muted" for="fbIncludeErrors">Включити у звіт</label>
-                                </div>
-                                <button type="button" class="btn btn-link btn-sm p-0 text-muted" onclick="fbClearDiag()">
-                                    <i class="bi bi-x-circle"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <textarea id="fbErrorLog" class="form-control form-control-sm font-monospace"
-                                  rows="5" style="font-size:.7rem;background:#1e1e1e;color:#f8f8f2;resize:vertical"
-                                  placeholder="Лог помилок..."></textarea>
-                    </div>
-                </div>
-                <div class="form-check form-check-sm">
-                    <input class="form-check-input" type="checkbox" id="fbIncludeUrl" checked>
-                    <label class="form-check-label small text-muted" for="fbIncludeUrl">
-                        Додати поточну сторінку (<span id="fbUrlPreview" class="font-monospace"></span>)
-                    </label>
-                </div>
-            </div>
-            <div class="modal-footer border-0 pt-0">
-                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
-                <button type="button" class="btn btn-primary btn-sm" onclick="submitFeedback()">
-                    <i class="bi bi-send me-1"></i>Надіслати
-                </button>
-            </div>
+<!-- Кнопка додаткового вікна -->
+<button id="mwOpenBtn" title="Додаткове вікно"
+        onclick="MW.toggle()"
+        style="position:fixed;bottom:1.5rem;right:5.5rem;z-index:1040;
+               width:48px;height:48px;border-radius:50%;
+               background:var(--app-primary);color:#fff;border:none;
+               box-shadow:0 4px 16px rgba(0,0,0,.25);font-size:1.1rem;
+               display:flex;align-items:center;justify-content:center;
+               transition:transform .15s;">
+    <i class="bi bi-window-plus"></i>
+</button>
+
+<!-- ═══════════════════════════════════════════════════════
+     БАГАТОЗАДАЧНЕ ВІКНО (AJAX, без iframe)
+     Стан зберігається в window.MW — живе весь час на сторінці,
+     при переході на нову сторінку sessionStorage відновлює стан.
+     ═══════════════════════════════════════════════════════ -->
+<div id="mwWindow"
+     style="display:none;position:fixed;z-index:1055;
+            width:900px;height:580px;min-width:480px;min-height:320px;
+            background:var(--body-bg,#f4f6f9);border-radius:10px;
+            box-shadow:0 16px 48px rgba(0,0,0,.35);
+            border:1px solid var(--input-border,rgba(0,0,0,.15));
+            flex-direction:column;overflow:hidden">
+
+    <!-- ── Заголовок (drag zone) ── -->
+    <div id="mwHeader"
+         style="padding:.4rem .7rem;background:var(--app-primary);color:#fff;
+                display:flex;align-items:center;gap:.4rem;
+                cursor:grab;user-select:none;flex-shrink:0;min-height:38px">
+        <i class="bi bi-window-stack" style="font-size:.9rem;opacity:.8;flex-shrink:0"></i>
+        <span id="mwTitle"
+              style="font-size:.8rem;font-weight:600;flex:1;
+                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            Додаткове вікно
+        </span>
+        <!-- Кнопки -->
+        <button onclick="MW.reload()" title="Оновити"
+                style="background:rgba(255,255,255,.18);border:none;color:#fff;
+                       border-radius:4px;padding:2px 8px;cursor:pointer;font-size:.78rem">
+            <i class="bi bi-arrow-clockwise"></i>
+        </button>
+        <button onclick="MW.close()" title="Закрити"
+                style="background:rgba(255,255,255,.18);border:none;color:#fff;
+                       border-radius:4px;padding:2px 8px;cursor:pointer;font-size:.82rem">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+
+    <!-- ── Таб-навігація ── -->
+    <div id="mwNav"
+         style="display:flex;align-items:stretch;background:var(--sidebar-bg,var(--app-primary));
+                border-bottom:2px solid rgba(255,255,255,.12);flex-shrink:0;overflow-x:auto">
+        {%- set _mw_tabs = [
+            ('personnel',   'bi-people-fill',          'Картотека',    '/personnel/mw/'),
+            ('invoices',    'bi-receipt',               'Накладні',     '/invoices/mw/'),
+            ('rv',          'bi-list-columns-reverse',  'Відомості',    '/rv/mw/'),
+        ] -%}
+        {% for tab_id, tab_icon, tab_label, tab_url in _mw_tabs %}
+        <button class="mw-tab" data-tab="{{ tab_id }}" data-url="{{ tab_url }}"
+                onclick="MW.switchTab(this)"
+                style="background:none;border:none;border-bottom:2px solid transparent;
+                       color:rgba(255,255,255,.65);padding:.45rem .9rem;
+                       display:flex;align-items:center;gap:.35rem;cursor:pointer;
+                       font-size:.78rem;font-weight:500;white-space:nowrap;
+                       transition:color .15s,border-color .15s;margin-bottom:-2px">
+            <i class="bi {{ tab_icon }}" style="font-size:.85rem"></i>
+            <span>{{ tab_label }}</span>
+        </button>
+        {% endfor %}
+    </div>
+
+    <!-- ── Хлібні крихти / заголовок поточного розділу ── -->
+    <div id="mwBreadcrumb"
+         style="padding:.3rem .8rem;background:var(--topbar-bg,#fff);
+                border-bottom:1px solid var(--topbar-border,#dee2e6);
+                font-size:.75rem;color:var(--text-muted,#6c757d);
+                display:flex;align-items:center;gap:.4rem;flex-shrink:0;min-height:28px">
+        <i class="bi bi-house" style="opacity:.5"></i>
+        <span id="mwBreadcrumbText">Оберіть розділ</span>
+    </div>
+
+    <!-- ── Контент (сюди fetch() вставляє HTML) ── -->
+    <div id="mwBody"
+         style="flex:1;overflow-y:auto;overflow-x:hidden;padding:.75rem;min-height:0;
+                background:var(--body-bg,#f4f6f9)">
+        <!-- Початковий стан -->
+        <div id="mwWelcome" style="display:flex;flex-direction:column;align-items:center;
+                                    justify-content:center;height:100%;color:var(--text-muted,#6c757d)">
+            <i class="bi bi-window-stack" style="font-size:3rem;opacity:.25;margin-bottom:1rem"></i>
+            <p style="font-size:.9rem;margin:0">Оберіть розділ у навігації вище</p>
         </div>
+    </div>
+
+    <!-- ── Resize handle ── -->
+    <div id="mwResizeHandle"
+         style="position:absolute;bottom:0;right:0;width:18px;height:18px;
+                cursor:se-resize;z-index:10;display:flex;align-items:flex-end;
+                justify-content:flex-end;padding:3px">
+        <svg width="10" height="10" viewBox="0 0 10 10" style="opacity:.3">
+            <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" stroke-width="1.5"/>
+            <line x1="9" y1="5" x2="5" y2="9" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
     </div>
 </div>
 
 <script>
-// ── Показати поточний URL + завантажити лог при відкритті ──
-document.addEventListener('DOMContentLoaded', () => {
-    const el = document.getElementById('fbUrlPreview');
-    if (el) el.textContent = location.pathname;
-    const btn = document.getElementById('fbFloatBtn');
-    if (btn) {
-        btn.addEventListener('mouseenter', () => btn.style.transform = 'scale(1.1)');
-        btn.addEventListener('mouseleave', () => btn.style.transform = '');
-    }
-});
+/* ═══════════════════════════════════════════════════════════════
+   MW — Multitask Window
+   Стан живе тільки в JS-об'єкті window.MW._state.
+   sessionStorage зберігає: open, pos, size, activeTab, url — щоб
+   відновити вікно після переходу на іншу сторінку основного вікна.
+   ═══════════════════════════════════════════════════════════════ */
+(function() {
+    var SS_KEY = 'rs_mw2';
 
-// Оновлюємо лічильник помилок на кнопці при кожній помилці
+    var _state = {
+        open: false,
+        left: null, top: null,
+        width: null, height: null,
+        activeTab: null,
+        url: null
+    };
+
+    // ── Елементи (lazy) ──
+    var _el = {};
+    function el(id) {
+        if (!_el[id]) _el[id] = document.getElementById(id);
+        return _el[id];
+    }
+
+    // ── sessionStorage ──
+    function _save() {
+        var w = el('mwWindow'); if (!w) return;
+        try {
+            sessionStorage.setItem(SS_KEY, JSON.stringify({
+                open:      _state.open,
+                left:      w.style.left,
+                top:       w.style.top,
+                width:     w.style.width,
+                height:    w.style.height,
+                activeTab: _state.activeTab,
+                url:       _state.url
+            }));
+        } catch(e) {}
+    }
+
+    function _restore() {
+        try {
+            var s = JSON.parse(sessionStorage.getItem(SS_KEY) || 'null');
+            if (!s || !s.open) return;
+            var w = el('mwWindow'); if (!w) return;
+            if (s.left)   w.style.left   = s.left;
+            if (s.top)    w.style.top    = s.top;
+            if (s.width)  w.style.width  = s.width;
+            if (s.height) w.style.height = s.height;
+            _show();
+            // Відновити активний таб і контент
+            if (s.activeTab) {
+                var tab = document.querySelector('.mw-tab[data-tab="' + s.activeTab + '"]');
+                if (tab) {
+                    _setActiveTab(tab);
+                    if (s.url) _load(s.url, tab.dataset.tab);
+                }
+            }
+        } catch(e) {}
+    }
+
+    // ── Показати/сховати вікно ──
+    function _show() {
+        var w = el('mwWindow'); if (!w) return;
+        w.style.display = 'flex';
+        w.style.flexDirection = 'column';
+        _state.open = true;
+        _save();
+    }
+
+    function _hide() {
+        var w = el('mwWindow'); if (!w) return;
+        w.style.display = 'none';
+        _state.open = false;
+        sessionStorage.removeItem(SS_KEY);
+    }
+
+    // ── AJAX-завантаження контенту ──
+    // MW-маршрути (/personnel/mw/, /invoices/mw/ тощо) рендерять
+    // повний мінімальний HTML через base_mw.html — без sidebar.
+    // Вставляємо його напряму в #mwBody через srcdoc-подібний підхід:
+    // використовуємо <iframe srcdoc> щоб Bootstrap і скрипти
+    // ініціалізувались у своєму DOM-дереві без конфліктів.
+    function _load(url, tabId) {
+        var body = el('mwBody'); if (!body) return;
+        _state.url = url;
+        if (tabId) _state.activeTab = tabId;
+
+        // Показуємо спінер
+        body.innerHTML = '';
+        body.style.padding = '0';
+        body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;' +
+            'height:100%;color:var(--text-muted,#6c757d);padding:2rem">' +
+            '<span class="spinner-border spinner-border-sm me-2"></span>Завантаження...</div>';
+
+        fetch(url, { credentials: 'same-origin', headers: { 'X-MW-Request': '1' } })
+        .then(function(r) {
+            if (r.redirected && r.url.includes('/login')) {
+                body.innerHTML = '<div class="text-center py-5 text-muted" style="padding:2rem">' +
+                    '<i class="bi bi-lock fs-1 d-block mb-2"></i>' +
+                    '<p>Сесія закінчилась. <a href="/login">Увійти</a></p></div>';
+                return null;
+            }
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            // Оновлюємо URL стану якщо був redirect
+            if (r.redirected) _state.url = r.url;
+            return r.text();
+        })
+        .then(function(html) {
+            if (!html) return;
+
+            // Витягуємо <title> для breadcrumb
+            var titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+            if (titleMatch) {
+                var t = titleMatch[1].trim();
+                var bc = el('mwBreadcrumbText');
+                var ti = el('mwTitle');
+                if (bc && t) bc.textContent = t;
+                if (ti && t) ti.textContent = t;
+            }
+
+            // Використовуємо iframe з srcdoc — ізольований DOM,
+            // Bootstrap і скрипти сторінки не конфліктують з основним вікном
+            body.innerHTML = '';
+            body.style.padding = '0';
+            var fr = document.createElement('iframe');
+            fr.style.cssText = 'width:100%;height:100%;border:none;display:block';
+            fr.setAttribute('srcdoc', html);
+            // Дозволяємо скрипти і форми (same-origin)
+            fr.setAttribute('sandbox',
+                'allow-same-origin allow-scripts allow-forms allow-popups');
+            body.appendChild(fr);
+
+            _save();
+        })
+        .catch(function(err) {
+            body.style.padding = '0';
+            body.innerHTML = '<div class="alert alert-danger m-3">Помилка завантаження: ' + err.message + '</div>';
+        });
+    }
+
+    // ── Таби ──
+    function _setActiveTab(btn) {
+        document.querySelectorAll('.mw-tab').forEach(function(t) {
+            t.style.color = 'rgba(255,255,255,.65)';
+            t.style.borderBottomColor = 'transparent';
+            t.style.fontWeight = '500';
+        });
+        btn.style.color = '#fff';
+        btn.style.borderBottomColor = '#fff';
+        btn.style.fontWeight = '700';
+        el('mwBreadcrumbText').textContent = btn.querySelector('span').textContent;
+        el('mwTitle').textContent = btn.querySelector('span').textContent;
+    }
+
+    // ── Public API ──
+    window.MW = {
+        toggle: function() {
+            if (_state.open) { _hide(); } else {
+                var w = el('mwWindow');
+                if (w && !w.style.left) {
+                    var pw = parseInt(w.style.width)  || 900;
+                    var ph = parseInt(w.style.height) || 580;
+                    w.style.left = Math.max(0, (window.innerWidth  - pw) / 2) + 'px';
+                    w.style.top  = Math.max(0, (window.innerHeight - ph) / 2) + 'px';
+                }
+                _show();
+                // Якщо немає активного табу — нічого не завантажуємо (welcome screen)
+            }
+        },
+        close: function() { _hide(); },
+        reload: function() {
+            if (_state.url && _state.activeTab) _load(_state.url, _state.activeTab);
+        },
+        switchTab: function(btn) {
+            _setActiveTab(btn);
+            _load(btn.dataset.url, btn.dataset.tab);
+        },
+        // Виклик зсередини partial: MW.navigate('/invoices/mw/new/')
+        navigate: function(url, label) {
+            _state.url = url;
+            if (label) {
+                el('mwBreadcrumbText').textContent = label;
+                el('mwTitle').textContent = label;
+            }
+            _load(url, _state.activeTab);
+        }
+    };
+
+    // ── Drag + Resize ──
+    var _mode = 'idle', _sx, _sy, _sl, _st, _sw, _sh;
+
+    document.addEventListener('mousedown', function(e) {
+        var hdr = el('mwHeader');
+        var rsz = el('mwResizeHandle');
+        var w   = el('mwWindow');
+        if (!hdr || !rsz || !w) return;
+
+        if (hdr.contains(e.target) && !e.target.closest('button')) {
+            e.preventDefault();
+            _mode = 'drag';
+            _sx = e.clientX; _sy = e.clientY;
+            _sl = w.offsetLeft; _st = w.offsetTop;
+            hdr.style.cursor = 'grabbing';
+            document.body.style.userSelect = 'none';
+            // Вимикаємо pointer events на iframe щоб mousemove проходив крізь нього
+            var fr = el('mwBody').querySelector('iframe');
+            if (fr) fr.style.pointerEvents = 'none';
+        } else if (rsz.contains(e.target)) {
+            e.preventDefault();
+            _mode = 'resize';
+            _sx = e.clientX; _sy = e.clientY;
+            _sw = w.offsetWidth; _sh = w.offsetHeight;
+            document.body.style.userSelect = 'none';
+            var fr = el('mwBody').querySelector('iframe');
+            if (fr) fr.style.pointerEvents = 'none';
+        }
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (_mode === 'idle') return;
+        var w = el('mwWindow'); if (!w) return;
+        var dx = e.clientX - _sx, dy = e.clientY - _sy;
+        if (_mode === 'drag') {
+            w.style.left = Math.max(0, Math.min(_sl + dx, window.innerWidth  - w.offsetWidth))  + 'px';
+            w.style.top  = Math.max(0, Math.min(_st + dy, window.innerHeight - w.offsetHeight)) + 'px';
+            w.style.right = 'auto'; w.style.bottom = 'auto';
+        } else {
+            w.style.width  = Math.max(480, Math.min(_sw + dx, window.innerWidth  - w.offsetLeft)) + 'px';
+            w.style.height = Math.max(320, Math.min(_sh + dy, window.innerHeight - w.offsetTop))  + 'px';
+        }
+    });
+
+    document.addEventListener('mouseup', function() {
+        if (_mode !== 'idle') {
+            _mode = 'idle';
+            if (el('mwHeader')) el('mwHeader').style.cursor = 'grab';
+            document.body.style.userSelect = '';
+            // Відновлюємо pointer events на iframe
+            var fr = el('mwBody') && el('mwBody').querySelector('iframe');
+            if (fr) fr.style.pointerEvents = '';
+            _save();
+        }
+    });
+
+    // ── Відновлення після page load ──
+    document.addEventListener('DOMContentLoaded', _restore);
+})();
+</script>
+
+<!-- Backdrop -->
+<div id="fbBackdrop" onclick="fbClose()"
+     style="display:none;position:fixed;inset:0;z-index:1049;background:rgba(0,0,0,.25)"></div>
+
+<!-- Draggable / Resizable вікно зворотного зв'язку -->
+<div id="fbWindow"
+     style="display:none;position:fixed;z-index:1050;
+            width:520px;min-width:300px;min-height:280px;
+            background:var(--card-bg,#fff);border-radius:8px;
+            box-shadow:0 8px 32px rgba(0,0,0,.28);
+            overflow:hidden;
+            border:1px solid var(--input-border, rgba(0,0,0,.15));
+            flex-direction:column">
+
+    {# Заголовок — зона перетягування #}
+    <div id="fbWinHeader"
+         style="padding:.6rem 1rem;background:var(--app-primary);color:#fff;
+                display:flex;align-items:center;gap:.5rem;cursor:grab;user-select:none;
+                border-radius:7px 7px 0 0;flex-shrink:0">
+        <i class="bi bi-chat-dots-fill" style="font-size:1rem"></i>
+        <span class="fw-semibold flex-grow-1" style="font-size:.9rem">Зворотній зв'язок</span>
+        <button type="button" onclick="fbClose()"
+                style="background:none;border:none;color:rgba(255,255,255,.8);font-size:1.1rem;
+                       padding:0;line-height:1;cursor:pointer" title="Закрити">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+
+    {# Тіло — скролиться #}
+    <div style="padding:.75rem 1rem;overflow-y:auto;flex:1 1 auto;min-height:0">
+        <div class="row g-2 mb-2">
+            <div class="col-7">
+                <label class="form-label small text-muted mb-1">Категорія</label>
+                <select id="fbCategory" class="form-select form-select-sm">
+                    <option value="bug">🐛 Помилка в системі</option>
+                    <option value="feature">💡 Побажання / ідея</option>
+                    <option value="ui">🎨 Проблема з інтерфейсом</option>
+                    <option value="other">📝 Інше</option>
+                </select>
+            </div>
+            <div class="col-5">
+                <label class="form-label small text-muted mb-1">Пріоритет</label>
+                <select id="fbPriority" class="form-select form-select-sm">
+                    <option value="normal">Нормальний</option>
+                    <option value="high">🔴 Високий</option>
+                    <option value="low">Низький</option>
+                </select>
+            </div>
+        </div>
+        <div class="mb-2">
+            <label class="form-label small text-muted mb-1">Коротко про що <span class="text-danger">*</span></label>
+            <input type="text" id="fbTitle" class="form-control form-control-sm"
+                   placeholder="Наприклад: Не зберігається накладна" maxlength="200">
+        </div>
+        <div class="mb-2">
+            <label class="form-label small text-muted mb-1">Детальний опис</label>
+            <textarea id="fbBody" class="form-control form-control-sm" rows="4"
+                      placeholder="Опишіть що відбувається, кроки відтворення, що очікується..."
+                      style="resize:vertical"></textarea>
+        </div>
+        {# Діагностика #}
+        <div class="mb-2">
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="fbLoadDiag()">
+                    <i class="bi bi-bug me-1"></i>Зібрати діагностику
+                </button>
+                <span class="text-muted small">Додає логи помилок, мережу, сторінку</span>
+            </div>
+            <div id="fbErrorLogWrap" style="display:none" class="mt-2">
+                <div class="d-flex align-items-center justify-content-between mb-1">
+                    <span class="form-label small text-muted mb-0">
+                        <i class="bi bi-terminal me-1"></i>Діагностичний лог
+                    </span>
+                    <div class="d-flex gap-2 align-items-center">
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input" type="checkbox" id="fbIncludeErrors" checked>
+                            <label class="form-check-label small text-muted" for="fbIncludeErrors">Включити у звіт</label>
+                        </div>
+                        <button type="button" class="btn btn-link btn-sm p-0 text-muted" onclick="fbClearDiag()">
+                            <i class="bi bi-x-circle"></i>
+                        </button>
+                    </div>
+                </div>
+                <textarea id="fbErrorLog" class="form-control form-control-sm font-monospace"
+                          rows="5" style="font-size:.7rem;background:#1e1e1e;color:#f8f8f2;resize:vertical"
+                          placeholder="Лог помилок..."></textarea>
+            </div>
+        </div>
+        <div class="form-check form-check-sm mb-1">
+            <input class="form-check-input" type="checkbox" id="fbIncludeUrl" checked>
+            <label class="form-check-label small text-muted" for="fbIncludeUrl">
+                Додати поточну сторінку (<span id="fbUrlPreview" class="font-monospace"></span>)
+            </label>
+        </div>
+    </div>
+
+    {# Футер #}
+    <div style="padding:.5rem 1rem;border-top:1px solid var(--input-border,rgba(0,0,0,.1));
+                display:flex;justify-content:flex-end;gap:.5rem;
+                background:var(--card-bg,#fff);flex-shrink:0">
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="fbClose()">Скасувати</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="submitFeedback()">
+            <i class="bi bi-send me-1"></i>Надіслати
+        </button>
+    </div>
+
+    {# Resize handle — нижній правий кут #}
+    <div id="fbResizeHandle"
+         style="position:absolute;bottom:0;right:0;width:18px;height:18px;cursor:se-resize;z-index:10;
+                display:flex;align-items:flex-end;justify-content:flex-end;padding:3px">
+        <svg width="10" height="10" viewBox="0 0 10 10" style="opacity:.4">
+            <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" stroke-width="1.5"/>
+            <line x1="9" y1="5" x2="5" y2="9" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+    </div>
+</div>
+
+<script>
+(function() {
+    // Стан: 'idle' | 'drag' | 'resize'
+    let _mode = 'idle';
+    let _startX, _startY, _startL, _startT, _startW, _startH;
+
+    function _initFb() {
+        const win  = document.getElementById('fbWindow');
+        const hdr  = document.getElementById('fbWinHeader');
+        const rsz  = document.getElementById('fbResizeHandle');
+        const btn  = document.getElementById('fbFloatBtn');
+        const urlEl = document.getElementById('fbUrlPreview');
+        if (!win || !hdr) return;
+
+        if (urlEl) urlEl.textContent = location.pathname;
+        if (btn) {
+            btn.addEventListener('mouseenter', () => btn.style.transform = 'scale(1.1)');
+            btn.addEventListener('mouseleave', () => btn.style.transform = '');
+        }
+
+        // ── Drag (header) ──
+        hdr.addEventListener('mousedown', e => {
+            if (e.target.closest('button')) return;
+            e.preventDefault();
+            _mode   = 'drag';
+            _startX = e.clientX;
+            _startY = e.clientY;
+            _startL = win.offsetLeft;
+            _startT = win.offsetTop;
+            hdr.style.cursor = 'grabbing';
+            document.body.style.userSelect = 'none';
+        });
+
+        // ── Resize (handle) ──
+        rsz.addEventListener('mousedown', e => {
+            e.preventDefault();
+            _mode   = 'resize';
+            _startX = e.clientX;
+            _startY = e.clientY;
+            _startW = win.offsetWidth;
+            _startH = win.offsetHeight;
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', e => {
+            if (_mode === 'idle') return;
+            const dx = e.clientX - _startX;
+            const dy = e.clientY - _startY;
+
+            if (_mode === 'drag') {
+                const maxL = window.innerWidth  - win.offsetWidth;
+                const maxT = window.innerHeight - win.offsetHeight;
+                win.style.left   = Math.max(0, Math.min(_startL + dx, maxL)) + 'px';
+                win.style.top    = Math.max(0, Math.min(_startT + dy, maxT)) + 'px';
+                win.style.right  = 'auto';
+                win.style.bottom = 'auto';
+            } else if (_mode === 'resize') {
+                const newW = Math.max(300, _startW + dx);
+                const newH = Math.max(280, _startH + dy);
+                // Не виходити за межі екрану
+                win.style.width  = Math.min(newW, window.innerWidth  - win.offsetLeft) + 'px';
+                win.style.height = Math.min(newH, window.innerHeight - win.offsetTop)  + 'px';
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (_mode === 'drag') hdr.style.cursor = 'grab';
+            _mode = 'idle';
+            document.body.style.userSelect = '';
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', _initFb);
+})();
+
+// ── Відкрити / закрити ──
+function fbOpen() {
+    const win = document.getElementById('fbWindow');
+    const bd  = document.getElementById('fbBackdrop');
+    if (!win) return;
+    // Позиція: по центру екрану якщо ще не переміщали
+    if (!win.style.left || win.style.left === '') {
+        win.style.left   = Math.max(0, (window.innerWidth  - 520) / 2) + 'px';
+        win.style.top    = Math.max(0, (window.innerHeight - 480) / 2) + 'px';
+        win.style.right  = 'auto';
+        win.style.bottom = 'auto';
+    }
+    win.style.display = 'flex';
+    win.style.flexDirection = 'column';
+    bd.style.display  = '';
+    _fbUpdateCount();
+    document.getElementById('fbUrlPreview').textContent = location.pathname;
+    document.getElementById('fbTitle').focus();
+}
+
+function fbClose() {
+    document.getElementById('fbWindow').style.display = 'none';
+    document.getElementById('fbBackdrop').style.display = 'none';
+}
+
+// ── Лічильник помилок ──
 function _fbUpdateCount() {
-    const cnt = document.getElementById('fbErrorCount');
+    const cnt  = document.getElementById('fbErrorCount');
     if (!cnt) return;
     const logs = window._fbGetErrorLog ? window._fbGetErrorLog() : [];
-    const errors = logs.filter(l => l.includes('[JS ERROR]') || l.includes('[PROMISE') || l.includes('[CONSOLE.ERROR]'));
-    if (errors.length) {
-        cnt.textContent = errors.length;
-        cnt.style.display = '';
-    } else {
-        cnt.style.display = 'none';
-    }
+    const n    = logs.filter(l => l.includes('[JS ERROR]') || l.includes('[PROMISE') || l.includes('[CONSOLE.ERROR]')).length;
+    cnt.textContent  = n;
+    cnt.style.display = n ? '' : 'none';
 }
-// Перевіряємо раз на 3 секунди і при відкритті модалю
 setInterval(_fbUpdateCount, 3000);
-document.getElementById('feedbackModal')?.addEventListener('show.bs.modal', _fbUpdateCount);
 
+// ── Діагностика ──
 function fbLoadDiag() {
     const logs = window._fbGetErrorLog ? window._fbGetErrorLog() : [];
     const wrap = document.getElementById('fbErrorLogWrap');
     const ta   = document.getElementById('fbErrorLog');
     const cnt  = document.getElementById('fbErrorCount');
 
-    // Збираємо діагностику
     const lines = [];
     lines.push('=== Діагностика ===');
     lines.push('Час: ' + new Date().toLocaleString('uk-UA'));
@@ -477,28 +1070,22 @@ function fbLoadDiag() {
         lines.push('(немає зафіксованих помилок)');
     }
 
-    // Мережеві помилки через Performance API
     if (window.performance && performance.getEntriesByType) {
-        const failedReqs = performance.getEntriesByType('resource').filter(r =>
+        const reqs = performance.getEntriesByType('resource').filter(r =>
             r.initiatorType === 'fetch' || r.initiatorType === 'xmlhttprequest'
         ).slice(-20);
-        if (failedReqs.length) {
+        if (reqs.length) {
             lines.push('');
             lines.push('=== Мережеві запити (останні 20) ===');
-            failedReqs.forEach(r => {
-                lines.push(`${r.initiatorType.toUpperCase()} ${r.name} [${Math.round(r.duration)}ms]`);
-            });
+            reqs.forEach(r => lines.push(`${r.initiatorType.toUpperCase()} ${r.name} [${Math.round(r.duration)}ms]`));
         }
     }
 
     ta.value = lines.join('\n');
     wrap.style.display = '';
 
-    const errCount = logs.filter(l => l.includes('[JS ERROR]') || l.includes('[PROMISE') || l.includes('[CONSOLE.ERROR]')).length;
-    if (errCount) {
-        cnt.textContent = errCount;
-        cnt.style.display = '';
-    }
+    const n = logs.filter(l => l.includes('[JS ERROR]') || l.includes('[PROMISE') || l.includes('[CONSOLE.ERROR]')).length;
+    if (n) { cnt.textContent = n; cnt.style.display = ''; }
 }
 
 function fbClearDiag() {
@@ -509,18 +1096,18 @@ function fbClearDiag() {
     if (cnt) cnt.style.display = 'none';
 }
 
+// ── Відправка ──
 async function submitFeedback() {
-    const title = document.getElementById('fbTitle').value.trim();
+    const titleEl = document.getElementById('fbTitle');
+    const title   = titleEl.value.trim();
     if (!title) {
-        document.getElementById('fbTitle').focus();
-        document.getElementById('fbTitle').classList.add('is-invalid');
+        titleEl.focus();
+        titleEl.classList.add('is-invalid');
         return;
     }
-    document.getElementById('fbTitle').classList.remove('is-invalid');
+    titleEl.classList.remove('is-invalid');
 
     let body = document.getElementById('fbBody').value.trim();
-
-    // Якщо є лог помилок і прапорець включений — додаємо до тіла
     const inclErrors = document.getElementById('fbIncludeErrors')?.checked;
     const errLog     = document.getElementById('fbErrorLog')?.value?.trim();
     if (inclErrors && errLog) {
@@ -542,7 +1129,7 @@ async function submitFeedback() {
     });
     const d = await r.json();
     if (d.ok) {
-        bootstrap.Modal.getInstance(document.getElementById('feedbackModal')).hide();
+        fbClose();
         document.getElementById('fbTitle').value = '';
         document.getElementById('fbBody').value  = '';
         document.getElementById('fbCategory').value = 'bug';

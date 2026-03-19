@@ -122,7 +122,13 @@
                         <td class="text-muted">Одержувач:</td>
                         <td>
                             {% if inv.recipient_type == 'personnel' %}
+                            {% if inv.recipient_personnel_id %}
+                            <a href="{{ url_for('personnel.card', person_id=inv.recipient_personnel_id) }}">
+                                {{ inv.recipient_rank or '' }} {{ inv.recipient_person_name | trim }}
+                            </a>
+                            {% else %}
                             {{ inv.recipient_rank or '' }} {{ inv.recipient_person_name | trim }}
+                            {% endif %}
                             {% else %}
                             {{ inv.recipient_unit_name or '—' }}
                             {% endif %}
@@ -958,28 +964,26 @@ const HAS_SCAN = {{ 'true' if inv.scan_path else 'false' }};
 const IS_EXTERNAL = {{ 'true' if inv.is_external else 'false' }};
 
 function confirmIssue() {
-    if (HAS_SCAN || IS_EXTERNAL) {
-        // Скан є або зовнішня — підтверджуємо напряму
-        showConfirm('Позначити накладну як видану?', () => {
-            document.getElementById('formIssue').submit();
-        }, { confirmClass: 'btn-info', confirmLabel: 'Видати' });
-    } else {
-        // Скану немає — попередження з можливістю відкрити скан
+    if (!HAS_SCAN && !IS_EXTERNAL) {
+        // Скану немає — блокуємо, пропонуємо завантажити
         showConfirm(
-            'Скан документа не завантажено. Рекомендується завантажити підписану накладну перед видачею. Продовжити без скану?',
-            () => { document.getElementById('formIssue').submit(); },
+            'Завантажте скан підписаної накладної перед тим як позначити її виданою.',
+            () => {
+                const scanM = bootstrap.Modal.getOrCreateInstance(document.getElementById('scanModal'));
+                scanM.show();
+            },
             {
-                title: 'Видати без скану?',
-                confirmLabel: 'Видати без скану',
-                confirmClass: 'btn-warning',
-                cancelLabel: 'Завантажити скан',
-                onCancel: () => {
-                    const scanM = bootstrap.Modal.getOrCreateInstance(document.getElementById('scanModal'));
-                    scanM.show();
-                }
+                title: 'Потрібен скан документа',
+                confirmLabel: 'Завантажити скан',
+                confirmClass: 'btn-primary',
+                cancelLabel: 'Закрити',
             }
         );
+        return;
     }
+    showConfirm('Позначити накладну як видану?', () => {
+        document.getElementById('formIssue').submit();
+    }, { confirmClass: 'btn-info', confirmLabel: 'Видати' });
 }
 {% endif %}
 </script>

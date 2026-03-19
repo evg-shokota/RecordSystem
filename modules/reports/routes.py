@@ -451,3 +451,65 @@ def summary():
         unit_id=unit_id,
         today=date.today().isoformat(),
     )
+
+
+# ─────────────────────────────────────────────────────────────
+#  Звіт по особі — хронологія видач/повернень
+# ─────────────────────────────────────────────────────────────
+
+@bp.route("/person/<int:person_id>")
+@login_required
+def person_report(person_id):
+    """Хронологія всіх видач і повернень для конкретного військовослужбовця."""
+    conn = get_connection()
+    try:
+        person = conn.execute(
+            "SELECT * FROM personnel WHERE id=?", (person_id,)
+        ).fetchone()
+        if not person:
+            from flask import abort
+            abort(404)
+
+        # Всі накладні де особа є отримувачем
+        invoice_rows = conn.execute("""
+            SELECT i.id, i.number, i.direction, i.status,
+                   i.doc_date, i.updated_at,
+                   i.base_document,
+                   SUM(COALESCE(ii.actual_qty, ii.planned_qty) * ii.price) AS total_sum,
+                   COUNT(ii.id) AS items_count
+            FROM invoices i
+            JOIN invoice_items ii ON ii.invoice_id = i.id
+            WHERE i.recipient_personnel_id = ?
+              AND i.status = 'processed'
+            GROUP BY i.id
+            ORDER BY i.updated_at DESC
+        """, (person_id,)).fetchall()
+
+        # Детальний перелік майна на картці (active)
+        items_rows = conn.execute("""
+            SELECT pi.*, d.name AS item_name, d.unit_of_measure,
+                   i.number AS invoice_number, i.doc_date AS invoice_date
+            FROM personnel_items pi
+            JOIN item_dictionary d ON pi.item_id = d.id
+            LEFT JOIN invoices i ON pi.invoice_id = i.id
+            WHERE pi.personnel_id = ?
+            ORDER BY pi.issue_date DESC, d.name
+        """, (person_id,)).fetchall()
+
+        # Загальна сума активного майна
+        total_active = sum(
+            (r["quantity"] or 0) * (r["price"] or 0)
+            for r in items_rows if r["status"] == "active"
+        )
+
+    finally:
+        conn.close()
+
+    return render_template(
+        "reports/person_report.html",
+        person=person,
+        invoice_rows=[dict(r) for r in invoice_rows],
+        items_rows=[dict(r) for r in items_rows],
+        total_active=total_active,
+        today=date.today().isoformat(),
+    )

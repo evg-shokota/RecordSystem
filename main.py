@@ -47,6 +47,14 @@ def _get_secret_key() -> bytes:
 
 app.secret_key = _get_secret_key()
 
+# Hardening session cookies
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+# SESSION_COOKIE_SECURE залишається False — система працює по HTTP (офлайн)
+
+# Обмеження розміру завантажуваних файлів (50 МБ)
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+
 # Додаткові Jinja2 фільтри
 @app.template_filter("fromjson")
 def _fromjson(value):
@@ -271,9 +279,14 @@ register_blueprints(app)
 @login_required
 def serve_storage(filename):
     """Роздає файли з папки storage/ (фото, скани тощо)."""
-    from flask import send_from_directory
+    from flask import send_from_directory, abort
     from core.settings import get_storage_path
-    return send_from_directory(str(get_storage_path()), filename)
+    storage_root = get_storage_path().resolve()
+    # Захист від path traversal: перевіряємо що resolved шлях всередині storage/
+    target = (storage_root / filename).resolve()
+    if not str(target).startswith(str(storage_root)):
+        abort(403)
+    return send_from_directory(str(storage_root), filename)
 
 
 @app.route("/units/")
@@ -420,6 +433,9 @@ def dashboard():
     from modules.planning.routes import _planning_data, _group_by_calendar
     plan_rows = _planning_data(conn)
     calendar_data = _group_by_calendar(plan_rows)
+    # Overdue (year=0, month=0) — прострочені, зараховуємо в поточний місяць
+    overdue_data = next((c for c in calendar_data if c.get("overdue")), None)
+    overdue_personnel = set(r["personnel_id"] for r in overdue_data["rows"]) if overdue_data else set()
     chart_future = []
     for i in range(0, 6):
         m = _today.month + i
@@ -428,10 +444,12 @@ def dashboard():
             m -= 12; y += 1
         UA_MONTHS_SHORT = ["","Січ","Лют","Бер","Кві","Тра","Чер",
                            "Лип","Сер","Вер","Жов","Лис","Гру"]
-        # шукаємо у calendar_data
         month_data = next((c for c in calendar_data if c["year"] == y and c["month"] == m), None)
-        cnt = len(set(r["personnel_id"] for r in month_data["rows"])) if month_data else 0
-        chart_future.append({"label": f"{UA_MONTHS_SHORT[m]} {y}", "value": cnt,
+        persons = set(r["personnel_id"] for r in month_data["rows"]) if month_data else set()
+        # Для поточного місяця додаємо overdue
+        if i == 0:
+            persons |= overdue_personnel
+        chart_future.append({"label": f"{UA_MONTHS_SHORT[m]} {y}", "value": len(persons),
                               "year": y, "month": m})
 
     # Номенклатурне майно на СЗЧ / Загиблих / Безвісті
@@ -475,6 +493,7 @@ def dashboard():
 
     return render_template(
         "dashboard.html",
+        today_year=_today.year,
         personnel_count=personnel_count,
         pending_invoices=pending_invoices,
         overdue_invoices=[dict(r) for r in overdue_invoices],
@@ -490,11 +509,112 @@ def dashboard():
         needs_count=needs_count,
         personnel_needs_count=personnel_needs_count,
         recent_issues=[dict(r) for r in recent_issues],
-        chart_past=chart_past,
-        chart_future=chart_future,
         norm_dict_options=[dict(r) for r in norm_dict_options],
         user=current_user(),
     )
+
+
+def _save_needs_snapshot(conn, year: int, month: int, needs_count: int) -> None:
+    """Зберігає знімок потреб у видачі за місяць (upsert)."""
+    from datetime import date
+    conn.execute(
+        """INSERT INTO chart_monthly_snapshots (year, month, needs_count, snapshot_date)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(year, month) DO UPDATE SET
+               needs_count   = excluded.needs_count,
+               snapshot_date = excluded.snapshot_date""",
+        (year, month, needs_count, date.today().isoformat())
+    )
+    conn.commit()
+
+
+@app.route("/api/dashboard/chart")
+@login_required
+def api_dashboard_chart():
+    """Returns: {"ok": bool, "data": [{"label", "month_num", "issued", "needs"}], "years": [...], "msg": str}"""
+    import calendar as _cal
+    from datetime import date
+    from modules.planning.routes import _planning_data, _group_by_calendar
+    from core.db import get_connection
+
+    today = date.today()
+    year = request.args.get("year", today.year, type=int)
+
+    UA_MONTHS = ["", "Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень",
+                 "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень"]
+
+    conn = get_connection()
+    try:
+        # Діапазон доступних років (з invoices + snapshots + поточний)
+        min_year_row = conn.execute(
+            "SELECT MIN(year) as y FROM invoices WHERE year > 2000"
+        ).fetchone()
+        snap_min_row = conn.execute(
+            "SELECT MIN(year) as y FROM chart_monthly_snapshots"
+        ).fetchone()
+        candidates = [y for y in [
+            min_year_row["y"] if min_year_row and min_year_row["y"] else None,
+            snap_min_row["y"] if snap_min_row and snap_min_row["y"] else None,
+            today.year,
+        ] if y is not None]
+        min_year = min(candidates)
+        available_years = list(range(min_year, today.year + 2))
+
+        # Потреби поточного місяця — рахуємо live і зберігаємо знімок
+        plan_rows = _planning_data(conn)
+        cal_data  = _group_by_calendar(plan_rows)
+        overdue_data = next((c for c in cal_data if c.get("overdue")), None)
+        overdue_ids  = set(r["personnel_id"] for r in overdue_data["rows"]) if overdue_data else set()
+
+        # Зберігаємо знімок поточного місяця
+        cur_month_data = next((c for c in cal_data if c["year"] == today.year and c["month"] == today.month), None)
+        cur_needs_ids  = set(r["personnel_id"] for r in cur_month_data["rows"]) if cur_month_data else set()
+        cur_needs_ids |= overdue_ids
+        _save_needs_snapshot(conn, today.year, today.month, len(cur_needs_ids))
+
+        # Знімки за запитаний рік
+        snapshots = {
+            r["month"]: r["needs_count"]
+            for r in conn.execute(
+                "SELECT month, needs_count FROM chart_monthly_snapshots WHERE year = ?", (year,)
+            ).fetchall()
+        }
+
+        result = []
+        for m in range(1, 13):
+            # Видачі: рахуємо з invoices
+            month_start = f"{year:04d}-{m:02d}-01"
+            last_day    = _cal.monthrange(year, m)[1]
+            month_end   = f"{year:04d}-{m:02d}-{last_day:02d}"
+            issued = conn.execute(
+                """SELECT COUNT(DISTINCT COALESCE(recipient_personnel_id, recipient_unit_id))
+                   FROM invoices
+                   WHERE status IN ('issued','processed')
+                     AND date(COALESCE(issued_date, created_at)) BETWEEN ? AND ?""",
+                (month_start, month_end)
+            ).fetchone()[0] or 0
+
+            # Потреби: знімок або live (поточний місяць поточного року)
+            if year == today.year and m == today.month:
+                needs = len(cur_needs_ids)
+            elif year == today.year and m > today.month:
+                # Майбутні місяці поточного року — з calendar
+                future = next((c for c in cal_data if c["year"] == year and c["month"] == m), None)
+                needs  = len(set(r["personnel_id"] for r in future["rows"])) if future else 0
+            else:
+                needs = snapshots.get(m, 0)
+
+            result.append({
+                "label":     UA_MONTHS[m],
+                "month_num": m,
+                "issued":    issued,
+                "needs":     needs,
+            })
+
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "data": result, "years": available_years, "msg": ""})
 
 
 @app.route("/api/stock-lookup")

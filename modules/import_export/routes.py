@@ -19,8 +19,8 @@ from flask import (
     Blueprint, render_template, request, redirect,
     url_for, flash, send_file, session
 )
-from core.auth import login_required
-from core.db import get_connection, get_db_path
+from core.auth import login_required, permission_required
+from core.db import get_connection, get_db_path, init_db
 
 bp = Blueprint("import_export", __name__, url_prefix="/import-export")
 
@@ -306,6 +306,7 @@ def db_export():
 
 @bp.route("/db/import", methods=["GET", "POST"])
 @login_required
+@permission_required("admin")
 def db_import():
     if request.method == "GET":
         return render_template("import_export/db_import.html")
@@ -323,23 +324,57 @@ def db_import():
     db_path = get_db_path()
     db_dir  = os.path.dirname(db_path)
 
+    # Зберегти завантажений файл тимчасово для перевірки
+    tmp_path = os.path.join(db_dir, f"_import_tmp_{date.today().isoformat()}.db")
+    try:
+        f.save(tmp_path)
+    except Exception as e:
+        flash(f"Помилка при збереженні файлу: {e}", "danger")
+        return render_template("import_export/db_import.html")
+
+    # Перевірка цілісності нової БД
+    try:
+        import sqlite3 as _sqlite3
+        tmp_conn = _sqlite3.connect(tmp_path)
+        integrity = tmp_conn.execute("PRAGMA integrity_check").fetchone()[0]
+        tmp_conn.close()
+        if integrity != "ok":
+            os.remove(tmp_path)
+            flash(f"Файл БД пошкоджений (integrity_check: {integrity}). Заміну скасовано.", "danger")
+            return render_template("import_export/db_import.html")
+    except Exception as e:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        flash(f"Не вдалося перевірити цілісність файлу: {e}", "danger")
+        return render_template("import_export/db_import.html")
+
     # Автоматичний бекап поточної БД
     backup_name = f"database_backup_{date.today().isoformat()}.db"
     backup_path = os.path.join(db_dir, backup_name)
     try:
         shutil.copy2(db_path, backup_path)
     except Exception as e:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
         flash(f"Не вдалося зробити резервну копію: {e}", "danger")
         return render_template("import_export/db_import.html")
 
-    # Зберегти новий файл
+    # Замінити поточну БД перевіреним файлом
     try:
-        f.save(db_path)
+        shutil.move(tmp_path, db_path)
     except Exception as e:
-        # Спробувати відновити бекап
+        # Відновити з бекапу
         try:
             shutil.copy2(backup_path, db_path)
         except Exception:
+            pass
+        try:
+            os.remove(tmp_path)
+        except OSError:
             pass
         flash(f"Помилка при заміні БД: {e}", "danger")
         return render_template("import_export/db_import.html")

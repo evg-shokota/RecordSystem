@@ -1342,10 +1342,11 @@ def save_size(person_id):
         conn.close()
         return jsonify({"ok": False, "msg": "Особу не знайдено"}), 404
 
-    conn.execute(
-        f"UPDATE personnel SET {field}=?, updated_at=datetime('now','localtime') WHERE id=?",
-        (value or None, person_id)
-    )
+    # field перевірено через ALLOWED — безпечна підстановка імені колонки
+    # Використовуємо словник замість f-string для додаткової ясності
+    _FIELD_SQL = {f: f"UPDATE personnel SET {f}=?, updated_at=datetime('now','localtime') WHERE id=?"
+                  for f in ALLOWED}
+    conn.execute(_FIELD_SQL[field], (value or None, person_id))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
@@ -1388,17 +1389,21 @@ def _order_file_upload(person_id: int, field: str):
         rel_old = old_val.lstrip("/")
         if rel_old.startswith("storage/"):
             rel_old = rel_old[len("storage/"):]
-        old_path = get_storage_path() / rel_old
-        if old_path.exists():
+        storage_root = get_storage_path().resolve()
+        old_path = (storage_root / rel_old).resolve()
+        # Захист від path traversal: тільки файли всередині storage/
+        if str(old_path).startswith(str(storage_root)) and old_path.exists():
             old_path.unlink()
 
     file.save(str(filepath))
     rel = f"/storage/personnel/{folder_name}/orders/{filename}"
 
-    conn.execute(
-        f"UPDATE personnel SET {db_field}=?, updated_at=datetime('now','localtime') WHERE id=?",
-        (rel, person_id)
-    )
+    # db_field перевірено через field in {"enroll","dismiss"} перед викликом
+    _ORDER_FIELD_SQL = {
+        "enroll_order_file": "UPDATE personnel SET enroll_order_file=?, updated_at=datetime('now','localtime') WHERE id=?",
+        "dismiss_order_file": "UPDATE personnel SET dismiss_order_file=?, updated_at=datetime('now','localtime') WHERE id=?",
+    }
+    conn.execute(_ORDER_FIELD_SQL[db_field], (rel, person_id))
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "url": rel})
@@ -1412,20 +1417,27 @@ def _order_file_delete(person_id: int, field: str):
         conn.close()
         return jsonify({"ok": False, "msg": "Особу не знайдено"}), 404
 
+    _ALLOWED_DELETE_FIELDS = {"enroll", "dismiss"}
+    if field not in _ALLOWED_DELETE_FIELDS:
+        conn.close()
+        return jsonify({"ok": False, "msg": "Недозволене поле"}), 400
+
     db_field = f"{field}_order_file"
+    _ORDER_FIELD_SQL_NULL = {
+        "enroll_order_file":  "UPDATE personnel SET enroll_order_file=NULL,  updated_at=datetime('now','localtime') WHERE id=?",
+        "dismiss_order_file": "UPDATE personnel SET dismiss_order_file=NULL, updated_at=datetime('now','localtime') WHERE id=?",
+    }
     old_val  = person[db_field]
     if old_val:
         from core.settings import get_storage_path
+        storage_root = get_storage_path().resolve()
         rel_old = old_val.lstrip("/")
         if rel_old.startswith("storage/"):
             rel_old = rel_old[len("storage/"):]
-        old_path = get_storage_path() / rel_old
-        if old_path.exists():
+        old_path = (storage_root / rel_old).resolve()
+        if str(old_path).startswith(str(storage_root)) and old_path.exists():
             old_path.unlink()
-    conn.execute(
-        f"UPDATE personnel SET {db_field}=NULL, updated_at=datetime('now','localtime') WHERE id=?",
-        (person_id,)
-    )
+    conn.execute(_ORDER_FIELD_SQL_NULL[db_field], (person_id,))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
@@ -2273,3 +2285,103 @@ def _validate_form(data: dict, conn, exclude_id: int | None = None) -> dict:
             errors["ipn"] = "ІПН вже існує в базі"
 
     return errors
+
+
+# ─────────────────────────────────────────────────────────────
+#  MW partial — для багатозадачного вікна
+# ─────────────────────────────────────────────────────────────
+
+@bp.route("/mw/")
+@login_required
+def mw_index():
+    """Partial: список о/с для MW-вікна."""
+    conn = get_connection()
+    search = request.args.get("q", "").strip()
+    unit_id = request.args.get("unit_id", type=int)
+
+    where, params = ["p.is_active = 1"], []
+    if search:
+        where.append("(p.last_name LIKE ? OR p.first_name LIKE ? OR p.middle_name LIKE ?)")
+        like = f"%{search}%"
+        params += [like, like, like]
+    if unit_id:
+        where.append("p.unit_id = ?")
+        params.append(unit_id)
+
+    rows = conn.execute(f"""
+        SELECT p.id, p.last_name, p.first_name, p.middle_name,
+               p.rank, p.position,
+               u.name AS unit_name
+        FROM personnel p
+        LEFT JOIN units u ON p.unit_id = u.id
+        WHERE {' AND '.join(where)}
+        ORDER BY p.last_name, p.first_name
+        LIMIT 100
+    """, params).fetchall()
+
+    units = conn.execute(
+        "SELECT id, name FROM units ORDER BY name"
+    ).fetchall()
+    conn.close()
+    return render_template("personnel/mw_index.html",
+                           rows=rows, units=units,
+                           search=search, filter_unit_id=unit_id)
+
+
+@bp.route("/mw/<int:person_id>")
+@login_required
+def mw_card(person_id):
+    """MW-картка особи."""
+    conn = get_connection()
+    person = conn.execute(
+        """SELECT p.*,
+                  b.name  AS battalion_name,
+                  u.name  AS unit_name,
+                  pl.name AS platoon_name,
+                  g.name  AS group_name,
+                  g.type  AS group_type
+           FROM personnel p
+           LEFT JOIN battalions b  ON p.battalion_id = b.id
+           LEFT JOIN units      u  ON p.unit_id      = u.id
+           LEFT JOIN platoons   pl ON p.platoon_id   = pl.id
+           LEFT JOIN groups     g  ON p.group_id     = g.id
+           WHERE p.id = ?""",
+        (person_id,)
+    ).fetchone()
+    if not person:
+        conn.close()
+        return "Особу не знайдено", 404
+
+    items = conn.execute(
+        """SELECT pi.id, d.name AS item_name, pi.quantity, pi.price,
+                  pi.category, pi.issue_date, pi.status
+           FROM personnel_items pi
+           JOIN item_dictionary d ON pi.item_id = d.id
+           WHERE pi.personnel_id = ?
+           ORDER BY pi.status, d.name""",
+        (person_id,)
+    ).fetchall()
+
+    total_sum = sum(
+        r["quantity"] * r["price"]
+        for r in items
+        if r["status"] == "active" and r["price"]
+    )
+
+    person_norms = conn.execute(
+        """SELECT pn.id, sn.name AS norm_name, pn.personnel_cat
+           FROM personnel_norms pn
+           JOIN supply_norms sn ON sn.id = pn.norm_id
+           WHERE pn.personnel_id = ?
+           ORDER BY pn.id""",
+        (person_id,)
+    ).fetchall()
+
+    conn.close()
+    return render_template(
+        "personnel/mw_card.html",
+        person=dict(person),
+        items=items,
+        total_sum=total_sum,
+        person_norms=[dict(r) for r in person_norms],
+    )

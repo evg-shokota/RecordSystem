@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Звіт по особі — {{ person.last_name | upper }} {{ person.first_name }}{% endblock %}
+{% block page_title %}Звіт по особі{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('personnel.card', person_id=person.id) }}" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-person me-1"></i>Картка
+</a>
+<button onclick="window.print()" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-printer me-1"></i>Друк
+</button>
+<a href="{{ url_for('reports.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Звіти
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# Шапка особи #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-md-4">
+                <span class="text-muted small">Прізвище І.Б.</span>
+                <div class="fw-semibold fs-5">{{ person.last_name | upper }} {{ person.first_name[0] }}.{% if person.middle_name %} {{ person.middle_name[0] }}.{% endif %}</div>
+            </div>
+            <div class="col-md-2">
+                <span class="text-muted small">Звання</span>
+                <div>{{ person.rank or '—' }}</div>
+            </div>
+            <div class="col-md-3">
+                <span class="text-muted small">Посада</span>
+                <div>{{ person.position or '—' }}</div>
+            </div>
+            <div class="col-md-3">
+                <span class="text-muted small">Зараховано</span>
+                <div>{{ person.enroll_date | fdate if person.enroll_date else '—' }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Поточне майно (active) #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-transparent fw-medium d-flex justify-content-between align-items-center">
+        <span>Майно на обліку</span>
+        {% set active_count = items_rows | selectattr('status', 'equalto', 'active') | list | length %}
+        <span class="badge bg-primary">{{ active_count }} позицій</span>
+    </div>
+    <div class="card-body p-0">
+        {% set active_items = items_rows | selectattr('status', 'equalto', 'active') | list %}
+        {% if active_items %}
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Найменування</th>
+                        <th class="text-center">К-сть</th>
+                        <th class="text-center">Кат.</th>
+                        <th class="text-end">Ціна, грн</th>
+                        <th class="text-end">Сума, грн</th>
+                        <th>Дата видачі</th>
+                        <th>Документ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for item in active_items %}
+                <tr>
+                    <td>{{ item.item_name }}</td>
+                    <td class="text-center">{{ item.quantity | int }}</td>
+                    <td class="text-center">{{ item.category or '—' }}</td>
+                    <td class="text-end">{{ "%.2f"|format(item.price) if item.price else '—' }}</td>
+                    <td class="text-end">{{ "%.2f"|format((item.quantity or 0) * (item.price or 0)) }}</td>
+                    <td>{{ item.issue_date | fdate if item.issue_date else '—' }}</td>
+                    <td class="text-muted small">{{ item.invoice_number or '—' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+                <tfoot class="table-light fw-semibold">
+                    <tr>
+                        <td colspan="4" class="text-end">Загальна сума:</td>
+                        <td class="text-end">{{ "%.2f"|format(total_active) }} грн</td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4 text-muted">
+            <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+            <p class="mb-0">Майно на обліку відсутнє</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{# Хронологія операцій #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-transparent fw-medium">Хронологія операцій</div>
+    <div class="card-body p-0">
+        {% if invoice_rows %}
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Дата</th>
+                        <th>Накладна</th>
+                        <th>Операція</th>
+                        <th>Підстава</th>
+                        <th class="text-center">Позицій</th>
+                        <th class="text-end">Сума, грн</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for inv in invoice_rows %}
+                <tr>
+                    <td>{{ inv.updated_at[:10] | fdate if inv.updated_at else '—' }}</td>
+                    <td><span class="fw-medium">{{ inv.number }}</span></td>
+                    <td>
+                        {% if inv.direction == 'issue' %}
+                        <span class="badge bg-primary">Видача</span>
+                        {% elif inv.direction == 'return' %}
+                        <span class="badge bg-warning text-dark">Повернення</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ inv.direction }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-muted small">{{ inv.base_document or '—' }}</td>
+                    <td class="text-center">{{ inv.items_count }}</td>
+                    <td class="text-end">{{ "%.2f"|format(inv.total_sum or 0) }}</td>
+                    <td>
+                        <a href="{{ url_for('invoices.view', inv_id=inv.id) }}"
+                           class="btn btn-sm btn-outline-secondary py-0 px-2">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4 text-muted">
+            <i class="bi bi-clock-history fs-2 d-block mb-2"></i>
+            <p class="mb-0">Операцій не знайдено</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{# Списане/повернене майно #}
+{% set inactive_items = items_rows | rejectattr('status', 'equalto', 'active') | list %}
+{% if inactive_items %}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent fw-medium text-muted">
+        Списане / повернене майно
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle text-muted">
+                <thead class="table-light">
+                    <tr>
+                        <th>Найменування</th>
+                        <th class="text-center">К-сть</th>
+                        <th>Дата видачі</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for item in inactive_items %}
+                <tr>
+                    <td>{{ item.item_name }}</td>
+                    <td class="text-center">{{ item.quantity | int }}</td>
+                    <td>{{ item.issue_date | fdate if item.issue_date else '—' }}</td>
+                    <td>
+                        {% if item.status == 'written_off' %}
+                        <span class="badge bg-secondary">Списано</span>
+                        {% elif item.status == 'returned' %}
+                        <span class="badge bg-info text-dark">Повернено</span>
+                        {% else %}
+                        <span class="badge bg-light text-dark">{{ item.status }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

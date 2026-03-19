@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ block_title | default('') }}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme-' ~ (session.get('theme') or 'default') ~ '.css') }}">
+    <style>
+        /* MW layout — без sidebar, мінімальні відступи */
+        body {
+            background: var(--body-bg, #f4f6f9);
+            font-size: .85rem;
+            padding: 0;
+            margin: 0;
+            overflow-x: hidden;
+        }
+        .mw-content {
+            padding: .75rem;
+            min-height: 100vh;
+        }
+        /* Топбар MW-сторінки */
+        .mw-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: .4rem .75rem;
+            background: var(--topbar-bg, #fff);
+            border-bottom: 1px solid var(--topbar-border, #dee2e6);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .mw-topbar h5 {
+            margin: 0;
+            font-size: .9rem;
+            font-weight: 600;
+            color: var(--text-heading, #1a1a2e);
+        }
+        .mw-topbar .mw-back {
+            font-size: .78rem;
+            color: var(--text-muted, #6c757d);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: .3rem;
+        }
+        .mw-topbar .mw-back:hover { color: var(--app-primary); }
+    </style>
+    {% block head_extra %}{% endblock %}
+</head>
+<body>
+
+{% block topbar %}{% endblock %}
+
+<div class="mw-content">
+    {# Flash-повідомлення #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show mb-2" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+</div>
+
+<!-- Toast контейнер -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:1100" id="toastContainer"></div>
+
+<script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

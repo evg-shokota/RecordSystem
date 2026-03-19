@@ -1,0 +1,57 @@
+{% extends "base_mw.html" %}
+{% block title %}Склад{% endblock %}
+
+{% block topbar %}
+<div class="mw-topbar">
+    <h5><i class="bi bi-box-seam-fill me-2 opacity-50"></i>Склад — залишки</h5>
+</div>
+{% endblock %}
+
+{% block content %}
+<form class="d-flex gap-2 mb-3" method="get" action="/warehouse/mw/">
+    <input type="text" class="form-control form-control-sm" name="q"
+           placeholder="Пошук майна..." value="{{ search }}"
+           style="max-width:260px">
+    <button type="submit" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-search"></i>
+    </button>
+    <a href="/warehouse/" class="btn btn-sm btn-outline-primary ms-auto" target="_top">
+        <i class="bi bi-box-arrow-up-right me-1"></i>Повний склад
+    </a>
+</form>
+
+{% if not stock %}
+<div class="text-center py-5 text-muted">
+    <i class="bi bi-box-seam fs-1 d-block mb-2 opacity-25"></i>
+    <p class="mb-0">Нічого не знайдено</p>
+</div>
+{% else %}
+<div class="table-responsive">
+    <table class="table table-hover table-sm mb-0 align-middle">
+        <thead>
+            <tr>
+                <th>Найменування</th>
+                <th>Кат.</th>
+                <th class="text-end">На складі</th>
+                <th class="text-end">Вільно</th>
+                <th class="text-end">Од.</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in stock %}
+            <tr>
+                <td class="small">{{ s.item_name }}</td>
+                <td class="text-muted small">{{ s.category or "—" }}</td>
+                <td class="text-end small">{{ (s.qty_in - s.qty_out) | int }}</td>
+                <td class="text-end small {% if s.qty_free < 0 %}text-danger fw-semibold{% elif s.qty_free == 0 %}text-warning{% else %}text-success{% endif %}">
+                    {{ [s.qty_free, 0] | max | int }}
+                </td>
+                <td class="text-end text-muted small">{{ s.unit_of_measure }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<div class="text-muted small mt-2">Показано {{ stock | length }} позицій</div>
+{% endif %}
+{% endblock %}

@@ -6,7 +6,7 @@ modules/supply_norms/routes.py — Норми видачі майна
 Author: White
 """
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify, flash
-from core.auth import login_required
+from core.auth import login_required, permission_required
 from core.db import get_connection
 from core.audit import log_action
 from core.warehouse import get_norm_groups as _get_norm_groups
@@ -249,6 +249,7 @@ def toggle(norm_id):
 
 @bp.route("/<int:norm_id>/delete", methods=["POST"])
 @login_required
+@permission_required("admin")
 def delete(norm_id):
     conn = get_connection()
     assigned = conn.execute(
@@ -415,3 +416,31 @@ def api_list():
     ).fetchall()
     conn.close()
     return jsonify([dict(n) for n in norms])
+
+
+# ─────────────────────────────────────────────────────────────
+#  MW partial — для багатозадачного вікна
+# ─────────────────────────────────────────────────────────────
+
+@bp.route("/mw/")
+@login_required
+def mw_index():
+    """Partial: список норм видачі для MW-вікна."""
+    conn = get_connection()
+    search = request.args.get("q", "").strip()
+    where = "WHERE n.is_active = 1"
+    params = []
+    if search:
+        where += " AND n.name LIKE ?"
+        params.append(f"%{search}%")
+    rows = conn.execute(f"""
+        SELECT n.id, n.name, n.description, n.is_active,
+               COUNT(sni.id) AS items_count
+        FROM supply_norms n
+        LEFT JOIN supply_norm_items sni ON sni.norm_id = n.id
+        {where}
+        GROUP BY n.id
+        ORDER BY n.name
+    """, params).fetchall()
+    conn.close()
+    return render_template("supply_norms/mw_index.html", rows=rows, search=search)

@@ -18,6 +18,7 @@ from flask import (
 )
 from core.auth import login_required
 from core.db import get_connection
+from core.utils import next_doc_number
 from core.audit import log_action
 from core.hooks import emit
 from core.settings import get_setting, get_all_settings
@@ -104,36 +105,8 @@ CATEGORIES = ["I", "II", "III"]
 # ─────────────────────────────────────────────────────────────
 
 def _next_invoice_number(conn) -> tuple[str, int, int, str]:
-    """
-    Повертає (number, year, sequence_num, suffix).
-    Автоматично збільшує лічильник для поточного року.
-    PRIMARY KEY (doc_type, year) — окремий лічильник на кожен рік.
-    """
-    year = date.today().year
-    suffix = get_setting("invoice_suffix", "РС")
-
-    row = conn.execute(
-        "SELECT sequence, suffix FROM doc_sequences WHERE doc_type='invoice' AND year=?",
-        (year,)
-    ).fetchone()
-
-    if row:
-        seq = row["sequence"]
-        suffix = row["suffix"] or suffix
-        conn.execute(
-            "UPDATE doc_sequences SET sequence=?, updated_at=datetime('now','localtime') "
-            "WHERE doc_type='invoice' AND year=?",
-            (seq + 1, year)
-        )
-    else:
-        seq = 1
-        conn.execute(
-            "INSERT INTO doc_sequences (doc_type, year, sequence, suffix) VALUES ('invoice',?,2,?)",
-            (year, suffix)
-        )
-
-    number = f"{year}/{seq}/{suffix}"
-    return number, year, seq, suffix
+    """Повертає (number, year, sequence_num, suffix)."""
+    return next_doc_number(conn, "invoice", "РС")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -748,6 +721,10 @@ def issue(inv_id):
     conn = get_connection()
     inv = conn.execute("SELECT * FROM invoices WHERE id=?", (inv_id,)).fetchone()
     if inv and inv["status"] == "created":
+        if not inv["is_external"] and not inv["scan_path"]:
+            conn.close()
+            flash("Завантажте скан підписаної накладної перед тим як позначити її виданою.", "danger")
+            return redirect(url_for("invoices.view", inv_id=inv_id))
         conn.execute(
             "UPDATE invoices SET status='issued', issued_date=date('now','localtime'), "
             "updated_at=datetime('now','localtime') WHERE id=?",
@@ -756,8 +733,6 @@ def issue(inv_id):
         conn.commit()
         log_action("status_change", "invoices", inv_id,
                    old_data={"status": "created"}, new_data={"status": "issued"})
-        if not inv["is_external"] and not inv["scan_path"]:
-            flash("Накладну видано без скану. Рекомендується завантажити скан документа.", "warning")
     conn.close()
     return redirect(url_for("invoices.view", inv_id=inv_id))
 
@@ -1355,3 +1330,72 @@ def api_personnel_search():
     """, (f"%{q}%", f"%{q}%", f"%{q}%")).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
+
+
+# ─────────────────────────────────────────────────────────────
+#  MW partial — для багатозадачного вікна
+# ─────────────────────────────────────────────────────────────
+
+@bp.route("/mw/")
+@login_required
+def mw_index():
+    """Partial: список накладних для MW-вікна."""
+    conn = get_connection()
+    search = request.args.get("q", "").strip()
+    status_filter = request.args.get("status", "")
+
+    where, params = ["1=1"], []
+    if status_filter:
+        where.append("i.status = ?")
+        params.append(status_filter)
+    if search:
+        where.append("(i.number LIKE ? OR p.last_name LIKE ? OR u.name LIKE ?)")
+        like = f"%{search}%"
+        params += [like, like, like]
+
+    rows = conn.execute(f"""
+        SELECT i.id, i.number, i.status, i.created_at, i.issued_date,
+               p.last_name || ' ' || p.first_name AS recipient_name,
+               u.name AS recipient_unit_name
+        FROM invoices i
+        LEFT JOIN personnel p ON i.recipient_personnel_id = p.id
+        LEFT JOIN units u ON i.recipient_unit_id = u.id
+        WHERE {' AND '.join(where)}
+        ORDER BY i.created_at DESC
+        LIMIT 100
+    """, params).fetchall()
+    conn.close()
+    return render_template("invoices/mw_index.html",
+                           rows=rows, search=search, status_filter=status_filter)
+
+
+@bp.route("/mw/<int:inv_id>")
+@login_required
+def mw_view(inv_id):
+    """MW-перегляд накладної."""
+    conn = get_connection()
+    inv = conn.execute("""
+        SELECT i.*,
+               p.last_name || ' ' || p.first_name || ' ' ||
+               COALESCE(p.middle_name,'') AS recipient_person_name,
+               p.rank  AS recipient_rank,
+               u.name  AS recipient_unit_name
+        FROM invoices i
+        LEFT JOIN personnel p ON i.recipient_personnel_id = p.id
+        LEFT JOIN units     u ON i.recipient_unit_id      = u.id
+        WHERE i.id = ?
+    """, (inv_id,)).fetchone()
+    if not inv:
+        conn.close()
+        return "Накладну не знайдено", 404
+
+    items = conn.execute("""
+        SELECT ii.*, d.name AS item_name, d.unit_of_measure
+        FROM invoice_items ii
+        JOIN item_dictionary d ON ii.item_id = d.id
+        WHERE ii.invoice_id = ?
+        ORDER BY d.name
+    """, (inv_id,)).fetchall()
+
+    conn.close()
+    return render_template("invoices/mw_view.html", inv=inv, items=items)

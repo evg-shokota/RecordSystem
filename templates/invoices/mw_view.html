@@ -1,0 +1,147 @@
+{% extends "base_mw.html" %}
+{% block title %}{% if inv.status == 'draft' %}Чернетка{% else %}Накладна {{ inv.number }}{% endif %}{% endblock %}
+
+{% block topbar %}
+<div class="mw-topbar">
+    <div style="display:flex;align-items:center;gap:.5rem;min-width:0">
+        <a href="/invoices/mw/" class="btn btn-sm btn-outline-secondary py-0 px-2 flex-shrink:0">
+            <i class="bi bi-arrow-left"></i>
+        </a>
+        <h6 class="mb-0 text-truncate">
+            {% if inv.status == 'draft' %}Чернетка{% else %}Накладна № {{ inv.number }}{% endif %}
+        </h6>
+    </div>
+    <div style="display:flex;gap:.4rem;flex-shrink:0">
+        <a href="/invoices/{{ inv.id }}" target="_top" class="btn btn-sm btn-outline-primary py-0" title="Відкрити повну накладну">
+            <i class="bi bi-box-arrow-up-right"></i>
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+{%- set _status_colors = {'draft':'warning','created':'secondary','issued':'info','processed':'success','cancelled':'danger'} %}
+{%- set _status_labels = {
+    'draft':'Чернетка',
+    'created':'Створена',
+    'issued':'Видана',
+    'received':'Отримано',
+    'processed':'Проведена',
+    'cancelled':'Скасована'
+} %}
+
+{# Статус #}
+<div class="alert alert-{{ _status_colors.get(inv.status,'secondary') }} py-2 mb-3 d-flex align-items-center gap-2">
+    <span class="badge bg-{{ _status_colors.get(inv.status,'secondary') }} text-dark">{{ _status_labels.get(inv.status, inv.status) }}</span>
+    {% if inv.status == 'processed' %}<span class="small">Майно списано зі складу</span>
+    {% elif inv.status == 'cancelled' and inv.cancel_comment %}<span class="small">{{ inv.cancel_comment }}</span>
+    {% endif %}
+</div>
+
+{# Реквізити #}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-transparent fw-medium py-1 px-3 small">Реквізити</div>
+    <div class="card-body py-2 px-3">
+        <table class="table table-sm table-borderless mb-0" style="font-size:.82rem">
+            <tr>
+                <td class="text-muted" style="width:110px">Номер</td>
+                <td>
+                    {% if inv.status == 'draft' %}
+                    <span class="badge bg-warning text-dark">Без номера</span>
+                    {% else %}
+                    <strong>{{ inv.number }}</strong>
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td class="text-muted">Напрямок</td>
+                <td>
+                    {% if inv.direction == 'issue' %}Видача зі складу
+                    {% elif inv.direction == 'return' %}Повернення на склад
+                    {% else %}Переміщення{% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td class="text-muted">Одержувач</td>
+                <td>
+                    {% if inv.recipient_person_name and inv.recipient_person_name.strip() %}
+                    {% if inv.recipient_personnel_id %}
+                    <a href="/personnel/mw/{{ inv.recipient_personnel_id }}">
+                        {{ inv.recipient_rank or '' }} {{ inv.recipient_person_name | trim }}
+                    </a>
+                    {% else %}
+                    {{ inv.recipient_rank or '' }} {{ inv.recipient_person_name | trim }}
+                    {% endif %}
+                    {% else %}
+                    {{ inv.recipient_unit_name or '—' }}
+                    {% endif %}
+                </td>
+            </tr>
+            {% if inv.issued_date %}
+            <tr>
+                <td class="text-muted">Дата видачі</td>
+                <td>{{ inv.issued_date | fdate }}</td>
+            </tr>
+            {% endif %}
+            {% if inv.base_document %}
+            <tr>
+                <td class="text-muted">Підстава</td>
+                <td>{{ inv.base_document }}</td>
+            </tr>
+            {% endif %}
+            <tr>
+                <td class="text-muted">Сума</td>
+                <td><strong>{{ "%.2f"|format(inv.total_sum) }} грн</strong></td>
+            </tr>
+        </table>
+    </div>
+</div>
+
+{# Перелік майна #}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent fw-medium py-1 px-3 small d-flex justify-content-between">
+        <span>Перелік майна</span>
+        <span class="badge bg-primary rounded-pill">{{ items | length }}</span>
+    </div>
+    {% if items %}
+    <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle" style="font-size:.82rem">
+            <thead>
+                <tr>
+                    <th>Найменування</th>
+                    <th class="text-center">Кат.</th>
+                    <th class="text-end">К-сть</th>
+                    <th class="text-end">Сума</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in items %}
+                <tr>
+                    <td>{{ r.item_name }}</td>
+                    <td class="text-center"><span class="badge bg-secondary">{{ r.category }}</span></td>
+                    <td class="text-end">
+                        {% set qty = r.actual_qty if r.actual_qty is not none else r.planned_qty %}
+                        {{ qty | int }}
+                        {% if r.actual_qty is not none and r.actual_qty != r.planned_qty %}
+                        <span class="text-warning small">(план: {{ r.planned_qty | int }})</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end text-muted">{{ "%.2f"|format(qty * r.price) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot class="table-light fw-semibold">
+                <tr>
+                    <td colspan="3" class="text-end">Разом:</td>
+                    <td class="text-end">{{ "%.2f"|format(inv.total_sum) }} грн</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    {% else %}
+    <div class="card-body py-3 text-center text-muted small">
+        <i class="bi bi-inbox d-block mb-1 fs-4 opacity-25"></i>Позицій немає
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

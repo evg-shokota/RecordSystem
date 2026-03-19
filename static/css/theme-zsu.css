@@ -42,6 +42,10 @@
 
     --table-header-bg:     #f5f2eb;
     --table-hover-bg:      rgba(77,70,52,.04);
+
+    /* Скролбар */
+    --scrollbar-thumb:       rgba(184,112,0,.28);
+    --scrollbar-thumb-hover: rgba(184,112,0,.5);
 }
 
 /* Сайдбар: бренд-іконка золота */

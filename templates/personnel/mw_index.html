@@ -1,0 +1,70 @@
+{% extends "base_mw.html" %}
+{% block title %}Картотека{% endblock %}
+
+{% block topbar %}
+<div class="mw-topbar">
+    <h5><i class="bi bi-people-fill me-2 opacity-50"></i>Картотека о/с</h5>
+    <a href="/personnel/mw/" class="mw-back"><i class="bi bi-arrow-left"></i> Список</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<form class="d-flex gap-2 mb-3 flex-wrap" method="get" action="/personnel/mw/">
+    <input type="text" class="form-control form-control-sm" name="q"
+           placeholder="Пошук за ПІБ..." value="{{ search }}"
+           style="max-width:220px">
+    <select class="form-select form-select-sm" name="unit_id" style="max-width:180px"
+            onchange="this.form.submit()">
+        <option value="">Усі підрозділи</option>
+        {% for u in units %}
+        <option value="{{ u.id }}" {% if filter_unit_id == u.id %}selected{% endif %}>{{ u.name }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-search"></i>
+    </button>
+    <a href="/personnel/add" class="btn btn-sm btn-primary ms-auto">
+        <i class="bi bi-plus-lg me-1"></i>Додати
+    </a>
+</form>
+
+{% if not rows %}
+<div class="text-center py-5 text-muted">
+    <i class="bi bi-people fs-1 d-block mb-2 opacity-25"></i>
+    <p class="mb-0">Нікого не знайдено</p>
+</div>
+{% else %}
+<div class="table-responsive">
+    <table class="table table-hover table-sm mb-0 align-middle">
+        <thead>
+            <tr>
+                <th>ПІБ</th>
+                <th>Звання</th>
+                <th>Підрозділ</th>
+                <th class="text-end" style="width:50px"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in rows %}
+            <tr>
+                <td>
+                    <a href="/personnel/mw/{{ p.id }}" class="text-decoration-none fw-500">
+                        {{ p.last_name | upper }} {{ p.first_name }}{% if p.middle_name %} {{ p.middle_name }}{% endif %}
+                    </a>
+                    {% if p.position %}<div class="text-muted" style="font-size:.72rem">{{ p.position }}</div>{% endif %}
+                </td>
+                <td class="text-muted small">{{ p.rank or "—" }}</td>
+                <td class="text-muted small">{{ p.unit_name or "—" }}</td>
+                <td class="text-end">
+                    <a href="/personnel/mw/{{ p.id }}" class="btn btn-sm btn-outline-primary py-0">
+                        <i class="bi bi-person-lines-fill"></i>
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<div class="text-muted small mt-2">Знайдено: {{ rows | length }} записів</div>
+{% endif %}
+{% endblock %}

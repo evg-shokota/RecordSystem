@@ -1,0 +1,80 @@
+{% extends "base_mw.html" %}
+{% block title %}Накладні{% endblock %}
+
+{% block topbar %}
+<div class="mw-topbar">
+    <h5><i class="bi bi-receipt me-2 opacity-50"></i>Накладні</h5>
+</div>
+{% endblock %}
+
+{% block content %}
+<form class="d-flex gap-2 mb-3 flex-wrap" method="get" action="/invoices/mw/">
+    <input type="text" class="form-control form-control-sm" name="q"
+           placeholder="Пошук..." value="{{ search }}"
+           style="max-width:200px">
+    <select class="form-select form-select-sm" name="status" style="max-width:150px"
+            onchange="this.form.submit()">
+        <option value="" {% if not status_filter %}selected{% endif %}>Усі статуси</option>
+        <option value="draft"     {% if status_filter=='draft'     %}selected{% endif %}>Чернетка</option>
+        <option value="created"   {% if status_filter=='created'   %}selected{% endif %}>Створена</option>
+        <option value="issued"    {% if status_filter=='issued'    %}selected{% endif %}>Видана</option>
+        <option value="processed" {% if status_filter=='processed' %}selected{% endif %}>Проведена</option>
+        <option value="cancelled" {% if status_filter=='cancelled' %}selected{% endif %}>Скасована</option>
+    </select>
+    <button type="submit" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-search"></i>
+    </button>
+    <a href="/invoices/new" class="btn btn-sm btn-primary ms-auto">
+        <i class="bi bi-plus-lg me-1"></i>Нова
+    </a>
+</form>
+
+{% if not rows %}
+<div class="text-center py-5 text-muted">
+    <i class="bi bi-receipt fs-1 d-block mb-2 opacity-25"></i>
+    <p class="mb-0">Накладних не знайдено</p>
+</div>
+{% else %}
+<div class="table-responsive">
+    <table class="table table-hover table-sm mb-0 align-middle">
+        <thead>
+            <tr>
+                <th>№</th>
+                <th>Дата</th>
+                <th>Одержувач</th>
+                <th>Статус</th>
+                <th class="text-end" style="width:40px"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for inv in rows %}
+            <tr>
+                <td>
+                    <a href="/invoices/mw/{{ inv.id }}" class="text-decoration-none fw-500">
+                        {{ inv.number or "(чернетка)" }}
+                    </a>
+                </td>
+                <td class="text-muted small">{{ (inv.issued_date or inv.created_at or "")[:10] }}</td>
+                <td class="small">
+                    {{ inv.recipient_name or "—" }}
+                    {% if inv.recipient_unit_name %}
+                    <div class="text-muted" style="font-size:.72rem">{{ inv.recipient_unit_name }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {%- set _st = {'draft':'secondary','created':'info','issued':'primary','processed':'success','cancelled':'danger'} -%}
+                    <span class="badge bg-{{ _st.get(inv.status, 'secondary') }}">{{ inv.status }}</span>
+                </td>
+                <td class="text-end">
+                    <a href="/invoices/mw/{{ inv.id }}" class="btn btn-sm btn-outline-primary py-0">
+                        <i class="bi bi-eye"></i>
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<div class="text-muted small mt-2">Знайдено: {{ rows | length }} записів</div>
+{% endif %}
+{% endblock %}

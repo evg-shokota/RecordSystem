@@ -1108,3 +1108,4 @@ document.addEventListener('DOMContentLoaded', () => {
     // Ініціалізація чекбоксів якщо є таблиця
     initCheckboxSelect('.selectable-table');
 });
+

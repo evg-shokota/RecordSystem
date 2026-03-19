@@ -335,7 +335,7 @@ def init_db() -> None:
         )
     """)
     # category: 'I' | 'II' | 'III'
-    # source_type: 'income_doc' | 'narad' | 'attestat' | 'manual'
+    # source_type: 'income_doc' | 'narad' | 'attestat' | 'manual' | 'inventory'
 
     # ══════════════════════════════════════════
     #  СКЛАД — ІНВЕНТАРИЗАЦІЯ
@@ -436,6 +436,8 @@ def init_db() -> None:
             actual_qty REAL,
             price REAL NOT NULL DEFAULT 0,
             category INTEGER NOT NULL DEFAULT 1,
+            -- TODO: category тут INTEGER (1/2/3), тоді як warehouse_income.category TEXT ('I'/'II'/'III').
+            -- Не критично поки немає JOIN між ними, але уніфікувати при наступній великій міграції.
             serial_numbers TEXT,
             notes TEXT
         )
@@ -947,6 +949,21 @@ def init_db() -> None:
             category     TEXT    NOT NULL DEFAULT 'I',
             sort_order   INTEGER NOT NULL DEFAULT 0,
             notes        TEXT
+        )
+    """)
+
+    # ══════════════════════════════════════════
+    #  ЗНІМКИ ДЛЯ ГРАФІКІВ ДАШБОРДУ
+    # ══════════════════════════════════════════
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS chart_monthly_snapshots (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            year         INTEGER NOT NULL,
+            month        INTEGER NOT NULL,
+            needs_count  INTEGER NOT NULL DEFAULT 0,
+            snapshot_date TEXT NOT NULL DEFAULT (date('now','localtime')),
+            UNIQUE(year, month)
         )
     """)
 

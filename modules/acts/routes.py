@@ -11,8 +11,8 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 
 from core.auth import login_required
 from core.db import get_connection
-from core.settings import get_setting
 from core.audit import log_action
+from core.utils import next_doc_number
 
 bp = Blueprint("acts", __name__, url_prefix="/acts")
 
@@ -34,31 +34,7 @@ STATUS_COLORS = {
 
 def _next_number(conn, doc_type: str, default_suffix: str) -> tuple[str, int, int, str]:
     """Повертає (number, year, sequence_num, suffix)."""
-    year = date.today().year
-    suffix = get_setting(f"{doc_type}_suffix", default_suffix)
-
-    row = conn.execute(
-        "SELECT sequence, suffix FROM doc_sequences WHERE doc_type=? AND year=?",
-        (doc_type, year)
-    ).fetchone()
-
-    if row:
-        seq = row["sequence"]
-        suffix = row["suffix"] or suffix
-        conn.execute(
-            "UPDATE doc_sequences SET sequence=?, updated_at=datetime('now','localtime') "
-            "WHERE doc_type=? AND year=?",
-            (seq + 1, doc_type, year)
-        )
-    else:
-        seq = 1
-        conn.execute(
-            "INSERT INTO doc_sequences (doc_type, year, sequence, suffix) VALUES (?,?,2,?)",
-            (doc_type, year, suffix)
-        )
-
-    number = f"{year}/{seq}/{suffix}"
-    return number, year, seq, suffix
+    return next_doc_number(conn, doc_type, default_suffix)
 
 
 # ═══════════════════════════════════════════════════════════════

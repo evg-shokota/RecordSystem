@@ -40,7 +40,7 @@
     {# ── Заголовок ── #}
     <div class="att-title">
         АТЕСТАТ<br>
-        військовослужбовця №&nbsp;{{ person.card_number or person.id }}
+        військовослужбовця №&nbsp;<span id="attTitleNumber">{{ person.card_number or person.id }}</span>
     </div>
 
     <div class="att-fio">
@@ -82,7 +82,7 @@
             <td>
                 <span class="att-editable att-editable--select"
                       data-field="reg_recipient"
-                      data-options="{{ recipient_list | tojson | e }}"></span>
+                      data-options="{{ recipient_list | tojson | e }}">Інша в/ч</span>
             </td>
         </tr>
     </table>
@@ -116,7 +116,7 @@
                 <td class="center"></td>
                 <td class="center">{{ pos.unit }}</td>
                 <td class="center">{% if iss_last and iss_last.price and iss_last.price > 0 %}{{ "%.2f"|format(iss_last.price) }}{% endif %}</td>
-                <td class="center">{% if iss_last and iss_last.category %}{{ iss_last.category }}{% endif %}</td>
+                <td class="center">II</td>
                 <td class="center">{{ pos.att_qty | int if pos.att_qty == pos.att_qty | int else pos.att_qty }}</td>
                 <td class="right">{% if pos.total_sum and pos.total_sum > 0 %}{{ "%.2f"|format(pos.total_sum) }}{% endif %}</td>
                 <td class="center">
@@ -194,7 +194,7 @@
 /* ── Реєстраційна таблиця ── */
 .att-reg-table { width: 100%; border-collapse: collapse; margin-bottom: 10pt; }
 .att-reg-table td { border: 1px solid #000000; padding: 3px 5px; vertical-align: middle; text-align: center; }
-.att-reg-hdr { font-size: 0.75em; text-align: center; }
+.att-reg-hdr { text-align: center; }
 .att-readonly { text-align: center; }
 
 /* Редаговані поля */
@@ -221,10 +221,10 @@
 .right  { text-align: right; }
 
 .att-total   { text-align: right; margin: 6pt 0; }
-.att-confirm { margin: 10pt 0; font-size: 0.9em; line-height: 1.5; }
+.att-confirm { margin: 10pt 0; line-height: 1.5; }
 .att-sign-row { margin-top: 14pt; display: flex; align-items: baseline; gap: 6px; }
 .att-line { display: inline-block; flex: 1; border-bottom: 1px solid #000000; min-width: 80px; margin: 0 4px; }
-.att-sign-label { font-size: 0.75em; text-align: center; margin-top: 2pt; margin-bottom: 4pt; }
+.att-sign-label { text-align: center; margin-top: 2pt; margin-bottom: 4pt; }
 
 @media print {
     .app-sidebar, .app-topbar, .btn, .alert, .breadcrumb { display: none !important; }
@@ -266,7 +266,15 @@ fetch(ATT_DATA_URL)
         // Текстові поля
         document.querySelectorAll('.att-editable[data-field]').forEach(el => {
             const val = d.data[el.dataset.field];
-            if (val) { el.dataset.value = val; el.textContent = val; }
+            if (val) {
+                el.dataset.value = val;
+                el.textContent = val;
+                // [50] Синхронізація: reg_number → заголовок
+                if (el.dataset.field === 'reg_number') {
+                    var titleNum = document.getElementById('attTitleNumber');
+                    if (titleNum) titleNum.textContent = val;
+                }
+            }
         });
     })
     .catch(() => {});
@@ -331,7 +339,14 @@ function showTextInput(el, current) {
 function commit(el, value) {
     el.dataset.value = value;
     el.textContent   = value || '';
-    if (el.dataset.field) saveField(el.dataset.field, value);
+    if (el.dataset.field) {
+        saveField(el.dataset.field, value);
+        // [50] Синхронізація: reg_number → заголовок атестату
+        if (el.dataset.field === 'reg_number') {
+            var titleNum = document.getElementById('attTitleNumber');
+            if (titleNum) titleNum.textContent = value || '';
+        }
+    }
 }
 
 function restore(el, original) {

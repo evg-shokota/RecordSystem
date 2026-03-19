@@ -24,8 +24,9 @@ from flask import (
 from core.auth import login_required
 from core.db import get_connection
 from core.audit import log_action
-from core.settings import get_all_settings, get_setting
+from core.settings import get_all_settings
 from core.military_logic import get_next_issue_date
+from core.utils import next_doc_number
 
 bp = Blueprint("rv", __name__, url_prefix="/rv")
 
@@ -48,37 +49,9 @@ STATUS_COLORS = {
 #  Допоміжні
 # ─────────────────────────────────────────────────────────────
 
-def _get_next_number(conn) -> tuple[str, int]:
-    """
-    Формує наступний номер РВ. Повертає (number_str, sequence_num).
-    Зберігає лічильник в doc_sequences (спільна таблиця, PRIMARY KEY (doc_type, year)).
-    """
-    year   = date.today().year
-    suffix = get_setting("rv_suffix", "РВ")
-
-    row = conn.execute(
-        "SELECT sequence, suffix FROM doc_sequences WHERE doc_type='rv' AND year=?",
-        (year,)
-    ).fetchone()
-
-    if row:
-        seq    = row["sequence"]
-        suffix = row["suffix"] or suffix
-        conn.execute(
-            "UPDATE doc_sequences SET sequence=?, updated_at=datetime('now','localtime') "
-            "WHERE doc_type='rv' AND year=?",
-            (seq + 1, year)
-        )
-    else:
-        seq = 1
-        conn.execute(
-            "INSERT INTO doc_sequences (doc_type, year, sequence, suffix) VALUES ('rv',?,2,?)",
-            (year, suffix)
-        )
-    conn.commit()
-
-    number = f"{year}/{seq}/{suffix}"
-    return number, seq
+def _get_next_number(conn) -> tuple[str, int, int, str]:
+    """Повертає (number, year, sequence_num, suffix) для РВ."""
+    return next_doc_number(conn, "rv", "РВ")
 
 
 def _build_matrix(conn, sheet_id: int) -> dict:
@@ -244,9 +217,7 @@ def new():
             personnel_ids = request.form.getlist("personnel_ids[]")
 
             if not errors:
-                number, seq = _get_next_number(conn)
-                year   = date.today().year
-                suffix = number.rsplit("/", 1)[-1] if "/" in number else ""
+                number, year, seq, suffix = _get_next_number(conn)
 
                 service_name  = s.get("service_name", "")
                 supplier_name = s.get("company_name", "")
@@ -551,9 +522,7 @@ def assign_number(sid):
         flash("Неможливо присвоїти номер", "danger")
         return redirect(url_for("rv.view", sid=sid))
 
-    number, seq = _get_next_number(conn)  # вже робить commit лічильника
-    year   = date.today().year
-    suffix = get_setting("rv_suffix", "РВ")
+    number, year, seq, suffix = _get_next_number(conn)
 
     conn.execute(
         "UPDATE distribution_sheets SET number=?, year=?, sequence_num=?, suffix=?, status='active' WHERE id=?",
@@ -1085,36 +1054,6 @@ def render_rv(sid):
 
 
 # ─────────────────────────────────────────────────────────────
-#  API — норми для особи
-# ─────────────────────────────────────────────────────────────
-
-@bp.route("/api/norm/<int:personnel_id>")
-@login_required
-def api_norm(personnel_id):
-    """
-    GET /rv/api/norm/<personnel_id>
-    Повертає список позицій норми для особи.
-    """
-    conn = get_connection()
-    rows = conn.execute("""
-        SELECT sni.item_id, sni.norm_dict_id, sni.quantity, sni.category,
-               COALESCE(id_direct.name, nd.name) AS item_name
-        FROM supply_norm_items sni
-        JOIN personnel_norms pn ON pn.norm_id = sni.norm_id AND pn.personnel_id = ?
-        LEFT JOIN item_dictionary id_direct ON sni.item_id = id_direct.id
-        LEFT JOIN norm_dictionary nd ON sni.norm_dict_id = nd.id
-        WHERE sni.item_id IS NOT NULL
-    """, (personnel_id,)).fetchall()
-    conn.close()
-    items = [
-        {"item_id": r["item_id"], "item_name": r["item_name"],
-         "qty": r["quantity"], "category": r["category"]}
-        for r in rows
-    ]
-    return jsonify({"items": items})
-
-
-# ─────────────────────────────────────────────────────────────
 #  API — актуальні залишки складу для РВ
 # ─────────────────────────────────────────────────────────────
 
@@ -1130,3 +1069,65 @@ def api_stock(sid):
     stock = get_stock_for_rv(conn, exclude_sheet_id=sid)
     conn.close()
     return jsonify(stock)
+
+
+# ─────────────────────────────────────────────────────────────
+#  MW partial — для багатозадачного вікна
+# ─────────────────────────────────────────────────────────────
+
+@bp.route("/mw/")
+@login_required
+def mw_index():
+    """Partial: список РВ для MW-вікна."""
+    conn = get_connection()
+    search = request.args.get("q", "").strip()
+    status_filter = request.args.get("status", "")
+
+    where, params = ["1=1"], []
+    if status_filter:
+        where.append("ds.status = ?")
+        params.append(status_filter)
+    if search:
+        where.append("(ds.number LIKE ? OR u.name LIKE ?)")
+        like = f"%{search}%"
+        params += [like, like]
+
+    rows = conn.execute(f"""
+        SELECT ds.id, ds.number, ds.status, ds.created_at, ds.doc_date,
+               u.name AS unit_name
+        FROM distribution_sheets ds
+        LEFT JOIN units u ON ds.unit_id = u.id
+        WHERE {' AND '.join(where)}
+        ORDER BY ds.created_at DESC
+        LIMIT 100
+    """, params).fetchall()
+    conn.close()
+    return render_template("rv/mw_index.html",
+                           rows=rows, search=search, status_filter=status_filter)
+
+
+@bp.route("/mw/<int:sid>")
+@login_required
+def mw_view(sid):
+    """MW-перегляд роздавальної відомості."""
+    conn = get_connection()
+    sheet = conn.execute(
+        """SELECT ds.*, u.name as unit_name
+           FROM distribution_sheets ds
+           LEFT JOIN units u ON ds.unit_id = u.id
+           WHERE ds.id=?""",
+        (sid,)
+    ).fetchone()
+    if not sheet:
+        conn.close()
+        return "РВ не знайдено", 404
+
+    matrix = _build_matrix(conn, sid)
+    conn.close()
+    return render_template(
+        "rv/mw_view.html",
+        sheet=dict(sheet),
+        matrix=matrix,
+        status_labels=STATUS_LABELS,
+        status_colors=STATUS_COLORS,
+    )
