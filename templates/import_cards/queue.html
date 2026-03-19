@@ -84,7 +84,7 @@
           <td class="text-secondary small">{{ c.rank or '—' }}</td>
           <td class="text-secondary small">{{ c.unit_raw or '—' }}</td>
           <td class="text-center">
-            <span class="badge bg-secondary">{{ c.items | length }}</span>
+            <span class="badge bg-secondary">{{ c['items'] | length }}</span>
           </td>
           <td class="text-center">
             {% if c.status == STATUS_IMPORTED %}
