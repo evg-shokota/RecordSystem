@@ -251,6 +251,33 @@ def shutdown_backup() -> Path | None:
     return dest
 
 
+def restore_db_backup(filename: str) -> None:
+    """
+    Відкатити БД до конкретного файлу бекапу з папки backups/.
+
+    filename — лише ім'я файлу (без шляху), щоб унеможливити path traversal.
+    Перед заміною автоматично створює бекап поточної БД з міткою 'pre_restore'.
+    """
+    backup_dir = get_backup_dir()
+    src = backup_dir / Path(filename).name   # Path().name — захист від ../
+    if not src.exists() or not src.is_file():
+        raise FileNotFoundError(f"Файл бекапу не знайдено: {filename}")
+    if not src.suffix == ".db":
+        raise ValueError("Дозволені тільки .db файли")
+
+    db_path = Path(get_db_path())
+
+    # Зберегти поточну БД перед заміною
+    now = datetime.now()
+    ts = now.strftime("%Y%m%d_%H%M%S")
+    pre = backup_dir / f"backup_pre_restore_{ts}.db"
+    shutil.copy2(db_path, pre)
+
+    # Замінити БД файлом бекапу
+    shutil.copy2(src, db_path)
+    set_setting("last_backup_at", now.strftime("%Y-%m-%d %H:%M:%S"))
+
+
 def manual_backup() -> Path:
     """Ручний бекап — завжди зберігається, не ротується."""
     return do_backup("manual")

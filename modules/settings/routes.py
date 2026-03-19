@@ -1253,6 +1253,23 @@ def backup_download_full():
         return redirect(url_for("settings.backup"))
 
 
+@bp.route("/backup/restore-db", methods=["POST"])
+@login_required
+def backup_restore_db():
+    """Returns: {"ok": bool, "msg": str} — відкат БД до обраного файлу бекапу."""
+    from core.backup import restore_db_backup
+    filename = request.form.get("filename", "").strip()
+    if not filename:
+        return jsonify({"ok": False, "msg": "Не вказано файл бекапу"}), 400
+    try:
+        restore_db_backup(filename)
+        return jsonify({"ok": True, "msg": f"БД відновлено з {filename}. Перезапустіть систему."})
+    except (FileNotFoundError, ValueError) as e:
+        return jsonify({"ok": False, "msg": str(e)}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Помилка відновлення: {e}"}), 500
+
+
 @bp.route("/backup/restore", methods=["POST"])
 @login_required
 def backup_restore():

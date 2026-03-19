@@ -14,20 +14,20 @@
     <p class="text-muted mb-0">Резервні копії зберігаються в папці <code>backups/</code> поряд з базою даних.</p>
     <div class="d-flex gap-2">
         <form method="POST" action="{{ url_for('settings.backup_create') }}">
-            <button type="submit" class="btn btn-outline-primary">
+            <button type="submit" class="btn btn-outline-primary btn-sm">
                 <i class="bi bi-database-fill-add me-1"></i>Копія БД
             </button>
         </form>
-        <a href="{{ url_for('settings.backup_download_full') }}" class="btn btn-primary">
+        <a href="{{ url_for('settings.backup_download_full') }}" class="btn btn-primary btn-sm">
             <i class="bi bi-file-zip me-1"></i>Повний бекап (БД + файли)
         </a>
     </div>
 </div>
 
-{# Відновлення з бекапу #}
+{# Відновлення з ZIP-бекапу #}
 <div class="card border-warning mb-3">
     <div class="card-header bg-warning-subtle fw-semibold">
-        <i class="bi bi-arrow-counterclockwise me-1"></i>Відновлення з повного бекапу
+        <i class="bi bi-arrow-counterclockwise me-1"></i>Відновлення з повного бекапу (ZIP)
     </div>
     <div class="card-body">
         <p class="text-muted small mb-3">
@@ -47,16 +47,18 @@
     </div>
 </div>
 
+{# Список бекапів #}
 <div class="card border-0 shadow-sm">
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover mb-0 align-middle">
+            <table class="table table-hover table-sm mb-0 align-middle">
                 <thead class="table-light">
                     <tr>
                         <th>Файл</th>
                         <th style="width:120px">Тип</th>
                         <th style="width:150px">Дата</th>
                         <th style="width:100px" class="text-end">Розмір</th>
+                        <th style="width:110px"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -65,21 +67,30 @@
                         <td class="small font-monospace">{{ b.filename }}</td>
                         <td>
                             {% set label_map = {
-                                'manual':  ('primary',  'Ручний'),
-                                'daily':   ('secondary','Щоденний'),
-                                'weekly':  ('info',     'Тижневий'),
-                                'monthly': ('success',  'Місячний'),
-                                'yearly':  ('warning',  'Річний'),
+                                'manual':       ('primary',   'Ручний'),
+                                'daily':        ('secondary', 'Щоденний'),
+                                'weekly':       ('info',      'Тижневий'),
+                                'monthly':      ('success',   'Місячний'),
+                                'yearly':       ('warning',   'Річний'),
+                                'pre_restore':  ('danger',    'До відкату'),
                             } %}
                             {% set lc = label_map.get(b.label, ('secondary', b.label)) %}
                             <span class="badge bg-{{ lc[0] }}">{{ lc[1] }}</span>
                         </td>
-                        <td class="text-muted small">{{ b.created_at | fdatetime }}</td>
+                        <td class="text-muted small">{{ b.created_at }}</td>
                         <td class="text-end text-muted small">{{ b.size_kb }} КБ</td>
+                        <td class="text-end">
+                            <button type="button"
+                                    class="btn btn-outline-danger btn-sm btn-restore"
+                                    data-filename="{{ b.filename }}"
+                                    data-date="{{ b.created_at }}">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i>Відкатитись
+                            </button>
+                        </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="4" class="text-center text-muted py-4">
+                        <td colspan="5" class="text-center text-muted py-4">
                             <i class="bi bi-database-x me-1"></i>Резервних копій ще немає
                         </td>
                     </tr>
@@ -90,4 +101,106 @@
     </div>
 </div>
 
+{# Модальне вікно підтвердження відкату #}
+<div class="modal fade" id="restoreModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header border-bottom-0">
+                <h5 class="modal-title text-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Відкат бази даних
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Ви збираєтесь відновити БД до стану:</p>
+                <p class="fw-semibold font-monospace" id="restoreFilename"></p>
+                <p class="text-muted small" id="restoreDate"></p>
+                <div class="alert alert-danger py-2 small mb-0">
+                    <i class="bi bi-exclamation-circle me-1"></i>
+                    <strong>Поточний стан БД буде перезаписано.</strong>
+                    Перед відкатом автоматично збережеться копія з міткою «До відкату».
+                    Після відновлення необхідно <strong>перезапустити систему</strong>.
+                </div>
+            </div>
+            <div class="modal-footer border-top-0">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Скасувати</button>
+                <button type="button" class="btn btn-danger btn-sm" id="restoreConfirmBtn">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i>Відкатитись
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const RESTORE_URL = {{ url_for('settings.backup_restore_db') | tojson }};
+    const modal = new bootstrap.Modal(document.getElementById('restoreModal'));
+    const filenameEl = document.getElementById('restoreFilename');
+    const dateEl     = document.getElementById('restoreDate');
+    const confirmBtn = document.getElementById('restoreConfirmBtn');
+    let pendingFilename = '';
+
+    document.querySelectorAll('.btn-restore').forEach(btn => {
+        btn.addEventListener('click', function () {
+            pendingFilename = this.dataset.filename;
+            filenameEl.textContent = pendingFilename;
+            dateEl.textContent = 'Дата бекапу: ' + this.dataset.date;
+            modal.show();
+        });
+    });
+
+    confirmBtn.addEventListener('click', function () {
+        const btn = this;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Відновлення...';
+
+        const fd = new FormData();
+        fd.append('filename', pendingFilename);
+
+        fetch(RESTORE_URL, { method: 'POST', body: fd,
+                             headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(r => r.json())
+            .then(d => {
+                modal.hide();
+                if (d.ok) {
+                    showToast(d.msg, 'success');
+                } else {
+                    showToast(d.msg, 'danger');
+                }
+            })
+            .catch(() => {
+                modal.hide();
+                showToast('Мережева помилка. Спробуйте ще раз.', 'danger');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-arrow-counterclockwise me-1"></i>Відкатитись';
+            });
+    });
+
+    function showToast(msg, type) {
+        const el = document.createElement('div');
+        el.className = `toast align-items-center text-bg-${type} border-0 show`;
+        el.setAttribute('role', 'alert');
+        el.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">${msg}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>`;
+        let container = document.getElementById('toastContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toastContainer';
+            container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+            document.body.appendChild(container);
+        }
+        container.appendChild(el);
+        setTimeout(() => el.remove(), 5000);
+    }
+})();
+</script>
 {% endblock %}
