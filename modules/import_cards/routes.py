@@ -67,6 +67,26 @@ def _delete_state(uid: str) -> None:
         pass
 
 
+def _cleanup_old_sessions(max_age_days: int = 3) -> None:
+    """Видалити сесії імпорту старші за max_age_days днів."""
+    import time
+    cutoff = time.time() - max_age_days * 86400
+    imports_dir = _imports_dir()
+    for f in imports_dir.glob("*.json"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink(missing_ok=True)
+        except OSError:
+            pass
+    # Також прибрати осиротілі tmp-файли завантажень
+    for f in imports_dir.glob("*_upload.*"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 # ── Прогрес парсингу ──────────────────────────────────────────────────────────
 
 def _progress_path(uid: str) -> Path:
@@ -277,6 +297,11 @@ def index():
 
         return jsonify({"ok": True, "uid": uid, "msg": ""})
 
+    # Прибираємо старі сесії при відкритті сторінки
+    try:
+        _cleanup_old_sessions()
+    except Exception:
+        pass
     return render_template("import_cards/index.html")
 
 
@@ -295,7 +320,9 @@ def parse_status(uid: str):
     queue_url = ""
     if prog["status"] == "done":
         queue_url = url_for("import_cards.queue", uid=uid)
-        _delete_progress(uid)   # прибираємо за собою
+        _delete_progress(uid)
+    elif prog["status"] == "error":
+        _delete_progress(uid)   # прибираємо і при помилці
 
     return jsonify({
         "ok":       True,
@@ -761,6 +788,10 @@ def result(uid: str):
 
     docs_created = [d for d in all_docs if d["action"] == "created"]
     docs_linked  = [d for d in all_docs if d["action"] == "linked"]
+
+    # Якщо все оброблено (немає pending) — сесія більше не потрібна, прибираємо
+    if not pending:
+        _delete_state(uid)
 
     return render_template(
         "import_cards/result.html",
