@@ -555,8 +555,9 @@ def close(sid):
         return redirect(url_for("rv.view", sid=sid))
 
     matrix = _build_matrix(conn, sid)
-    today     = date.today().isoformat()
-    today_dt  = date.today()
+    rv_date_str = sheet.get("doc_date") or sheet.get("created_at") or date.today().isoformat()
+    today     = rv_date_str[:10]
+    today_dt  = date.fromisoformat(today)
 
     # Кешуємо service_type та enroll_date для кожної особи в цьому РВ
     person_cache: dict[int, dict] = {}

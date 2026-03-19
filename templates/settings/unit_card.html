@@ -239,14 +239,14 @@
                     <label class="form-label">Військовослужбовець <span class="text-danger">*</span></label>
                     <input type="text" id="personnelSearch" class="form-control mb-2"
                            placeholder="Пошук за прізвищем або ім'ям...">
-                    <div id="personnelList" style="max-height:260px;overflow-y:auto;border:1px solid #dee2e6;border-radius:.375rem">
+                    <div id="personnelList" style="max-height:260px;overflow-y:auto;border:1px solid var(--card-border, #dee2e6);border-radius:.375rem">
                         {% for p in personnel_list %}
                         <div class="personnel-option px-3 py-2 d-flex align-items-center gap-2"
                              data-pid="{{ p.id }}"
                              data-name="{{ p.last_name }} {{ p.first_name }} {{ p.middle_name or '' }}"
                              data-rank="{{ p.rank or '' }}"
                              data-position="{{ p.position or '' }}"
-                             style="cursor:pointer;border-bottom:1px solid #f0f0f0">
+                             style="cursor:pointer;border-bottom:1px solid var(--card-border, #f0f0f0)">
                             <div class="flex-grow-1">
                                 <span class="text-muted small">{{ p.rank or '' }}</span>
                                 <strong class="ms-1">{{ p.last_name }} {{ p.first_name }} {{ p.middle_name or '' }}</strong>

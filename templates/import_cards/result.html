@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Результати імпорту — {{ state.filename }}{% endblock %}
+{% block page_title %}Результати імпорту{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('import_cards.index') }}" class="btn btn-primary btn-sm">
+  <i class="bi bi-upload me-1"></i>Новий імпорт
+</a>
+<a href="{{ url_for('personnel.index') }}" class="btn btn-outline-secondary btn-sm">
+  <i class="bi bi-people me-1"></i>Картотека
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Підсумок ── #}
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center py-3">
+      <div class="fw-bold fs-3 text-success">{{ imported | length }}</div>
+      <div class="small text-secondary">Імпортовано</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center py-3">
+      <div class="fw-bold fs-3 text-secondary">{{ skipped | length }}</div>
+      <div class="small text-secondary">Пропущено</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center py-3">
+      <div class="fw-bold fs-3 text-success">{{ docs_created | length }}</div>
+      <div class="small text-secondary">РВ створено</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center py-3">
+      <div class="fw-bold fs-3 text-primary">{{ docs_linked | length }}</div>
+      <div class="small text-secondary">РВ доповнено</div>
+    </div>
+  </div>
+</div>
+
+{% if pending %}
+<div class="alert alert-warning">
+  <i class="bi bi-exclamation-triangle me-1"></i>
+  <strong>{{ pending | length }}</strong> карток ще не оброблено.
+  <a href="{{ url_for('import_cards.queue', uid=uid) }}" class="alert-link ms-1">Повернутись до черги</a>
+</div>
+{% endif %}
+
+{% if errors %}
+<div class="alert alert-danger">
+  <i class="bi bi-x-circle me-1"></i>
+  <strong>{{ errors | length }}</strong> карток завершились з помилкою.
+</div>
+{% endif %}
+
+{# ── Імпортовані особи ── #}
+{% if imported %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header"><i class="bi bi-person-check me-2"></i>Імпортовані особи</div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 align-middle">
+      <thead>
+        <tr>
+          <th>ПІБ</th>
+          <th>Звання</th>
+          <th class="text-center">РВ</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in imported %}
+        <tr>
+          <td>
+            <strong>{{ c.last_name | upper }}</strong>
+            {{ c.first_name }} {{ c.middle_name }}
+          </td>
+          <td class="text-secondary small">{{ c.rank or '—' }}</td>
+          <td class="text-center">
+            {% for d in c.saved_docs %}
+              <span class="badge {% if d.action == 'created' %}bg-success{% else %}bg-primary{% endif %} me-1">
+                №{{ d.number }}
+              </span>
+            {% endfor %}
+          </td>
+          <td>
+            {% if c.person_id %}
+            <a href="{{ url_for('personnel.card', person_id=c.person_id) }}"
+               class="btn btn-outline-secondary btn-sm py-0">
+              <i class="bi bi-eye"></i>
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{# ── РВ ── #}
+{% if docs_created or docs_linked %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header"><i class="bi bi-receipt me-2"></i>РВ / Накладні</div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0 align-middle">
+      <thead><tr>
+        <th>Номер</th>
+        <th>Дія</th>
+        <th></th>
+      </tr></thead>
+      <tbody>
+        {% for d in docs_created %}
+        <tr>
+          <td>№{{ d.number }}</td>
+          <td><span class="badge bg-success">Створено</span></td>
+          <td>
+            <a href="{{ url_for('rv.view', sid=d.id) }}"
+               class="btn btn-outline-secondary btn-sm py-0">
+              <i class="bi bi-eye"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+        {% for d in docs_linked %}
+        <tr>
+          <td>№{{ d.number }}</td>
+          <td><span class="badge bg-primary">Доповнено</span></td>
+          <td>
+            <a href="{{ url_for('rv.view', sid=d.id) }}"
+               class="btn btn-outline-secondary btn-sm py-0">
+              <i class="bi bi-eye"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if not imported and not pending %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+  <p>Жодної картки не було імпортовано</p>
+  <a href="{{ url_for('import_cards.index') }}" class="btn btn-sm btn-primary">
+    Завантажити новий файл
+  </a>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -17,3 +17,6 @@ pillow>=10.0
 
 # Security
 bcrypt>=4.2
+
+# Fuzzy matching (імпорт карток А5027)
+rapidfuzz>=3.0

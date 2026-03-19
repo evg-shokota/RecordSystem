@@ -51,6 +51,7 @@ def get_next_issue_date(
     cycle_start_date,        # дата першої видачі поточного циклу
     norm_date,               # дата зарахування на норму (для контрактників)
     wear_months: int,
+    today: Optional[date] = None,
 ) -> Optional[date]:
     """
     Розраховує дату наступної видачі по позиції.
@@ -65,14 +66,15 @@ def get_next_issue_date(
     if not wear_months or wear_months <= 0:
         return None
 
+    today_dt = today or date.today()
+
     if service_type == "contract":
         base = _parse_date(norm_date)
         if not base:
             return None
-        today = date.today()
         # Знаходимо перший майбутній або поточний цикл
         next_dt = base
-        while next_dt <= today:
+        while next_dt <= today_dt:
             next_dt = _add_months(next_dt, wear_months)
         return next_dt
     else:

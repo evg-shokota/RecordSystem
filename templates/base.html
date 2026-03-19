@@ -73,14 +73,19 @@
         </a>
 
         {# Визначаємо активні секції для авторозгортання #}
-        {%- set _in_docs = request.blueprint in ('invoices','rv','doc_templates','planning','reports','registry','acts') %}
-        {%- set _in_plugins = plugin_menu_items and request.path and plugin_menu_items | selectattr('url') | list | length > 0 %}
+        {%- set _in_os    = request.blueprint in ('personnel','supply_norms','planning') %}
+        {%- set _in_sklad = request.blueprint in ('warehouse','invoices','rv') %}
+        {%- set _in_docs  = request.blueprint in ('doc_templates','reports','registry','acts') %}
         {%- set _sidebar_extra = slot('sidebar.items') %}
         {%- set _in_extra = _sidebar_extra and _sidebar_extra | length > 0 %}
-        {%- set _in_system = request.blueprint in ('import_export','plugins','audit') or request.path.startswith('/audit/')
-            or (request.path.startswith('/settings/') and not request.path.startswith('/settings/units')) %}
+        {%- set _in_system = request.blueprint in ('import_export','import_cards','plugins','audit','settings')
+            or request.path.startswith('/audit/')
+            or (request.path.startswith('/settings/') and not request.path.startswith('/settings/units'))
+            or request.path.startswith('/feedback') %}
 
         <ul class="nav flex-column sidebar-nav">
+
+            {# ── Дашборд ── #}
             <li class="nav-item">
                 <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}"
                    href="{{ url_for('dashboard') }}">
@@ -88,9 +93,10 @@
                 </a>
             </li>
 
-            {# ── Особовий склад (завжди розгорнута) ── #}
+            {# ── Особовий склад ── #}
             <li>
-                <button class="nav-section-toggle" data-section="os">
+                <button class="nav-section-toggle" data-section="os"
+                        {% if _in_os %}data-default-open="1"{% endif %}>
                     <i class="bi bi-people-fill nav-section-icon"></i>
                     <span>Особовий склад</span>
                     <i class="bi bi-chevron-down nav-section-chevron"></i>
@@ -101,13 +107,13 @@
                     <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'personnel' %}active{% endif %}"
                            href="/personnel/">
-                            <i class="bi bi-people-fill"></i><span class="nav-link-text"> Картотека</span>
+                            <i class="bi bi-card-list"></i><span class="nav-link-text"> Картотека</span>
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.path.startswith('/settings/units') %}active{% endif %}"
-                           href="{{ url_for('settings.units') }}">
-                            <i class="bi bi-diagram-2-fill"></i><span class="nav-link-text"> Підрозділи</span>
+                        <a class="nav-link {% if request.blueprint == 'planning' %}active{% endif %}"
+                           href="{{ url_for('planning.index') }}">
+                            <i class="bi bi-calendar-check"></i><span class="nav-link-text"> Планування видачі</span>
                         </a>
                     </li>
                     <li class="nav-item">
@@ -119,9 +125,10 @@
                 </ul>
             </li>
 
-            {# ── Склад та видача (завжди розгорнута) ── #}
+            {# ── Склад та видача ── #}
             <li>
-                <button class="nav-section-toggle" data-section="sklad">
+                <button class="nav-section-toggle" data-section="sklad"
+                        {% if _in_sklad %}data-default-open="1"{% endif %}>
                     <i class="bi bi-box-seam-fill nav-section-icon"></i>
                     <span>Склад та видача</span>
                     <i class="bi bi-chevron-down nav-section-chevron"></i>
@@ -132,27 +139,7 @@
                     <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'warehouse' %}active{% endif %}"
                            href="/warehouse/">
-                            <i class="bi bi-box-seam-fill"></i><span class="nav-link-text"> Склад</span>
-                        </a>
-                    </li>
-                </ul>
-            </li>
-
-            {# ── Документи (collapsible) ── #}
-            <li>
-                <button class="nav-section-toggle" data-section="docs"
-                        {% if _in_docs %}data-default-open="1"{% endif %}>
-                    <i class="bi bi-file-earmark-text nav-section-icon"></i>
-                    <span>Документи</span>
-                    <i class="bi bi-chevron-down nav-section-chevron"></i>
-                </button>
-            </li>
-            <li class="nav-section-body" data-section-body="docs">
-                <ul class="nav flex-column">
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.blueprint == 'registry' %}active{% endif %}"
-                           href="{{ url_for('registry.index') }}">
-                            <i class="bi bi-journal-text"></i><span class="nav-link-text"> Реєстр документів</span>
+                            <i class="bi bi-box-seam-fill"></i><span class="nav-link-text"> Залишки складу</span>
                         </a>
                     </li>
                     <li class="nav-item">
@@ -167,22 +154,24 @@
                             <i class="bi bi-list-columns-reverse"></i><span class="nav-link-text"> Роздавальні відомості</span>
                         </a>
                     </li>
+                </ul>
+            </li>
+
+            {# ── Документи ── #}
+            <li>
+                <button class="nav-section-toggle" data-section="docs"
+                        {% if _in_docs %}data-default-open="1"{% endif %}>
+                    <i class="bi bi-file-earmark-text nav-section-icon"></i>
+                    <span>Документи</span>
+                    <i class="bi bi-chevron-down nav-section-chevron"></i>
+                </button>
+            </li>
+            <li class="nav-section-body" data-section-body="docs">
+                <ul class="nav flex-column">
                     <li class="nav-item">
-                        <a class="nav-link {% if request.blueprint == 'doc_templates' %}active{% endif %}"
-                           href="/doc-templates/">
-                            <i class="bi bi-file-earmark-ruled"></i><span class="nav-link-text"> Шаблони</span>
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.blueprint == 'planning' %}active{% endif %}"
-                           href="{{ url_for('planning.index') }}">
-                            <i class="bi bi-calendar-check"></i><span class="nav-link-text"> Планування</span>
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.blueprint == 'reports' %}active{% endif %}"
-                           href="{{ url_for('reports.index') }}">
-                            <i class="bi bi-file-earmark-bar-graph"></i><span class="nav-link-text"> Звіти</span>
+                        <a class="nav-link {% if request.blueprint == 'registry' %}active{% endif %}"
+                           href="{{ url_for('registry.index') }}">
+                            <i class="bi bi-journal-bookmark"></i><span class="nav-link-text"> Реєстр документів</span>
                         </a>
                     </li>
                     <li class="nav-item">
@@ -194,13 +183,25 @@
                     <li class="nav-item">
                         <a class="nav-link {% if request.blueprint == 'acts' and '/exploit' in request.path %}active{% endif %}"
                            href="{{ url_for('acts.exploit_list') }}">
-                            <i class="bi bi-file-earmark-check"></i><span class="nav-link-text"> Акти введення в експл.</span>
+                            <i class="bi bi-file-earmark-check"></i><span class="nav-link-text"> Акти введення</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.blueprint == 'reports' %}active{% endif %}"
+                           href="{{ url_for('reports.index') }}">
+                            <i class="bi bi-bar-chart-line"></i><span class="nav-link-text"> Звіти</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.blueprint == 'doc_templates' %}active{% endif %}"
+                           href="/doc-templates/">
+                            <i class="bi bi-file-earmark-ruled"></i><span class="nav-link-text"> Шаблони</span>
                         </a>
                     </li>
                 </ul>
             </li>
 
-            {# ── Модулі (collapsible, тільки якщо є) ── #}
+            {# ── Плагіни (тільки якщо є) ── #}
             {% if plugin_menu_items %}
             <li>
                 <button class="nav-section-toggle" data-section="modules">
@@ -226,7 +227,7 @@
             </li>
             {% endif %}
 
-            {# ── Розширення (collapsible, тільки якщо є) ── #}
+            {# ── Слот розширень з плагінів ── #}
             {%- if _sidebar_extra %}
             <li>
                 <button class="nav-section-toggle" data-section="extra">
@@ -252,7 +253,7 @@
             </li>
             {%- endif %}
 
-            {# ── Система (collapsible) ── #}
+            {# ── Система ── #}
             <li>
                 <button class="nav-section-toggle" data-section="system"
                         {% if _in_system %}data-default-open="1"{% endif %}>
@@ -264,9 +265,21 @@
             <li class="nav-section-body" data-section-body="system">
                 <ul class="nav flex-column">
                     <li class="nav-item">
-                        <a class="nav-link {% if request.blueprint == 'import_export' %}active{% endif %}"
+                        <a class="nav-link {% if request.blueprint in ('import_cards','import_export') %}active{% endif %}"
                            href="{{ url_for('import_export.index') }}">
-                            <i class="bi bi-arrow-left-right"></i><span class="nav-link-text"> Імпорт / Експорт</span>
+                            <i class="bi bi-arrow-down-up"></i><span class="nav-link-text"> Імпорт / Експорт</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path.startswith('/settings/units') %}active{% endif %}"
+                           href="{{ url_for('settings.units') }}">
+                            <i class="bi bi-diagram-2-fill"></i><span class="nav-link-text"> Підрозділи</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path.startswith('/settings/') and not request.path.startswith('/settings/units') %}active{% endif %}"
+                           href="/settings/">
+                            <i class="bi bi-sliders"></i><span class="nav-link-text"> Налаштування</span>
                         </a>
                     </li>
                     <li class="nav-item">
@@ -276,15 +289,9 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.path.startswith('/settings/') and not request.path.startswith('/settings/units') %}active{% endif %}"
-                           href="/settings/">
-                            <i class="bi bi-gear-fill"></i><span class="nav-link-text"> Налаштування</span>
-                        </a>
-                    </li>
-                    <li class="nav-item">
                         <a class="nav-link {% if request.path.startswith('/audit/') %}active{% endif %}"
                            href="/audit/">
-                            <i class="bi bi-journal-text"></i><span class="nav-link-text"> Журнал дій</span>
+                            <i class="bi bi-clock-history"></i><span class="nav-link-text"> Журнал дій</span>
                         </a>
                     </li>
                     <li class="nav-item">

@@ -13,7 +13,7 @@ import atexit
 from pathlib import Path
 
 from core.db import set_db_path, init_db
-from core.backup import auto_backup
+from core.backup import auto_backup, shutdown_backup
 from main import app, register_plugins
 
 # ── Конфігурація ──────────────────────────────────────────────────────
@@ -101,6 +101,7 @@ def close_firewall(rule_name: str):
 # ── Відкрити порт і зареєструвати закриття при виході ────────────────
 fw_ok = open_firewall(PORT, RULE_NAME)
 atexit.register(close_firewall, RULE_NAME)
+atexit.register(lambda: shutdown_backup())
 
 # ── Вивести адреси ────────────────────────────────────────────────────
 local_ips = get_local_ips()

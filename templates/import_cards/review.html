@@ -1,0 +1,738 @@
+{% extends "base.html" %}
+{% block title %}
+  {% if card.last_name %}{{ card.last_name | upper }} {{ card.first_name }}{% else %}Картка {{ idx + 1 }}{% endif %}
+  — Імпорт
+{% endblock %}
+{% block page_title %}Перевірка картки {{ idx + 1 }} / {{ total }}{% endblock %}
+
+{% block topbar_actions %}
+{% if prev_idx is not none %}
+<a href="{{ url_for('import_cards.review', uid=uid, idx=prev_idx) }}"
+   class="btn btn-outline-secondary btn-sm">← Попередня</a>
+{% endif %}
+{% if next_idx is not none %}
+<a href="{{ url_for('import_cards.review', uid=uid, idx=next_idx) }}"
+   class="btn btn-outline-secondary btn-sm">Наступна →</a>
+{% endif %}
+<a href="{{ url_for('import_cards.queue', uid=uid) }}"
+   class="btn btn-outline-secondary btn-sm">
+  <i class="bi bi-list-ul me-1"></i>Черга
+</a>
+{% endblock %}
+
+{% block content %}
+
+{% if card.parse_warnings %}
+<div class="alert alert-warning py-2 small">
+  <i class="bi bi-exclamation-triangle me-1"></i>
+  <strong>Попередження парсингу:</strong>
+  {% for w in card.parse_warnings %}<div>• {{ w }}</div>{% endfor %}
+</div>
+{% endif %}
+
+{# ═══════════════════════════════════════════════════════════════
+   БЛОК ДУБЛІКАТУ — side-by-side порівняння + вибір режиму
+   ══════════════════════════════════════════════════════════════ #}
+{% if duplicate %}
+<div class="card border-0 shadow-sm mb-3 border-start border-warning border-3">
+  <div class="card-header bg-warning bg-opacity-10 d-flex align-items-center justify-content-between">
+    <span>
+      <i class="bi bi-people-fill text-warning me-2"></i>
+      <strong>Знайдено дублікат у базі:</strong>
+      <a href="{{ url_for('personnel.card', person_id=duplicate.id) }}" target="_blank" class="ms-1">
+        {{ duplicate.last_name | upper }} {{ duplicate.first_name }} {{ duplicate.middle_name }}
+      </a>
+    </span>
+    <div class="d-flex gap-3">
+      <div class="form-check mb-0">
+        <input class="form-check-input" type="radio" name="dupMode" value="update" id="modeUpdate">
+        <label class="form-check-label fw-semibold" for="modeUpdate">
+          <i class="bi bi-pencil-square me-1"></i>Оновити існуючу
+        </label>
+      </div>
+      <div class="form-check mb-0">
+        <input class="form-check-input" type="radio" name="dupMode" value="new" id="modeNew" checked>
+        <label class="form-check-label" for="modeNew">
+          <i class="bi bi-person-plus me-1"></i>Створити нову
+        </label>
+      </div>
+    </div>
+  </div>
+
+  {# ── Side-by-side порівняння полів ── #}
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle" id="dupCompareTable">
+        <thead>
+          <tr>
+            <th style="width:140px" class="ps-3">Поле</th>
+            <th>
+              <span class="badge bg-secondary me-1">БД</span>
+              Існуюча особа
+            </th>
+            <th>
+              <span class="badge bg-primary me-1">Excel</span>
+              З картки
+            </th>
+            <th class="text-center" style="width:90px" id="dupColHeader" style="display:none">
+              Взяти з Excel
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {# Допоміжний макрос для рядка порівняння #}
+          {% macro dup_row(field_name, label, db_val, excel_val) %}
+          {% set differs = (db_val or '') | string | lower != (excel_val or '') | string | lower %}
+          <tr class="dup-row {% if differs %}dup-differs{% endif %}"
+              data-field="{{ field_name }}" data-excel="{{ excel_val or '' }}">
+            <td class="ps-3 text-secondary small fw-semibold">{{ label }}</td>
+            <td class="{% if differs %}fw-semibold{% endif %}">
+              {{ db_val or '—' }}
+            </td>
+            <td class="{% if differs %}text-primary fw-semibold{% endif %}">
+              {{ excel_val or '—' }}
+            </td>
+            <td class="text-center dup-check-cell" style="display:none">
+              {% if differs and excel_val %}
+              <input type="checkbox" class="form-check-input dup-field-check"
+                     data-field="{{ field_name }}" checked>
+              {% endif %}
+            </td>
+          </tr>
+          {% endmacro %}
+
+          {{ dup_row('last_name',   'Прізвище',    duplicate.last_name,   card.last_name) }}
+          {{ dup_row('first_name',  "Ім'я",        duplicate.first_name,  card.first_name) }}
+          {{ dup_row('middle_name', 'По батькові', duplicate.middle_name, card.middle_name) }}
+          {{ dup_row('rank',        'Звання',       duplicate.rank,        card.rank) }}
+          {{ dup_row('unit_name',   'Підрозділ',   duplicate.unit_name,   card.unit_raw) }}
+          {{ dup_row('card_number', '№ картки',    duplicate.card_number, card.card_number) }}
+          {{ dup_row('size_head',   'Голова',      duplicate.size_head,   card.sizes.get('size_head','')) }}
+          {{ dup_row('size_height', 'Зріст',       duplicate.size_height, card.sizes.get('size_height','')) }}
+          {{ dup_row('size_shoes',  'Взуття',      duplicate.size_shoes,  card.sizes.get('size_shoes','')) }}
+          {{ dup_row('size_suit',   'Костюм',      duplicate.size_suit,   card.sizes.get('size_suit','')) }}
+          {{ dup_row('size_jacket', 'Куртка',      duplicate.size_jacket, card.sizes.get('size_jacket','')) }}
+          {{ dup_row('size_pants',  'Штани',       duplicate.size_pants,  card.sizes.get('size_pants','')) }}
+          {{ dup_row('size_underwear','Білизна',   duplicate.size_underwear, card.sizes.get('size_underwear','')) }}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ── Майно дублікату — вибір позицій для імпорту ── #}
+  {% if duplicate.items %}
+  <div class="card-footer p-0">
+    <div class="px-3 py-2 small text-secondary fw-semibold border-top">
+      <i class="bi bi-box-seam me-1"></i>Майно в БД ({{ duplicate.items | length }} поз.) —
+      <span id="dupItemsNote">відзначте позиції які НЕ потрібно повторно імпортувати</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle">
+        <thead>
+          <tr>
+            <th style="width:34px" class="text-center" title="Зняти галочку = пропустити при імпорті">
+              <input type="checkbox" class="form-check-input" id="dupItemsSelectAll" checked
+                     title="Виділити/зняти всі">
+            </th>
+            <th>Найменування (вже є в БД)</th>
+            <th class="text-end">К-ть</th>
+            <th>Дата</th>
+            <th>Кат.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for di in duplicate.items %}
+          <tr>
+            <td class="text-center">
+              <input type="checkbox" class="form-check-input dup-existing-item"
+                     data-item-id="{{ di.id }}" checked>
+            </td>
+            <td class="small">{{ di.item_name }}</td>
+            <td class="text-end">{{ di.quantity | int }}</td>
+            <td class="small">{{ di.issue_date | fdate }}</td>
+            <td>{{ di.category or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="px-3 py-2 small text-secondary" id="dupItemsHint">
+      <i class="bi bi-info-circle me-1"></i>
+      Відзначені позиції вже є в БД — їх <strong>буде пропущено</strong> при імпорті з картки.
+      Зніміть галочку щоб все одно додати.
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<input type="hidden" id="updatePersonId" value="{{ duplicate.id }}">
+{% endif %}
+{# /duplicate block #}
+
+<form id="reviewForm">
+  <input type="hidden" name="update_person_id" id="formUpdatePersonId" value="">
+
+{# ── Секція А: Особа ── #}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header">А. Особа</div>
+  <div class="card-body">
+    <div class="row g-2">
+      <div class="col-12 col-md-4">
+        <label class="form-label form-label-sm">Прізвище <span class="text-danger">*</span></label>
+        <input type="text" name="last_name" class="form-control form-control-sm"
+               value="{{ card.last_name }}" required>
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label form-label-sm">Ім'я</label>
+        <input type="text" name="first_name" class="form-control form-control-sm"
+               value="{{ card.first_name }}">
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label form-label-sm">По батькові</label>
+        <input type="text" name="middle_name" class="form-control form-control-sm"
+               value="{{ card.middle_name }}">
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label form-label-sm">Звання</label>
+        {% if form_data.ranks %}
+        <select name="rank" class="form-select form-select-sm">
+          <option value="">— оберіть —</option>
+          {% for r in form_data.ranks %}
+          <option value="{{ r }}" {% if r == card.rank %}selected{% endif %}>{{ r }}</option>
+          {% endfor %}
+          {% if card.rank and card.rank not in form_data.ranks %}
+          <option value="{{ card.rank }}" selected>{{ card.rank }}</option>
+          {% endif %}
+        </select>
+        {% else %}
+        <input type="text" name="rank" class="form-control form-control-sm" value="{{ card.rank }}">
+        {% endif %}
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label form-label-sm">Підрозділ</label>
+        <select name="unit_id" class="form-select form-select-sm">
+          <option value="">— оберіть —</option>
+          {% for u in form_data.units %}
+          <option value="{{ u.id }}" {% if u.name == card.unit_raw %}selected{% endif %}>{{ u.name }}</option>
+          {% endfor %}
+        </select>
+        {% if card.unit_raw %}
+        <div class="form-text">З картки: <em>{{ card.unit_raw }}</em></div>
+        {% endif %}
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label form-label-sm">Номер картки</label>
+        <input type="text" name="card_number" class="form-control form-control-sm"
+               value="{{ card.card_number }}">
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label form-label-sm">Статус</label>
+        <select name="is_active" class="form-select form-select-sm">
+          <option value="1" selected>Діючий</option>
+          <option value="0">Архів</option>
+        </select>
+      </div>
+    </div>
+
+    {# Розміри #}
+    {% if card.sizes %}
+    <hr class="my-2">
+    <div class="small text-secondary mb-1"><i class="bi bi-rulers me-1"></i>Розміри</div>
+    <div class="row g-1">
+      {% set size_labels = {
+        "size_head": "Голова",
+        "size_height": "Зріст",
+        "size_underwear": "Білизна",
+        "size_suit": "Костюм",
+        "size_jacket": "Куртка",
+        "size_pants": "Штани",
+        "size_shoes": "Взуття"
+      } %}
+      {% for key, label in size_labels.items() %}
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label form-label-sm mb-0">{{ label }}</label>
+        <input type="text" name="{{ key }}" class="form-control form-control-sm"
+               value="{{ card.sizes.get(key, '') }}">
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Секція Б: Додатково (згорнута) ── #}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header" role="button" data-bs-toggle="collapse" data-bs-target="#sectionB"
+       style="cursor:pointer">
+    <i class="bi bi-chevron-down me-2"></i>Б. Додатково
+    <span class="badge bg-warning text-dark ms-2 small">Рекомендовано заповнити</span>
+  </div>
+  <div class="collapse" id="sectionB">
+    <div class="card-body">
+      <div class="row g-2">
+        <div class="col-12 col-md-4">
+          <label class="form-label form-label-sm">Вид служби</label>
+          <select name="service_type" class="form-select form-select-sm">
+            <option value="">— не вказано —</option>
+            <option value="contract">Контрактна</option>
+            <option value="conscript">Строкова</option>
+            <option value="officer">Офіцер</option>
+            <option value="reserve">Запас</option>
+          </select>
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label form-label-sm">Норма постачання</label>
+          <select name="norm_id" class="form-select form-select-sm">
+            <option value="">— не вказано —</option>
+            {% for n in form_data.norms %}
+            <option value="{{ n.id }}">{{ n.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label form-label-sm">Категорія о/с (для норми)</label>
+          <select name="norm_cat" class="form-select form-select-sm">
+            <option value="1">1 — рядовий</option>
+            <option value="2">2 — сержант</option>
+            <option value="3">3 — офіцер</option>
+            <option value="5" selected>5 — за замовчуванням</option>
+          </select>
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label form-label-sm">Дата зарахування</label>
+          <input type="date" name="enroll_date" class="form-control form-control-sm">
+        </div>
+        <div class="col-12 col-md-8">
+          <label class="form-label form-label-sm">Причина архівування</label>
+          <input type="text" name="archive_reason" class="form-control form-control-sm"
+                 placeholder="Заповнити якщо статус = Архів">
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Секція В: Майно (fuzzy matching) ── #}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span><i class="bi bi-box-seam me-2"></i>В. Майно ({{ matched_items | length }} поз.)</span>
+    <span class="small text-secondary">
+      <span class="badge bg-success me-1">Auto</span>&gt;90%
+      <span class="badge bg-warning text-dark me-1 ms-2">Перевір</span>60–90%
+      <span class="badge bg-danger me-1 ms-2">Вручну</span>&lt;60%
+    </span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0 align-middle" id="itemsTable">
+      <thead>
+        <tr>
+          <th style="width:30px"></th>
+          <th>З картки</th>
+          <th>Відповідність у словнику</th>
+          <th class="text-end" style="width:70px">К-ть</th>
+          <th style="width:110px">Дата</th>
+          <th class="text-end" style="width:80px">Ціна</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in matched_items %}
+        {% set row_idx = loop.index0 %}
+        <tr class="item-row" data-idx="{{ row_idx }}">
+          <td class="text-center">
+            <input type="checkbox" class="form-check-input item-include"
+                   data-idx="{{ row_idx }}" checked>
+          </td>
+          <td>
+            <span class="small" title="{{ it.name_raw }}">{{ it.name_raw }}</span>
+          </td>
+          <td>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text badge-{{ it.score_class }} px-2"
+                    style="min-width:44px; font-size:0.7rem">
+                {% if it.match_score is not none %}{{ it.match_score | int }}%{% else %}?{% endif %}
+              </span>
+              <select class="form-select form-select-sm item-dict-select"
+                      data-idx="{{ row_idx }}" style="min-width:180px">
+                <option value="">— вибрати —</option>
+                {% if it.match_id %}
+                <option value="{{ it.match_id }}" selected>{{ it.match_name }}</option>
+                {% endif %}
+              </select>
+            </div>
+          </td>
+          <td class="text-end">
+            <input type="number" step="1" min="1" class="form-control form-control-sm text-end item-qty"
+                   data-idx="{{ row_idx }}"
+                   value="{{ (it.attest_qty | int) if it.attest_qty else 1 }}"
+                   style="width:60px">
+          </td>
+          <td>
+            <input type="date" class="form-control form-control-sm item-date"
+                   data-idx="{{ row_idx }}"
+                   value="{{ it.attest_date or '' }}">
+          </td>
+          <td class="text-end">
+            <input type="number" step="0.01" class="form-control form-control-sm text-end item-price"
+                   data-idx="{{ row_idx }}"
+                   value="{{ it.price or '' }}"
+                   style="width:75px">
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center text-secondary py-3">
+            <i class="bi bi-inbox me-1"></i>Майно відсутнє в картці
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ── Секція Г: РВ / Накладні ── #}
+{% if card.docs %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header"><i class="bi bi-receipt me-2"></i>Г. РВ / Накладні</div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0 align-middle" id="docsTable">
+      <thead>
+        <tr>
+          <th>Документ</th>
+          <th>Номер</th>
+          <th>Дата</th>
+          <th>Тип</th>
+          <th style="width:200px">Дія</th>
+          <th class="text-center" style="width:80px">Статус</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for doc in card.docs %}
+        {% set di = loop.index0 %}
+        <tr>
+          <td class="small text-secondary">{{ doc.raw }}</td>
+          <td>
+            <input type="text" class="form-control form-control-sm doc-number"
+                   data-idx="{{ di }}" value="{{ doc.number }}" style="width:80px">
+          </td>
+          <td>
+            <input type="date" class="form-control form-control-sm doc-date"
+                   data-idx="{{ di }}" value="{{ doc.date or '' }}" style="width:130px">
+          </td>
+          <td>
+            <select class="form-select form-select-sm doc-type" data-idx="{{ di }}" style="width:90px">
+              <option value="rv" {% if doc.doc_type == 'rv' %}selected{% endif %}>РВ</option>
+              <option value="invoice" {% if doc.doc_type == 'invoice' %}selected{% endif %}>Накл.</option>
+            </select>
+          </td>
+          <td>
+            <select class="form-select form-select-sm doc-action" data-idx="{{ di }}">
+              <option value="auto">Авто (пошук / створити)</option>
+              <option value="create">Завжди створити нову</option>
+              <option value="skip">Пропустити</option>
+            </select>
+          </td>
+          <td class="text-center">
+            <span class="badge bg-secondary doc-status-badge" data-idx="{{ di }}">—</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{# ── Кнопки ── #}
+<div class="d-flex gap-2 mt-1 mb-4">
+  <button type="button" class="btn btn-primary btn-sm" id="saveBtn">
+    <i class="bi bi-check-circle me-1"></i>Зберегти і далі
+  </button>
+  <button type="button" class="btn btn-outline-secondary btn-sm" id="skipBtn">
+    Пропустити
+  </button>
+</div>
+
+</form>{# /reviewForm #}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+
+  // ════════════════════════════════════════════════
+  // ДАНІ З СЕРВЕРА
+  // ════════════════════════════════════════════════
+  const matchedItems = [
+    {% for it in matched_items %}
+    {
+      name_raw:    {{ it.name_raw | tojson }},
+      match_id:    {{ it.match_id | tojson }},
+      match_name:  {{ it.match_name | tojson }},
+      match_score: {{ it.match_score | tojson }},
+      score_class: {{ it.score_class | tojson }},
+      attest_qty:  {{ it.attest_qty | tojson }},
+      attest_date: {{ it.attest_date | tojson }},
+      price:       {{ it.price | tojson }},
+    },
+    {% endfor %}
+  ];
+
+  // ════════════════════════════════════════════════
+  // ПІДСВІЧУВАННЯ РЯДКІВ МАЙНА ПО SCORE
+  // ════════════════════════════════════════════════
+  document.querySelectorAll('.item-row').forEach(function (tr) {
+    const it = matchedItems[parseInt(tr.dataset.idx)];
+    if (!it) return;
+    if (it.score_class === 'danger' && !it.match_id) tr.classList.add('table-danger');
+    else if (it.score_class === 'warning')            tr.classList.add('table-warning');
+  });
+
+  // ════════════════════════════════════════════════
+  // ЛОГІКА ДУБЛІКАТУ
+  // ════════════════════════════════════════════════
+  const modeUpdate   = document.getElementById('modeUpdate');
+  const modeNew      = document.getElementById('modeNew');
+  const dupColHeader = document.getElementById('dupColHeader');
+  const dupTable     = document.getElementById('dupCompareTable');
+
+  function applyDupMode(mode) {
+    const isUpdate = mode === 'update';
+
+    // Показуємо/ховаємо колонку "Взяти з Excel"
+    document.querySelectorAll('.dup-check-cell').forEach(td => {
+      td.style.display = isUpdate ? '' : 'none';
+    });
+    if (dupColHeader) dupColHeader.style.display = isUpdate ? '' : 'none';
+
+    // Якщо режим "оновити" — підставляємо значення з Excel у форму
+    if (isUpdate) {
+      applyExcelFieldsToForm();
+    }
+
+    // Підказка для майна
+    const hint = document.getElementById('dupItemsHint');
+    if (hint) {
+      hint.style.display = isUpdate ? '' : 'none';
+    }
+    const note = document.getElementById('dupItemsNote');
+    if (note) {
+      note.textContent = isUpdate
+        ? 'відзначте позиції які НЕ потрібно повторно імпортувати'
+        : 'при режимі "Створити нову" — все майно буде додано';
+    }
+  }
+
+  // Підставити значення полів з Excel у форму секції А
+  function applyExcelFieldsToForm() {
+    if (!dupTable) return;
+    dupTable.querySelectorAll('.dup-row').forEach(function (tr) {
+      const field    = tr.dataset.field;
+      const excelVal = tr.dataset.excel;
+      const chk      = tr.querySelector('.dup-field-check');
+
+      // Поля розмірів — пряме ім'я поля
+      const input = document.querySelector(`[name="${field}"]`);
+      if (!input) return;
+
+      if (chk && chk.checked) {
+        // Беремо значення з Excel
+        if (input.tagName === 'SELECT') {
+          // Шукаємо option з таким value або text
+          for (const opt of input.options) {
+            if (opt.value === excelVal || opt.textContent.trim() === excelVal) {
+              input.value = opt.value;
+              break;
+            }
+          }
+        } else {
+          input.value = excelVal;
+        }
+      }
+    });
+  }
+
+  // Реакція на зміну чекбоксів полів
+  if (dupTable) {
+    dupTable.addEventListener('change', function (e) {
+      if (e.target.classList.contains('dup-field-check') && modeUpdate && modeUpdate.checked) {
+        applyExcelFieldsToForm();
+      }
+    });
+  }
+
+  // Реакція на перемикання режиму
+  if (modeUpdate) modeUpdate.addEventListener('change', () => applyDupMode('update'));
+  if (modeNew)    modeNew.addEventListener('change',    () => applyDupMode('new'));
+
+  // Початковий стан
+  applyDupMode('new');
+
+  // ── "Виділити всі" для існуючого майна ──
+  const selectAll = document.getElementById('dupItemsSelectAll');
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      document.querySelectorAll('.dup-existing-item').forEach(chk => {
+        chk.checked = selectAll.checked;
+      });
+    });
+  }
+
+  // ════════════════════════════════════════════════
+  // ЗБІР ДАНИХ ФОРМИ
+  // ════════════════════════════════════════════════
+
+  // Збираємо id існуючих предметів дублікату які ВІДЗНАЧЕНІ (тобто їх пропускаємо)
+  function getSkipItemIds() {
+    const ids = [];
+    document.querySelectorAll('.dup-existing-item:checked').forEach(chk => {
+      ids.push(parseInt(chk.dataset.itemId));
+    });
+    return ids;
+  }
+
+  function collectItems() {
+    const skipIds = (modeUpdate && modeUpdate.checked) ? getSkipItemIds() : [];
+    const rows    = document.querySelectorAll('.item-row');
+    const result  = [];
+
+    rows.forEach(function (tr) {
+      const chk    = tr.querySelector('.item-include');
+      if (!chk || !chk.checked) return;
+
+      const sel    = tr.querySelector('.item-dict-select');
+      const qty    = tr.querySelector('.item-qty');
+      const dt     = tr.querySelector('.item-date');
+      const price  = tr.querySelector('.item-price');
+      const itemId = sel ? parseInt(sel.value) : 0;
+      if (!itemId) return;
+
+      result.push({
+        item_id:    itemId,
+        qty:        parseInt(qty ? qty.value : 1) || 1,
+        issue_date: dt ? (dt.value || null) : null,
+        price:      price && price.value ? parseFloat(price.value) : null,
+      });
+    });
+    return result;
+  }
+
+  function collectDocs() {
+    const rows   = document.querySelectorAll('#docsTable tbody tr');
+    const result = [];
+    rows.forEach(function (tr) {
+      const num    = tr.querySelector('.doc-number')?.value.trim();
+      const dt     = tr.querySelector('.doc-date')?.value;
+      const type   = tr.querySelector('.doc-type')?.value;
+      const action = tr.querySelector('.doc-action')?.value;
+      if (num) {
+        result.push({
+          number:   num,
+          date:     dt || null,
+          doc_type: type || 'rv',
+          action:   action === 'skip' ? 'skip' : (action === 'create' ? 'create' : 'auto'),
+        });
+      }
+    });
+    return result;
+  }
+
+  function getUpdatePersonId() {
+    if (modeUpdate && modeUpdate.checked) {
+      const upId = document.getElementById('updatePersonId');
+      return upId ? upId.value : '';
+    }
+    return '';
+  }
+
+  // ════════════════════════════════════════════════
+  // КНОПКА ЗБЕРЕГТИ
+  // ════════════════════════════════════════════════
+  const saveBtn = document.getElementById('saveBtn');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', function () {
+      const origText = saveBtn.innerHTML;
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Збереження...';
+
+      const form = document.getElementById('reviewForm');
+      const fd   = new FormData(form);
+      fd.set('items_json',        JSON.stringify(collectItems()));
+      fd.set('docs_json',         JSON.stringify(collectDocs()));
+      fd.set('update_person_id',  getUpdatePersonId());
+      fd.set('skip_item_ids_json', JSON.stringify(getSkipItemIds()));
+
+      fetch({{ url_for('import_cards.save_card', uid=uid, idx=idx) | tojson }}, {
+        method:  'POST',
+        body:    fd,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok) {
+          window.location.href = d.next_url;
+        } else {
+          showToast(d.msg || 'Помилка збереження', 'danger');
+          saveBtn.disabled  = false;
+          saveBtn.innerHTML = origText;
+        }
+      })
+      .catch(() => {
+        showToast('Мережева помилка', 'danger');
+        saveBtn.disabled  = false;
+        saveBtn.innerHTML = origText;
+      });
+    });
+  }
+
+  // ════════════════════════════════════════════════
+  // КНОПКА ПРОПУСТИТИ
+  // ════════════════════════════════════════════════
+  const skipBtn = document.getElementById('skipBtn');
+  if (skipBtn) {
+    skipBtn.addEventListener('click', function () {
+      if (!confirm('Пропустити цю картку?')) return;
+      skipBtn.disabled = true;
+      fetch({{ url_for('import_cards.skip_card', uid=uid, idx=idx) | tojson }}, {
+        method:  'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok) window.location.href = d.next_url;
+        else      skipBtn.disabled = false;
+      });
+    });
+  }
+
+  // ════════════════════════════════════════════════
+  // TOAST HELPER
+  // ════════════════════════════════════════════════
+  function showToast(msg, type) {
+    type = type || 'danger';
+    let container = document.getElementById('toastContainer');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'toastContainer';
+      container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+      container.style.zIndex = 9999;
+      document.body.appendChild(container);
+    }
+    const el = document.createElement('div');
+    el.className = `toast align-items-center text-bg-${type} border-0`;
+    el.setAttribute('role', 'alert');
+    el.innerHTML = `<div class="d-flex">
+      <div class="toast-body">${msg}</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto"
+              data-bs-dismiss="toast"></button>
+    </div>`;
+    container.appendChild(el);
+    const t = new bootstrap.Toast(el, { delay: 4000 });
+    t.show();
+    el.addEventListener('hidden.bs.toast', () => el.remove());
+  }
+
+})();
+</script>
+{% endblock %}

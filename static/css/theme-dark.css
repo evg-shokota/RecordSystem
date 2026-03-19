@@ -369,77 +369,7 @@ a.text-body:hover { color: var(--app-primary) !important; }
 /* border-dark-subtle */
 .border-dark-subtle { border-color: var(--card-border) !important; }
 
-/* ── Inline-стилі через attribute selector ── */
-/* Sticky заголовки таблиць із хардкодом */
-[style*="background:#f8f9fa"],
-[style*="background: #f8f9fa"] { background: var(--table-header-bg) !important; color: var(--text-primary) !important; }
 
-[style*="background:white"],
-[style*="background: white"],
-[style*="background:#fff"],
-[style*="background: #fff"]    { background: var(--card-bg) !important; }
-
-[style*="background:#f0f0f0"],
-[style*="background: #f0f0f0"] { background: var(--table-header-bg) !important; }
-
-[style*="background:#f8f8f8"],
-[style*="background: #f8f8f8"] { background: var(--table-header-bg) !important; }
-
-/* Текст через inline color */
-[style*="color:#555"],
-[style*="color: #555"],
-[style*="color:#666"],
-[style*="color: #666"]  { color: var(--text-muted) !important; }
-
-[style*="color:#aaa"],
-[style*="color: #aaa"],
-[style*="color:#888"],
-[style*="color: #888"]  { color: var(--text-muted) !important; }
-
-/* Рядки підпису — border-bottom */
-[style*="border-bottom:1px solid #aaa"],
-[style*="border-bottom: 1px solid #aaa"] { border-color: var(--card-border) !important; }
-
-/* Рядки таблиць — borders */
-[style*="border:1px solid #ccc"],
-[style*="border: 1px solid #ccc"],
-[style*="border:1px solid #dee2e6"],
-[style*="border: 1px solid #dee2e6"] { border-color: var(--card-border) !important; }
-
-/* Settings одиниці — блакитний блок */
-[style*="background:#e8f4fd"] { background: rgba(137,180,250,.08) !important; }
-
-/* Unit card / personnel list borders */
-[style*="border:1px solid #dee2e6"] { border-color: var(--card-border) !important; }
-[style*="border-bottom:1px solid #f0f0f0"] { border-color: var(--card-border) !important; }
-
-/* ── Матриця РВ / таблиці із sticky комірками ── */
-th[style*="background"], td[style*="background:white"], td[style*="background:#fff"],
-td[style*="background: white"], td[style*="background: #fff"] {
-    background: var(--card-bg) !important;
-    color: var(--text-primary) !important;
-}
-
-/* ── SearchableSelect — перекрити .ss-option (main.css вже оновлено, але старий кеш) ── */
-.ss-group-label { background: var(--table-header-bg) !important; color: var(--text-muted) !important; }
-.ss-option { color: var(--text-primary) !important; }
-.ss-option:hover, .ss-option.ss-focused {
-    background: rgba(137,180,250,.1) !important;
-    color: var(--app-primary) !important;
-}
-.ss-option.ss-selected {
-    background: rgba(137,180,250,.15) !important;
-    color: var(--app-primary) !important;
-}
-.ss-no-results { color: var(--text-muted) !important; }
-
-/* ── Форма підписантів (invoices/form.html) ── */
-.signatories-block [style*="color:#555"],
-.signatories-block [style*="color: #555"] { color: var(--text-muted) !important; }
-
-/* ── Загальні border перекриття для форм редагування ── */
-.table [style*="border"] td,
-.table [style*="border"] th { border-color: var(--card-border) !important; }
 
 /* ── pre та code блоки ── */
 pre  { background: var(--table-header-bg) !important; color: var(--text-primary) !important; border-color: var(--card-border) !important; }

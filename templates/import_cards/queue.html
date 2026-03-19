@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Черга імпорту — {{ state.filename }}{% endblock %}
+{% block page_title %}Черга імпорту{% endblock %}
+
+{% block topbar_actions %}
+{% if next_idx is not none %}
+<a href="{{ url_for('import_cards.review', uid=uid, idx=next_idx) }}"
+   class="btn btn-primary btn-sm">
+  <i class="bi bi-play-fill me-1"></i>Продовжити
+</a>
+{% else %}
+<a href="{{ url_for('import_cards.result', uid=uid) }}" class="btn btn-success btn-sm">
+  <i class="bi bi-check-circle me-1"></i>Результати
+</a>
+{% endif %}
+<a href="{{ url_for('import_cards.index') }}" class="btn btn-outline-secondary btn-sm">
+  ← Назад
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Статистика ── #}
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center py-2">
+      <div class="fw-bold fs-4">{{ total }}</div>
+      <div class="small text-secondary">Всього</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center py-2">
+      <div class="fw-bold fs-4 text-warning">{{ pending }}</div>
+      <div class="small text-secondary">Очікує</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center py-2">
+      <div class="fw-bold fs-4 text-success">{{ imported }}</div>
+      <div class="small text-secondary">Імпортовано</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center py-2">
+      <div class="fw-bold fs-4 text-secondary">{{ skipped }}</div>
+      <div class="small text-secondary">Пропущено</div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span><i class="bi bi-list-ul me-2"></i>{{ state.filename }}</span>
+    <span class="text-secondary small">{{ state.created_at }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover table-sm mb-0 align-middle">
+      <thead class="table-header-sticky">
+        <tr>
+          <th style="width:50px">#</th>
+          <th>ПІБ</th>
+          <th>Звання</th>
+          <th>Підрозділ</th>
+          <th class="text-center" style="width:80px">Майно</th>
+          <th class="text-center" style="width:120px">Статус</th>
+          <th style="width:60px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in cards %}
+        <tr>
+          <td class="text-secondary">{{ loop.index }}</td>
+          <td>
+            {% if c.last_name %}
+              <strong>{{ c.last_name | upper }}</strong>
+              {{ c.first_name }} {{ c.middle_name }}
+            {% else %}
+              <span class="text-danger">— не розпарсовано —</span>
+            {% endif %}
+            {% if c.card_number %}
+              <span class="text-secondary small">(№{{ c.card_number }})</span>
+            {% endif %}
+          </td>
+          <td class="text-secondary small">{{ c.rank or '—' }}</td>
+          <td class="text-secondary small">{{ c.unit_raw or '—' }}</td>
+          <td class="text-center">
+            <span class="badge bg-secondary">{{ c.items | length }}</span>
+          </td>
+          <td class="text-center">
+            {% if c.status == STATUS_IMPORTED %}
+              <span class="badge bg-success">Імпортовано</span>
+            {% elif c.status == STATUS_SKIPPED %}
+              <span class="badge bg-secondary">Пропущено</span>
+            {% elif c.status == STATUS_DUPLICATE %}
+              <span class="badge bg-warning text-dark">Дублікат</span>
+            {% elif c.status == STATUS_ERROR %}
+              <span class="badge bg-danger">Помилка</span>
+            {% else %}
+              <span class="badge bg-primary">Очікує</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if c.status in (STATUS_PENDING, STATUS_DUPLICATE) %}
+            <a href="{{ url_for('import_cards.review', uid=uid, idx=loop.index0) }}"
+               class="btn btn-outline-primary btn-sm py-0">
+              <i class="bi bi-pencil"></i>
+            </a>
+            {% elif c.status == STATUS_IMPORTED %}
+            <a href="{{ url_for('import_cards.review', uid=uid, idx=loop.index0) }}"
+               class="btn btn-outline-secondary btn-sm py-0">
+              <i class="bi bi-eye"></i>
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

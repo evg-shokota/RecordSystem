@@ -14,7 +14,7 @@ import threading
 from pathlib import Path
 
 from core.db import set_db_path, init_db
-from core.backup import auto_backup
+from core.backup import auto_backup, shutdown_backup
 from main import app, register_plugins
 
 # ── Конфігурація ──────────────────────────────────────────────────────
@@ -32,6 +32,8 @@ try:
     auto_backup()
 except Exception as e:
     print(f"[WARN] backup: {e}")
+
+atexit.register(lambda: shutdown_backup())
 
 try:
     register_plugins(app)

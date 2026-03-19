@@ -892,7 +892,8 @@ def process(inv_id):
         WHERE ii.invoice_id = ?
     """, (inv_id,)).fetchall()
 
-    today    = date.today().isoformat()
+    inv_date_str = inv.get("issued_date") or inv.get("created_at") or date.today().isoformat()
+    today    = inv_date_str[:10]
     errors   = []
 
     # Перевірка залишків через централізовану логіку складу
